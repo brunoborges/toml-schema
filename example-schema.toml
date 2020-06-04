@@ -2,51 +2,51 @@
 version = 2
 
 [title] 
-type=string
+type="string"
 minlength=10
 maxlength=20
 
 [owner] 
-type=table
+type="table"
 
 	[owner.name]
-	type=string
+	type="string"
 
 	[owner.dob]
-	type=local-date
+	type="local-date"
 
 [database]
-type=table
+type="table"
 
 	[database.server]
-	type=string
+	type="string"
 
 	[database.ports]
-	type=array
-	arraytype=integer
+	type="array"
+	arraytype="integer"
 
 	[database.connection_max]
-	type=integer
+	type="integer"
 
 	[database.enabled]
-	type=boolean
+	type="boolean"
 	optional=true
 	default=false
 
 [servers]
-type=table-sequence
+type="table-sequence"
 
 	[servers.ip]
-	type=string
+	type="string"
 
 	[servers.dc]
-	type=string
+	type="string"
 
 [clients]
-type=table
+type="table"
 
 	[servers.data]
-	type=json
+	type="json"
 
 [hosts]
-type=array
+type="array"
