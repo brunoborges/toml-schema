@@ -15,19 +15,19 @@ type=table
 
 	[#.dob]
 	name=dob
-	type=date
+	type=local-date
 
 [database]
 type=table
 
 	[#.server]
-	type=ipv4
+	type=string
 
 	[#.ports]
-	type=intarray
+	type=array
 
 	[#.connection_max]
-	type=int
+	type=integer
 
 	[#.enabled]
 	type=boolean
@@ -35,10 +35,10 @@ type=table
 	default=false
 
 [servers]
-type=tablearray
+type=table-sequence
 
 	[#.ip]
-	type=ipv4
+	type=string
 
 	[#.dc]
 	type=string
@@ -50,4 +50,4 @@ type=table
 	type=json
 
 [hosts]
-type=stringarray
+type=array
