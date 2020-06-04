@@ -14,7 +14,6 @@ type=table
 	type=string
 
 	[#.dob]
-	name=dob
 	type=local-date
 
 [database]
