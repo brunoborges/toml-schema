@@ -4,6 +4,18 @@ A TOML schema is a set of elements that define the structure, the names, and the
 
 The schema format follows the TOML specification.
 
+## Schema Reference
+
+A TOML file must have this indication at the top, to reference which schema file to use for validation:
+
+```toml
+[tomlsd]
+version = 2
+schema = <uri>
+```
+
+Where `<uri>` can be a remote URL or a local file.
+
 ## Element Definition
 An element can be defined by constructing a table followed by a set of properties to define that element.
 
@@ -24,7 +36,7 @@ Declares the name of the element.
 
 Declares the type of the element. 
 
-## Built-in Types
+### Built-in Types
 
 The allowed types are the ones supported by the TOML Specification:
 
