@@ -22,6 +22,7 @@ An element can be defined by constructing a table followed by a set of propertie
 ```toml
 [<element-name>]
 type=<built-in-type>
+arraytype=<built-in-type>
 optional=<boolean>
 default=<default-value>
 min=<integer>
@@ -34,11 +35,13 @@ Declares the name of the element.
 
 ### Type
 
-Declares the type of the element. 
+Declares the type of the element.
 
 ### Built-in Types
 
 The allowed types are the ones supported by the TOML Specification:
+
+#### Simple Types
 
 - String: `string`
 - Integer: `integer`
@@ -48,15 +51,38 @@ The allowed types are the ones supported by the TOML Specification:
 - Local Date-Time: `local-date-time`
 - Local Date: `local-date`
 - Local Time: `local-time`
+
+#### Structure Types
+
 - Array: `array`
 - Inline Table: `inline-table`
 - Table: `table` (*)
 - Table Sequence: `table-sequence` (*)
 
-The schema definition also explicitly defines two new types:
+(*) The schema also explicitly defines two new types:
 
 1. The implicit TOML type `table` for specifying child elements associated to the parent.
 1. A type for a sequence of tables, `table-sequence`.
+
+### Array Type
+
+Arrays by default will have unchecked value types. User may specify an `arraytype` if a specific type must be checked.
+
+Example for schema definition:
+
+```toml
+[colors]
+type=array
+arraytype=string
+```
+
+Example of TOML file:
+
+```toml
+colors=[ "red", "yellow", "green" ]
+```
+
+Only simple *built-in types* are **allowed**.
 
 ### Optional
 
