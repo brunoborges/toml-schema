@@ -1,8 +1,8 @@
 # The TOML Schema Definition
 
-A TOML schema is a set of elements that define the structure, the names, and the types of configuration data on a TOML file. The TOML Schema is used to validate the input of a TOML file during parsing to reduce or avoid misconfiguration that could potentially damage if only validated during production evaluation.
+A [TOML](https://github.com/toml-lang/toml) schema is a set of elements that define the structure, the names, and the types of configuration data on a TOML file. The TOML Schema is used to validate the input of a TOML file during parsing to reduce or avoid misconfiguration that could potentially damage if only validated during production evaluation.
 
-The schema format follows the TOML specification.
+The schema format follows the TOML specification, and aims at being simple yet elegant.
 
 ## Schema Reference
 
