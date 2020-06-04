@@ -9,9 +9,9 @@ The schema format follows the TOML specification, and aims at being simple yet e
 A TOML file must have this indication at the top, to reference which schema file to use for validation:
 
 ```toml
-[tomlsd]
+[toml-schema]
 version = 2
-schema = "<uri>"
+location = "<uri>"
 ```
 
 Where `<uri>` can be a remote URL or a local file.
