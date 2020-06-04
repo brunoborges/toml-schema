@@ -46,29 +46,21 @@ The schema definition also explicitly defines two new types:
 1. The implicit TOML type `table` for specifying child elements associated to the parent.
 1. A type for a sequence of tables, `table-sequence`.
 
-## Optional
+### Optional
 
 Defines whether this element is optional or not. **Defaults to false**.
 
-## Default
+### Default
 
 The default value the parser should read when this element is not explicitly defined in the TOML file.
 
 An element of type `boolean` will default to `false` when omitted, unless defined otherwise in the user-provided schema file.
 
-## Min
+### Min/Max
 
-The minimal value of an element. This attribute is applicable to the following types:
+The minimal/maximum value of an element. This attribute is applicable to the following types:
 
-- String: minimum length
-- Integer: minimum value
-- Float: minimum value
-
-## Max
-
-The maximum value of an element. This attribute is applicable to the following types:
-
-- String: maximum length
-- Integer: maximum value
-- Float: maximum value
+- String: length
+- Integer: value
+- Float: value
 
