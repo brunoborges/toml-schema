@@ -1,6 +1,6 @@
 [tomlsd]
 version = 2
-schema = config.tosd
+schema = example-schema.toml
 
 title = "TOML Example"
 
