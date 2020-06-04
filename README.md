@@ -11,7 +11,7 @@ A TOML file must have this indication at the top, to reference which schema file
 ```toml
 [tomlsd]
 version = 2
-schema = <uri>
+schema = "<uri>"
 ```
 
 Where `<uri>` can be a remote URL or a local file.
