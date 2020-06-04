@@ -46,7 +46,7 @@ type="table-sequence"
 type="table"
 
 	[servers.data]
-	type="json"
+	type="array"
 
 [hosts]
 type="array"
