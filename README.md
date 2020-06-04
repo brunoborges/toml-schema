@@ -17,12 +17,13 @@ schema = <uri>
 Where `<uri>` can be a remote URL or a local file.
 
 ## Element Definition
+
 An element can be defined by constructing a table followed by a set of properties to define that element.
 
 ```toml
 [<element-name>]
 type=<built-in-type>
-arraytype=<built-in-type>
+arraytype=<simple-built-in-type>
 optional=<boolean>
 default=<default-value>
 min=<integer>
