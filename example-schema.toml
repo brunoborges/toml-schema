@@ -45,7 +45,7 @@ type="table-sequence"
 [clients]
 type="table"
 
-	[servers.data]
+	[clients.data]
 	type="array"
 
 [hosts]
