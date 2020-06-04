@@ -1,0 +1,53 @@
+[tomlsd]
+version = 2
+schema = toml-schema-v1.tosd
+
+[title] 
+type=string
+minlength=10
+maxlength=20
+
+[owner] 
+type=table
+
+	[#.name]
+	type=string
+
+	[#.dob]
+	name=dob
+	type=date
+
+[database]
+type=table
+
+	[#.server]
+	type=ipv4
+
+	[#.ports]
+	type=intarray
+
+	[#.connection_max]
+	type=int
+
+	[#.enabled]
+	type=boolean
+	optional=true
+	default=false
+
+[servers]
+type=tablearray
+
+	[#.ip]
+	type=ipv4
+
+	[#.dc]
+	type=string
+
+[clients]
+type=table
+
+	[#.data]
+	type=json
+
+[hosts]
+type=stringarray
