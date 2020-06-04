@@ -54,7 +54,7 @@ Defines whether this element is optional or not. **Defaults to false**.
 
 The default value the parser should read when this element is not explicitly defined in the TOML file.
 
-An element of type Boolean will default to `false` unless 
+An element of type `boolean` will default to `false` when omitted, unless defined otherwise in the user-provided schema file.
 
 ## Min
 
