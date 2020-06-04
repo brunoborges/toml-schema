@@ -73,8 +73,8 @@ Example for schema definition:
 
 ```toml
 [colors]
-type=array
-arraytype=string
+type="array"
+arraytype="string"
 ```
 
 Example of TOML file:
