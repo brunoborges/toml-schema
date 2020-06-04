@@ -1,6 +1,5 @@
-[tomlsd]
+[toml-schema]
 version = 2
-schema = toml-schema-v1.tosd
 
 [title] 
 type=string
