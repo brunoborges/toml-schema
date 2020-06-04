@@ -10,25 +10,26 @@ maxlength=20
 [owner] 
 type=table
 
-	[#.name]
+	[owner.name]
 	type=string
 
-	[#.dob]
+	[owner.dob]
 	type=local-date
 
 [database]
 type=table
 
-	[#.server]
+	[database.server]
 	type=string
 
-	[#.ports]
+	[database.ports]
 	type=array
+	arraytype=integer
 
-	[#.connection_max]
+	[database.connection_max]
 	type=integer
 
-	[#.enabled]
+	[database.enabled]
 	type=boolean
 	optional=true
 	default=false
@@ -36,16 +37,16 @@ type=table
 [servers]
 type=table-sequence
 
-	[#.ip]
+	[servers.ip]
 	type=string
 
-	[#.dc]
+	[servers.dc]
 	type=string
 
 [clients]
 type=table
 
-	[#.data]
+	[servers.data]
 	type=json
 
 [hosts]
