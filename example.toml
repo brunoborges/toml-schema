@@ -1,6 +1,6 @@
-# [toml.schema]
-# version = 2
-# location = "example-schema.toml"
+[toml-schema]
+version = 2
+location = "example-schema.toml"
 
 title = "TOML Example"
 
