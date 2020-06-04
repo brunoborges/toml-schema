@@ -39,8 +39,12 @@ The allowed types are the ones supported by the TOML Specification:
 - Array: `array`
 - Inline Table: `inline-table`
 - Table: `table` (*)
+- Table Sequence: `table-sequence` (*)
 
-The schema definition also explicitly defines the implicit TOML type `table` for specifying child elements associated to the parent.
+The schema definition also explicitly defines two new types:
+
+1. The implicit TOML type `table` for specifying child elements associated to the parent.
+1. A type for a sequence of tables, `table-sequence`.
 
 ## Optional
 
