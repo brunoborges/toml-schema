@@ -28,6 +28,7 @@ optional=<boolean>
 default=<default-value>
 min=<integer>
 max=<integer>
+enumvalues=<array-of-allowed-enum-values>
 ```
 
 ### Element Name
@@ -53,7 +54,7 @@ The allowed types are the ones supported by the TOML Specification:
 - Local Date: `local-date`
 - Local Time: `local-time`
 
-#### Structure Types
+#### Block Types
 
 - Array: `array`
 - Inline Table: `inline-table`
@@ -64,6 +65,23 @@ The allowed types are the ones supported by the TOML Specification:
 
 1. The implicit TOML type `table` for specifying child elements associated to the parent.
 1. A type for a sequence of tables, `table-sequence`.
+
+#### Enum Type
+
+- Enum: `enum`
+
+An element of `enum` type is an element with a limited set of allowed values defined in the schema file. The type of the enum is the same as the type of the allowed values. Only simple types are allowed.
+
+- Enum Values: `enumvalues`
+
+An array of values allowed for the element.
+
+```toml
+[color]
+type="enum"
+default="black"
+enumvalues=[ "red", "black", "blue" ]
+```
 
 ### Array Type
 
