@@ -76,3 +76,6 @@ The minimal/maximum value of an element. This attribute is applicable to the fol
 - Integer: value
 - Float: value
 
+## Discussion
+
+If you want to share your thoughts on this proposal, please go to the [General Discussion](https://github.com/brunoborges/toml-schema/issues/1) issue.
