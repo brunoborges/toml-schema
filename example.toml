@@ -1,6 +1,8 @@
+# DOCUMENT: config.toml
+
 [toml-schema]
-version = 2
-location = "example-schema.toml"
+version = 1
+schema = "config.tosd"
 
 title = "TOML Example"
 
@@ -14,16 +16,46 @@ ports = [ 8001, 8001, 8002 ]
 connection_max = 5000
 enabled = true
 
-[servers]
+[serverGroups]
 
-  # Indentation (tabs and/or spaces) is allowed but not required
-  [servers.alpha]
-  ip = "10.0.0.1"
-  dc = "eqdc10"
+	[serverGroups.group1]
+	groupname = "US2"
 
-  [servers.beta]
-  ip = "10.0.0.2"
-  dc = "eqdc10"
+	  # Indentation (tabs and/or spaces) is allowed but not required
+	  [serverGroups.group1.servers]
+
+		  [serverGroups.group1.servers.alpha]
+		  ip = "10.0.0.1"
+		  dc = "eqdc10"
+
+		  	[serverGroups.group1.servers.alpha.firewall]
+		  	inbound = "0.0.0.0/24"
+		  	outbound = "0.0.0.0/24"
+
+		  [serverGroups.group1.servers.beta]
+		  ip = "10.0.0.2"
+		  dc = "eqdc10"
+
+		  [serverGroups.group1.servers.beta.maindb]
+		  server = "192.168.1.2"
+
+	        [serverGroups.group1.servers.beta.sharding]
+
+		        [#.#.#.#.db1]
+				server = "192.168.1.11"
+
+				[#.#.#.#.db2]
+				server = "192.168.1.12"
+
+		  [serverGroups.group1.servers.beta.replicas]
+
+		  	[serverGroups.group1.servers.beta.replicas.rp1]
+		  	ip = "..."
+		  	dc = "..."
+
+		  	[serverGroups.group1.servers.beta.replicas.rp2]
+		  	ip = "..."
+		  	dc = "..."
 
 [clients]
 data = [ ["gamma", "delta"], [1, 2] ]
