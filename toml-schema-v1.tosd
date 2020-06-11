@@ -1,0 +1,52 @@
+# SCHEMA FOR SCHEMAS: toml-schema-v1.tosd
+
+[toml-schema]
+type = "table"
+
+	[toml-schema.version]
+	type = "integer"
+	required = true
+
+	[toml-schema.schema]
+	type = "string"
+	required = true
+
+[required]
+type = "boolean"
+default = false
+required = false
+
+[default]
+type = "any"
+required = false
+
+[allowedvalues]
+type = "array"
+arraytype = "any"
+
+[arraytype]
+type = "string"
+allowedvalues = ["any", string", "integer", "float", "boolean",
+               "offset-date-time", "local-date-time", 
+               "local-date", "local-time"]
+
+[type]
+type = "string"
+allowedvalues = ["any", string", "integer", "float", "boolean",
+                 "offset-date-time", "local-date-time", 
+                 "local-date", "local-time", 
+                 "array", "inline-table", "table", "table-sequence"]
+required = true
+
+[minocurrs]
+type = "integer"
+default = 1
+
+[maxocurrs]
+type = "integer"
+
+[minlength]
+type = "integer"
+
+[maxlength]
+type = "integer"
