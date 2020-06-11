@@ -1,52 +1,112 @@
+# SCHEMA: config.tosd
+
 [toml-schema]
-version = 2
+version = 1
+schema = "toml-schema-v1.tosd"
 
-[title] 
-type="string"
-minlength=10
-maxlength=20
+[types]
 
-[owner] 
-type="table"
+	[types.databaseType]
+	type = "table"
 
-	[owner.name]
-	type="string"
+		[types.databaseType.server]
+		type = "string"
 
-	[owner.dob]
-	type="local-date"
+		[types.databaseType.ports]
+		type = "array"
+		arraytype = "integer"
 
-[database]
-type="table"
+		[types.databaseType.connection_max]
+		type = "integer"
 
-	[database.server]
-	type="string"
+		[types.databaseType.enabled]
+		type = "boolean"
+		required = true
+		default = false
 
-	[database.ports]
-	type="array"
-	arraytype="integer"
+	[types.serverType]
+	type = "table"
 
-	[database.connection_max]
-	type="integer"
+			[types.serverType.ip]
+			type = "string"
 
-	[database.enabled]
-	type="boolean"
-	optional=true
-	default=false
+			[types.serverType.dc]
+			type = "string"
 
-[servers]
-type="table-sequence"
+			[types.serverType.firewall]
+			type = "table"
 
-	[servers.ip]
-	type="string"
+				[types.serverType.firewall.inbound]
+				type = "string"
 
-	[servers.dc]
-	type="string"
+				[types.serverType.firewall.outbound]
+				type = "string"
 
-[clients]
-type="table"
+			[types.serverType.maindb]
+			typeref = "types.databaseType"
 
-	[clients.data]
-	type="array"
+			[types.serverType.sharding]
+			type = "table-sequence"
+			typeref = "types.databaseType"
+			required = false
+			minocurrs = 1
 
-[hosts]
-type="array"
+			[types.serverType.replicas]
+			typeref = "types.listOfServersType"
+
+	[types.serverGroupType]
+	type = "table"
+
+		[types.serverGroupType.groupname]
+		type = "string"
+		pattern = "[a-zA-Z]*"
+
+		# Table Sequence requires an implicit name for childs: servers.<name>
+		[types.serverGroupType.servers]
+		typeref = "types.listOfServersType"
+
+	[types.listOfServersType]
+	type = "table-sequence"
+	typeref = "types.serverType"
+	pattern = "[a-zA-Z]*" # applies for the key of servers
+	minlength = 10
+	minoccurs = 1
+	maxoccurs = 2
+
+	[types.listOfServerGroupsType]
+	type = "table-sequence"
+	typeref = "types.serverGroupType"
+	minoccurs = 1
+
+[elements]
+
+	[elements.title]
+	type = "string"
+	minlength = 10
+	maxlength = 20
+
+	[elements.owner]
+	type = "table"
+
+		[elements.owner.name]
+		type = "string"
+
+		[elements.owner.dob]
+		type = "local-date"
+
+	[elements.database]
+	typeref = "types.databaseType"
+
+	[elements.serverGroups]
+	typeref = "types.listOfServerGroupsType"
+
+	[elements.clients]
+	type = "table"
+
+		[elements.clients.data]
+		type = "array"
+		arraytype = "any"
+
+	[elements.hosts]
+	type = "array"
+	arraytype = "string"
