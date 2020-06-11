@@ -122,3 +122,9 @@ If you want to share your thoughts on this proposal, please go to the [General D
 ## Existing TOML Schema Proposal
 
 There is an ongoing effort to bring Schema support for TOML under the [PR 116](https://github.com/toml-lang/toml/pull/116/). I found that proposal to be extensively detailed and well constructed, but I believe this simpler proposal to be more realistic.
+
+## Contributors
+
+Thanks to my friends!
+
+- Andres Almiray [@aalmiray](https://twitter.com/aalmiray).
