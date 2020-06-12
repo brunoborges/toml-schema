@@ -2,7 +2,6 @@
 
 [toml-schema]
 version = 1
-schema = "toml-schema-v1.tosd"
 
 [types]
 
