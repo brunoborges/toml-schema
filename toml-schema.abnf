@@ -1,11 +1,10 @@
 ;; TOML Schema Document Grammar and Structure
 ;; Author: Bruno Borges
-;; Copyright 2020
 
 ;; Overall Structure
 ;; Test with http://instaparse.mojombo.com/
 
-toml-schema = ws-comment-newline 1toml-schema-table ws-comment-newline 0*1types-table ws-comment-newline 0*1elements-table
+toml-schema = ws-comment-newline 1toml-schema-table ws-comment-newline 0*1types-table ws-comment-newline 1elements-table
 
 toml-schema-table = table-open "toml-schema" table-close ws-comment-newline version
 types-table = table-open "types" table-close ws-comment-newline 0*elementdef
