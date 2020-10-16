@@ -6,58 +6,58 @@ version = 1
 [types]
 
 	[types.databaseType]
-	type = "table"
+	type = table
 
 		[types.databaseType.server]
-		type = "string"
+		type = string
 
 		[types.databaseType.ports]
-		type = "array"
-		arraytype = "integer"
+		type = array
+		arraytype = integer
 
 		[types.databaseType.connection_max]
-		type = "integer"
+		type = integer
 
 		[types.databaseType.enabled]
-		type = "boolean"
-		required = true
+		type = boolean
+		optional = false
 		default = false
 
 	[types.serverType]
-	type = "table"
+	type = table
 
 			[types.serverType.ip]
-			type = "string"
+			type = string
 
 			[types.serverType.dc]
-			type = "string"
+			type = string
 
 			[types.serverType.firewall]
-			type = "table"
+			type = table
 
 				[types.serverType.firewall.inbound]
-				type = "string"
+				type = string
 
 				[types.serverType.firewall.outbound]
-				type = "string"
+				type = string
 
 			[types.serverType.maindb]
 			typeref = "types.databaseType"
 
 			[types.serverType.sharding]
-			type = "table-sequence"
+			type = table-sequence
 			typeref = "types.databaseType"
-			required = false
-			minocurrs = 1
+			optional = true
+			minoccurs = 1
 
 			[types.serverType.replicas]
 			typeref = "types.listOfServersType"
 
 	[types.serverGroupType]
-	type = "table"
+	type = table
 
 		[types.serverGroupType.groupname]
-		type = "string"
+		type = string
 		pattern = "[a-zA-Z]*"
 
 		# Table Sequence requires an implicit name for childs: servers.<name>
@@ -65,33 +65,33 @@ version = 1
 		typeref = "types.listOfServersType"
 
 	[types.listOfServersType]
-	type = "table-sequence"
+	type = table-sequence
 	typeref = "types.serverType"
-	pattern = "[a-zA-Z]*" # applies for the key of servers
 	minlength = 10
 	minoccurs = 1
 	maxoccurs = 2
+	pattern = "[a-zA-Z]*" # applies for the key of servers
 
 	[types.listOfServerGroupsType]
-	type = "table-sequence"
+	type = table-sequence
 	typeref = "types.serverGroupType"
-	minoccurs = 1
+	# minoccurs = 1
 
 [elements]
 
 	[elements.title]
-	type = "string"
-	minlength = 10
-	maxlength = 20
+	type = string
+	# minlength = 10
+	# maxlength = 20
 
 	[elements.owner]
-	type = "table"
+	type = table
 
 		[elements.owner.name]
-		type = "string"
+		type = string
 
 		[elements.owner.dob]
-		type = "local-date"
+		type = local-date
 
 	[elements.database]
 	typeref = "types.databaseType"
@@ -100,12 +100,12 @@ version = 1
 	typeref = "types.listOfServerGroupsType"
 
 	[elements.clients]
-	type = "table"
+	type = table
 
 		[elements.clients.data]
-		type = "array"
-		arraytype = "any"
+		type = array
+		arraytype = any
 
 	[elements.hosts]
-	type = "array"
-	arraytype = "string"
+	type = array
+	arraytype = string
