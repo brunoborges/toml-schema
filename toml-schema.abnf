@@ -7,8 +7,6 @@
 
 toml-schema = ws-comment-newline 1toml-schema-table ws-comment-newline 0*1types-table ws-comment-newline 0*1elements-table
 
-commentline = *( ws [ comment ] *newline )
-
 toml-schema-table = table-open "toml-schema" table-close ws-comment-newline version
 types-table = table-open "types" table-close ws-comment-newline 0*elementdef
 elements-table = table-open "elements" table-close ws-comment-newline 0*elementdef
