@@ -59,7 +59,6 @@ The allowed types are the ones supported by the TOML Specification:
 #### Block Types
 
 - Array: `array`
-- Inline Table: `inline-table`
 - Table: `table` (*)
 - Table Sequence: `table-sequence` (*)
 
@@ -67,6 +66,8 @@ The allowed types are the ones supported by the TOML Specification:
 
 1. The implicit TOML type `table` for specifying child elements associated to the parent.
 1. A type for a sequence of tables, `table-sequence`.
+
+For simplicity, there is no definition of `inline table` since these are just tables that can be expressed inlined in a TOML document.
 
 #### Allowed Values
 

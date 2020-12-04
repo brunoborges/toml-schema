@@ -151,7 +151,7 @@ built-in-type =/ localdatetimetype
 built-in-type =/ offsetdatetimetype
 built-in-type =/ arraytype
 built-in-type =/ tabletype
-built-in-type =/ inlinetabletype
+;; built-in-type =/ inlinetabletype
 built-in-type =/ tablesequencetype
 
 ;; Simple Types
@@ -168,7 +168,7 @@ offsetdatetimetype = %x6f.66.66.73.65.74.2d.64.61.74.65.2d.74.69.6d.65 ; offset-
 ;; Block Types
 arraytype          = %x61.72.72.61.79                            ; array
 tabletype          = %x74.61.62.6c.65                            ; table
-inlinetabletype    = %x69.6e.6c.69.6e.65.2d.74.61.62.6c.65       ; inline-table
+;; inlinetabletype    = %x69.6e.6c.69.6e.65.2d.74.61.62.6c.65       ; inline-table
 tablesequencetype  = %x74.61.62.6c.65.2d.73.65.71.75.65.6e.63.65 ; table-sequence 
 
 ;; Boolean
