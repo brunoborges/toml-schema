@@ -77,6 +77,15 @@ version = 1
 	typeref = "types.serverGroupType"
 	# minoccurs = 1
 
+	[types.libraryType]
+	type = table
+
+		[types.library.name]
+		type = string
+
+		[types.library.version]
+		type = string
+
 [elements]
 
 	[elements.title]
@@ -109,3 +118,7 @@ version = 1
 	[elements.hosts]
 	type = array
 	arraytype = string
+
+	[elements.libraries]
+	type = table-sequence
+	typeref = "types.libraryType"
