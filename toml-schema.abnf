@@ -37,6 +37,7 @@ elementdef = table ws-comment-newline
 [ maxoccurs ws-comment-newline ] 
 [ pattern ws-comment-newline ] 
 [ allowedvalues ws-comment-newline ]
+[ ws-comment-newline ]
 
 ;; Whitespace
 
