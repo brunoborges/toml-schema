@@ -2,7 +2,7 @@
 
 [toml-schema]
 version = 1
-schema = "config.tosd"
+location = "config.tosd"
 
 title = "TOML Example"
 

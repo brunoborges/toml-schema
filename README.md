@@ -2,7 +2,9 @@
 
 A [TOML](https://github.com/toml-lang/toml) schema is a set of elements that define the structure, the names, and the types of configuration data on a TOML file. The TOML Schema is used to validate the input of a TOML file during parsing to reduce or avoid misconfiguration that could potentially damage if only validated during production evaluation.
 
-The schema format follows the TOML specification, and aims at being simple yet elegant.
+The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document that follows specific grammar rules, defined by `toml-schema.abnf`.
+
+The ABNF document can be validated/tested on [instaparse.mojombo.com/](http://instaparse.mojombo.com/).
 
 ## Schema Reference
 
