@@ -70,3 +70,4 @@ hosts = [
 # and each library can be expressed with an inlinetable
 [libraries] 
 lib1 = { name = "gcc", version = "10.2" }
+lib2 = { name = "make", version = "4.0" }
