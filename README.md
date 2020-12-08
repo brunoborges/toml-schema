@@ -348,9 +348,9 @@ Only simple *built-in types* are **allowed**.
 
 ## Discussion
 
-If you want to share your thoughts on this proposal, please go to the [General Discussion](https://github.com/brunoborges/toml-schema/issues/1) issue.
+If you want to share your thoughts on this proposal, please go to the [General Discussion](https://github.com/brunoborges/toml-schema/discussions/2).
 
-## Existing TOML Schema Proposal
+### Existing TOML Schema Proposal
 
 There is an ongoing effort to bring Schema support for TOML under the [PR 116](https://github.com/toml-lang/toml/pull/116/). I found that proposal to be extensively detailed and well constructed, but I believe this simpler proposal to be more realistic.
 
@@ -359,6 +359,3 @@ There is an ongoing effort to bring Schema support for TOML under the [PR 116](h
 Thanks to my friends!
 
 - Andres Almiray [@aalmiray](https://twitter.com/aalmiray).
-
-## ABNF
-There is an ABNF grammar for the TOML Schema to ensure the structure of a TOML Schema file follows the rules.
