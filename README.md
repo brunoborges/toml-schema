@@ -271,7 +271,7 @@ If `type` is `array` and `arraytype` is of type `array`, then automatically any 
 
 #### Table Sequence
 
-One can set a property as a `table-sequence` for when there is a need to have multiple childs (tables) that repeat a structure with a set of defined properties.
+One can set an element as a `table-sequence` for when there is a need to have multiple childs (tables) that repeat a structure with a set of defined properties, and have dymamic, user-provided table headers (suffix). A `table-sequence` is also a `table` and may have simple properties.
 
 A `table-sequence` requires a `typeref` definition of the structure to be repeated. Each child must be givven a key.
 
@@ -280,6 +280,7 @@ The below example shows a table `servers` that is a `table-sequence`. Each serve
 TOML:
 ```toml
 [servers]
+group = "group1"
 
     [servers.alpha]
     name = "Alpha DC0"
@@ -308,6 +309,9 @@ TOML Schema:
     [elements.servers]
     type = "table-sequence"
     typeref = "types.serverType"
+
+        [elements.servers.group]
+        type = "string"
 ```
 
 A `table-sequence` may be represented as an array of tables in a TOML document.
@@ -353,7 +357,7 @@ Parsers must support Perl/PCRE syntax. Parsers may support more extensions and o
 
 # Filename Extension
 
-TOML Schema files should use the extension .tosd.
+TOML Schema files should use the extension `.tosd`.
 
 # MIME Types
 

@@ -6,7 +6,8 @@ version="1"
 [types]
 
     [types.schemaDef]
-    type = "table"
+    type = "table-sequence"
+    typeref = "types.schemaDef"
 
         [types.schemaDef.type]
         type = "string"
@@ -62,11 +63,6 @@ version="1"
         optional = true
         minvalue = 1
 
-    [types.schemaDefSequence]
-    type = "table-sequence"
-    typeref = "types.schemaDef"
-    minoccurs = 1
-
 # Elements
 [elements]
 
@@ -82,10 +78,10 @@ version="1"
 
     [elements.types]
     type = "table-sequence"
-    typeref = "types.schemaDefSequence"
+    typeref = "types.schemaDef"
     minoccurs = 0
 
     [elements.elements]
     type = "table-sequence"
-    typeref = "types.schemaDefSequence"
+    typeref = "types.schemaDef"
     minoccurs = 1
