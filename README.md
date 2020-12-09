@@ -27,7 +27,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
       - [Tables](#tables)
       - [Arrays](#arrays)
         - [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays)
-      - [Table Sequence](#table-sequence)
+      - [Sequence of Elements for Dynamic Keys](#sequence-of-elements-for-dynamic-keys)
     - [Type Reference](#type-reference)
     - [Optionality - `optional`](#optionality---optional)
     - [Pattern - `pattern`](#pattern---pattern)
@@ -81,7 +81,7 @@ type="table"
 
 [elements.servers]
 type="table-sequence"
-typeref = "types.serverType"
+typeof = "types.serverType"
 minoccurrs = 1
 ```
 
@@ -145,14 +145,14 @@ The `elements` table defines the overall structure and properties of the TOML do
 
 ## Types table - `[types]`
 
-The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A `type` is referenced in an `element` by the property `typeref`.
+The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A `type` is referenced in an `element` by the property `typeof`.
 
 ```toml
 [types]
 
 [types.<typename>]
 type = "<simple-type> | array | table | table-sequence"
-typeref = "<full-name-of-a-defined-type>"
+typeof = "<full-name-of-a-defined-type>"
 arraytype = "<simple-type>"
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
@@ -265,17 +265,29 @@ Dates and Times are naturally sorted by past, present, future, meaning that the 
 
 If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `minvalue` and `maxvalue`, the parser must throw an error indicating that the TOML Schema is malformed.
 
-If `arraytype` is `any`, then any data type can be used and mixed together.
+If `arraytype` is not defined, then the type of array elements is `any`, and any data type can be used and mixed together.
 
 If `type` is `array` and `arraytype` is of type `array`, then automatically any data type can be used and mixed together.
 
-#### Table Sequence
+#### Sequence of Elements for Dynamic Keys
 
-One can set an element as a `table-sequence` for when there is a need to have multiple childs (tables) that repeat a structure with a set of defined properties, and have dymamic, user-provided table headers (suffix). A `table-sequence` is also a `table` and may have simple properties.
+One can set an element of type `sequence` for when there is a need to have multiple childs with dymamic, user-provided keys or table headers.
 
-A `table-sequence` requires a `typeref` definition of the structure to be repeated. Each child must be givven a key.
+A `sequence` is also a `table` and, therefore, it may have nested, schema-restricted key-value pairs of simple types.
 
-The below example shows a table `servers` that is a `table-sequence`. Each server must be given a key, and follow the defined structure of `types.serverType`.
+A `sequence` requires a type definition of the child elements. Each child must be given a unique key in the TOML document.
+
+The types allowed in a sequence may be defined with **only one** of the following attributes:
+
+ - `typeof`: a single type. Parser must validate against this type.
+ - `oneof`: one type of a provided array of types. Only one type must return `true` in the validation. Parser must throw an error if more than one type is valid for the input.
+ - `anyof`: any type of a provided array of types. Parser stops validating at the first return of a `true` validation. Parser should throw an error if input is not valid for any type.
+
+__Validation__: 
+
+The below example shows a table `servers` that is a `sequence`. 
+Each server must be given a key, and follow the defined structure of `types.serverType`.
+A server may also have a DNS table with user-provided key names.
 
 TOML:
 ```toml
@@ -286,6 +298,12 @@ group = "group1"
     name = "Alpha DC0"
     address = "dc0.alpha"
 
+        [servers.alpha.dnstable]
+        cloudflare = "1.1.1.1"
+        google1 = "4.4.4.4"
+        google2 = "8.8.8.8"
+        internal = "mydns.intranet"
+
     [servers.beta]
     name = "Beta DC0"
     address = "dc0.beta"
@@ -294,6 +312,14 @@ group = "group1"
 TOML Schema:
 ```toml
 [types]
+
+    [types.dnsType]
+    type = "string"
+    pattern = "<ip-regex-pattern>"
+
+    [types.hostnameType]
+    type = "string"
+    pattern = "<valid-hostname-regex-pattern>"
 
     [types.serverType]
     type = "table"
@@ -304,17 +330,21 @@ TOML Schema:
         [types.serverType.address]
         type = "string"
 
+        [types.serverType.dnstable]
+        type = "sequence"
+        anyof = [ "types.dnsType", "types.hostnameType" ]
+
 [elements]
 
     [elements.servers]
-    type = "table-sequence"
-    typeref = "types.serverType"
+    type = "sequence"
+    typeof = "types.serverType"
 
         [elements.servers.group]
         type = "string"
 ```
 
-A `table-sequence` may be represented as an array of tables in a TOML document.
+A `sequence` may be represented as an array of tables in a TOML document.
 
 ### Type Reference
 
@@ -328,7 +358,7 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
     pattern="[a-zA-Z]"
 
     [types.serverType.name]
-    typeref = "types.nameType"
+    typeof = "types.nameType"
 
 [elements]
 
@@ -336,11 +366,11 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
     type="table"
 
         [elements.datacenter.name]
-        typeref="types.nameType"
+        typeof="types.nameType"
 
         [elements.datacenter.servers]
         type = "table-sequence"
-        typeref = "types.serverType"
+        typeof = "types.serverType"
 ```
 
 ### Optionality - `optional`

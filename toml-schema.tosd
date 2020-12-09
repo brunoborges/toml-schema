@@ -6,12 +6,12 @@ version="1"
 [types]
 
     [types.schemaDef]
-    type = "table-sequence"
+    type = "sequence"
     typeref = "types.schemaDef"
 
         [types.schemaDef.type]
         type = "string"
-        allowedvalues = [ "array", "table", "table-sequence", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+        allowedvalues = [ "array", "table", "sequence", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
 
         [types.schemaDef.typeref]
         type = "string"
@@ -35,33 +35,28 @@ version="1"
         type = "boolean"
         optional = true
 
-        [types.schemaDef.minoccurs]
-        type = "integer"
-        optional = true
-        minvalue = 0
-
-        [types.schemaDef.maxoccurs]
-        type = "integer"
-        optional = true
-        minvalue = 0
-
-        [types.schemaDef.minvalue]
+        [types.schemaDef.min]
         type = "any"
         optional = true
 
-        [types.schemaDef.maxvalue]
+        [types.schemaDef.max]
         type = "any"
         optional = true
 
         [types.schemaDef.minlength]
         type = "integer"
         optional = true
-        minvalue = 0
+        min = 0
 
         [types.schemaDef.maxlength]
         type = "integer"
         optional = true
-        minvalue = 1
+        min = 1
+
+        [types.schemaDef.oneof]
+        type = "array"
+        arraytype = "string"
+        optional = true
 
 # Elements
 [elements]
@@ -77,11 +72,12 @@ version="1"
         optional = true
 
     [elements.types]
-    type = "table-sequence"
-    typeref = "types.schemaDef"
-    minoccurs = 0
+    type = "sequence"
+    typeof = "types.schemaDef"
+    minlength = 0
 
     [elements.elements]
-    type = "table-sequence"
-    typeref = "types.schemaDef"
-    minoccurs = 1
+    type = "sequence"
+    typeof = "types.schemaDef"
+    minlength = 1
+
