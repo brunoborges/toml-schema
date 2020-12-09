@@ -157,8 +157,8 @@ arraytype = "<simple-type>"
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
 optional = true|false
-minoccurrs = <integer>
-maxoccurrs = <integer>
+minoccurs = <integer>
+maxoccurs = <integer>
 minvalue = <any>
 maxvalue = <any>
 minlength = <integer>
@@ -192,7 +192,7 @@ allowedvalues=[ "red", "black", "blue" ]
 
 ### Minimum and Maximum Occurrences - `minoccurs` and `maxoccurs`
 
-The conditions `minoccurs` and `maxoccurs` may only be used to set the minimum/maximum length of elements on an `array` or on a `table-sequence`.
+The conditions `minoccurs` and `maxoccurs` may only be used to set the minimum/maximum length of elements on a `table-sequence`.
 
 ### Minimum Value / Maximum Value - `minvalue` and `maxvalue`
 
@@ -205,11 +205,11 @@ This property may only be used when defining a value range for the following typ
  
 ### Length - `minlength` and `maxlength`
 
-This property may only be used when defining the allowed length of a `string`.
+This property may only be used when defining the allowed length of a `string` or an `array`.
 
 ### Conditions on `any`
 
-No min/max condition may be applied to type `any`. The parser must show an error if this occurs.
+No min/max condition may be applied to type `any`. The parser must show an error if this happens.
 
 ### Block Types
 
@@ -234,12 +234,12 @@ If a property of type `table` has no defined property and/or structure, the pars
 
 Arrays can be defined by mixing the following properties:
 
- - arraytype: the type of the value in the array (e.g. string).
- - min: the minimum length of the array (e.g. no less than 2 elements).
- - max: the maximum length of the array (e.g. no more than 2 elements).
- - minvalue: the minimum value of the array (e.g. 80).
- - maxvalue: the maximum value of the array (e.g. 8080).
- - allowedvalues: enumeration of possible values.
+ - `arraytype`: the type of the value in the array (e.g. string).
+ - `minlength`: the minimum length of the array (e.g. no less than 2 elements).
+ - `maxlength`: the maximum length of the array (e.g. no more than 2 elements).
+ - `minvalue`: the minimum value of the array (e.g. 80).
+ - `maxvalue`: the maximum value of the array (e.g. 8080).
+ - `allowedvalues`: enumeration of possible values.
 
 Example for schema definition:
 
@@ -263,7 +263,7 @@ Dates and Times are naturally sorted by past, present, future, meaning that the 
 
 `allowedvalues` does not have to be naturally sorted, but the lowest value must match `minvalue` if it is available. The highest/furthest value must match `maxvalue` if it is available.
 
-If `allowedvalues` does not match the conditions of `min`, `max`, `minvalue` and `maxvalue`, the parser must throw an error indicating that the TOML Schema is malformed.
+If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `minvalue` and `maxvalue`, the parser must throw an error indicating that the TOML Schema is malformed.
 
 If `arraytype` is `any`, then any data type can be used and mixed together.
 
