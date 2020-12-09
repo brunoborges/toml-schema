@@ -9,6 +9,37 @@ The TOML Schema is used to validate the input of a TOML file during parsing to:
 
 The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document.
 
+- [The TOML Schema Definition](#the-toml-schema-definition)
+  - [First Glance](#first-glance)
+  - [Schema Structure Reference](#schema-structure-reference)
+    - [Top-level Structure Conditions](#top-level-structure-conditions)
+  - [Metadata Table - `[toml-schema]`](#metadata-table---toml-schema)
+    - [Supported Properties](#supported-properties)
+  - [Elements table - `[elements]`](#elements-table---elements)
+  - [Types table - `[types]`](#types-table---types)
+    - [Simple Types - `<simple-type>`](#simple-types---simple-type)
+      - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
+    - [Minimum and Maximum Occurrences - `minoccurs` and `maxoccurs`](#minimum-and-maximum-occurrences---minoccurs-and-maxoccurs)
+    - [Minimum Value / Maximum Value - `minvalue` and `maxvalue`](#minimum-value--maximum-value---minvalue-and-maxvalue)
+    - [Length - `minlength` and `maxlength`](#length---minlength-and-maxlength)
+    - [Conditions on `any`](#conditions-on-any)
+    - [Block Types](#block-types)
+      - [Tables](#tables)
+      - [Arrays](#arrays)
+        - [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays)
+      - [Table Sequence](#table-sequence)
+    - [Type Reference](#type-reference)
+    - [Optionality - `optional`](#optionality---optional)
+    - [Pattern - `pattern`](#pattern---pattern)
+- [Filename Extension](#filename-extension)
+- [MIME Type](#mime-type)
+- [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
+- [Discussion](#discussion)
+  - [Existing TOML Schema Proposal](#existing-toml-schema-proposal)
+- [Contributors](#contributors)
+
+## First Glance
+
 Example of a TOML Schema that validates the TOML document displayed on [toml.io](https://toml.io/en/) main page:
 
 ```toml
@@ -50,7 +81,7 @@ type="table"
 
 [elements.servers]
 type="table-sequence"
-typeref = "types.serverType"]
+typeref = "types.serverType"
 minoccurrs = 1
 ```
 
@@ -134,22 +165,6 @@ minlength = <integer>
 maxlength = <integer>
 ```
 
-### Optionality - `optional`
-
-Properties may be defined as optional in the schema. By default, optional equals false, and the structure is required.
-
-Parsers must only skip a structure validation if the structure is optinal in the TOML Schema and does not exist in the TOML document. For any other condition, the parser must validate the input against the schema.
-
-### Pattern - `pattern`
-
-This property is only used for validating `string` input. Parsers must validate the input with the provided regular expression.
-
-Parsers must support Perl/PCRE syntax. Parsers may support more extensions and other syntaxes.
-
-## Built-in Types
-
-The allowed types are the ones supported by the TOML Specification:
-
 ### Simple Types - `<simple-type>`
 
 List of considered simple types:
@@ -164,7 +179,7 @@ List of considered simple types:
 - Local Date: `local-date`
 - Local Time: `local-time`
 
-### Allowed Values for Simple Types - `allowedvalues`
+#### Allowed Values for Simple Types - `allowedvalues`
 
 `allowedvalues` provides a mechanism to set an enumeration of allowed values to be used in any given simple type.
 
@@ -209,13 +224,13 @@ No min/max condition may be applied to type `any`. The parser must show an error
 
 For simplicity, there is no definition of `inline table` since these are just tables that can be expressed inlined in a TOML document.
 
-### Tables
+#### Tables
 
 A `table` may have a set of properties, or none at all. If a table has a definition of properties, then the parser must validate the input and the input must match exactly the rules of the table and its childs. 
 
 If a property of type `table` has no defined property and/or structure, the parser must not validate its input. This is useful for representing custom JSON data payloads.
 
-### Arrays
+#### Arrays
 
 Arrays can be defined by mixing the following properties:
 
@@ -240,7 +255,7 @@ Example of TOML file:
 colors=[ "red", "yellow", "green" ]
 ```
 
-#### Observations on Conditions to Arrays
+##### Observations on Conditions to Arrays
 
 The `minvalue` and `maxvalue` conditions are used to set a valid range of values, and it may be applied only to properties where `arraytype` is one of the following: `integer`, `float`, and the four available `date` and/or `time` types. Both properties are **inclusive**.
 
@@ -254,34 +269,7 @@ If `arraytype` is `any`, then any data type can be used and mixed together.
 
 If `type` is `array` and `arraytype` is of type `array`, then automatically any data type can be used and mixed together.
 
-### Type Reference
-
-A type may be referenced to inherit the defined rules existent in given type. Both `type` and `element` may reference a `type`.
-
-```toml
-[types]
-
-    [types.nameType]
-    type="string"
-    pattern="[a-zA-Z]"
-
-    [types.serverType.name]
-    typeref = "types.nameType"
-
-[elements]
-
-    [elements.datacenter]
-    type="table"
-
-        [elements.datacenter.name]
-        typeref="types.nameType"
-
-        [elements.datacenter.servers]
-        type = "table-sequence"
-        typeref = "types.serverType"
-```
-
-### Table Sequence
+#### Table Sequence
 
 One can set a property as a `table-sequence` for when there is a need to have multiple childs (tables) that repeat a structure with a set of defined properties.
 
@@ -324,15 +312,55 @@ TOML Schema:
 
 A `table-sequence` may be represented as an array of tables in a TOML document.
 
-## Filename Extension
+### Type Reference
+
+A type may be referenced to inherit the defined rules existent in given type. Both `type` and `element` may reference a `type`.
+
+```toml
+[types]
+
+    [types.nameType]
+    type="string"
+    pattern="[a-zA-Z]"
+
+    [types.serverType.name]
+    typeref = "types.nameType"
+
+[elements]
+
+    [elements.datacenter]
+    type="table"
+
+        [elements.datacenter.name]
+        typeref="types.nameType"
+
+        [elements.datacenter.servers]
+        type = "table-sequence"
+        typeref = "types.serverType"
+```
+
+### Optionality - `optional`
+
+Properties may be defined as optional in the schema. By default, optional equals false, and the structure is required.
+
+Parsers must only skip a structure validation if the structure is optinal in the TOML Schema and does not exist in the TOML document. For any other condition, the parser must validate the input against the schema.
+
+### Pattern - `pattern`
+
+This property is only used for validating `string` input. Parsers must validate the input with the provided regular expression.
+
+Parsers must support Perl/PCRE syntax. Parsers may support more extensions and other syntaxes.
+
+
+# Filename Extension
 
 TOML Schema files should use the extension .tosd.
 
-## MIME Type
+# MIME Type
 
 When transferring TOML Schema files over the internet, the appropriate MIME type is application/tosd.
 
-## TOML Reference of a TOML Schema
+# TOML Reference of a TOML Schema
 
 A TOML file must have this indication at the top, to reference which schema file to use for validation:
 
@@ -346,15 +374,15 @@ Where `<uri>` can be a remote URL (e.g. https) or a local file.
 
 Only simple *built-in types* are **allowed**.
 
-## Discussion
+# Discussion
 
 If you want to share your thoughts on this proposal, please go to the [General Discussion](https://github.com/brunoborges/toml-schema/discussions/2).
 
-### Existing TOML Schema Proposal
+## Existing TOML Schema Proposal
 
 There is an ongoing effort to bring Schema support for TOML under the [PR 116](https://github.com/toml-lang/toml/pull/116/). I found that proposal to be extensively detailed and well constructed, but I believe this simpler proposal to be more realistic.
 
-## Contributors
+# Contributors
 
 Thanks to my friends!
 
