@@ -32,7 +32,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
     - [Optionality - `optional`](#optionality---optional)
     - [Pattern - `pattern`](#pattern---pattern)
 - [Filename Extension](#filename-extension)
-- [MIME Type](#mime-type)
+- [MIME Types](#mime-types)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
 - [Discussion](#discussion)
   - [Existing TOML Schema Proposal](#existing-toml-schema-proposal)
@@ -159,8 +159,8 @@ pattern = "<string-regex-for-string-validation>"
 optional = true|false
 minoccurrs = <integer>
 maxoccurrs = <integer>
-minvalue = <integer>
-maxvalue = <integer>
+minvalue = <any>
+maxvalue = <any>
 minlength = <integer>
 maxlength = <integer>
 ```
@@ -351,14 +351,20 @@ This property is only used for validating `string` input. Parsers must validate 
 
 Parsers must support Perl/PCRE syntax. Parsers may support more extensions and other syntaxes.
 
-
 # Filename Extension
 
 TOML Schema files should use the extension .tosd.
 
-# MIME Type
+# MIME Types
 
-When transferring TOML Schema files over the internet, the appropriate MIME type is application/tosd.
+When transferring TOML Schema files over the internet, the appropriate MIME types are:
+
+ - application/tosd
+ - application/vnd.tosd
+ - application/x-tosd
+ - text/tosd
+ - text/vnd.tosd
+ - text/x-tosd
 
 # TOML Reference of a TOML Schema
 

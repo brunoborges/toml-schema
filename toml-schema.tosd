@@ -1,0 +1,91 @@
+# Metadata
+[toml-schema]
+version="1"
+
+# Types
+[types]
+
+    [types.schemaDef]
+    type = "table"
+
+        [types.schemaDef.type]
+        type = "string"
+        allowedvalues = [ "array", "table", "table-sequence", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+
+        [types.schemaDef.typeref]
+        type = "string"
+        optional = true
+
+        [types.schemaDef.arraytype]
+        type = "string"
+        allowedvalues = ["any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+        optional = true
+
+        [types.schemaDef.allowedvalues]
+        type = "array"
+        arraytype = "any"
+        optional = true
+
+        [types.schemaDef.pattern]
+        type = "string"
+        optional = true
+
+        [types.schemaDef.optional]
+        type = "boolean"
+        optional = true
+
+        [types.schemaDef.minoccurs]
+        type = "integer"
+        optional = true
+        minvalue = 0
+
+        [types.schemaDef.maxoccurs]
+        type = "integer"
+        optional = true
+        minvalue = 0
+
+        [types.schemaDef.minvalue]
+        type = "any"
+        optional = true
+
+        [types.schemaDef.maxvalue]
+        type = "any"
+        optional = true
+
+        [types.schemaDef.minlength]
+        type = "integer"
+        optional = true
+        minvalue = 0
+
+        [types.schemaDef.maxlength]
+        type = "integer"
+        optional = true
+        minvalue = 1
+
+    [types.schemaDefSequence]
+    type = "table-sequence"
+    typeref = "types.schemaDef"
+    minoccurs = 1
+
+# Elements
+[elements]
+
+    [elements.toml-schema]
+    type = "table"
+
+        [elements.toml-schema.version]
+        type = "integer"
+
+        [elements.toml-schema.meta]
+        type = "table"
+        optional = true
+
+    [elements.types]
+    type = "table-sequence"
+    typeref = "types.schemaDefSequence"
+    minoccurs = 0
+
+    [elements.elements]
+    type = "table-sequence"
+    typeref = "types.schemaDefSequence"
+    minoccurs = 1
