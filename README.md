@@ -276,8 +276,8 @@ The types allowed in a sequence may be defined with **only one** of the followin
  - `oneof`: one type of a provided array of types. Only one type must return `true` in the validation. Parser must throw an error if more than one type is valid for the input.
  - `anyof`: any type of a provided array of types. Parser stops validating at the first return of a `true` validation. Parser should throw an error if input is not valid for any type.
 
-__Validation__: 
 
+**Example:**
 The below example shows a table `servers` that is a `sequence`. 
 Each server must be given a key, and follow the defined structure of `types.serverType`.
 A server may also have a DNS table with user-provided key names.
