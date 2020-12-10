@@ -19,8 +19,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Types table - `[types]`](#types-table---types)
     - [Simple Types - `<simple-type>`](#simple-types---simple-type)
       - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
-    - [Minimum and Maximum Occurrences - `minoccurs` and `maxoccurs`](#minimum-and-maximum-occurrences---minoccurs-and-maxoccurs)
-    - [Minimum Value / Maximum Value - `minvalue` and `maxvalue`](#minimum-value--maximum-value---minvalue-and-maxvalue)
+    - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
     - [Length - `minlength` and `maxlength`](#length---minlength-and-maxlength)
     - [Conditions on `any`](#conditions-on-any)
     - [Block Types](#block-types)
@@ -80,9 +79,9 @@ type="table"
     type = "table"
 
 [elements.servers]
-type="table-sequence"
+type="sequence"
 typeof = "types.serverType"
-minoccurrs = 1
+minlength = 1
 ```
 
 ## Schema Structure Reference
@@ -151,16 +150,14 @@ The `[types]` table is for use when there is a need for custom, reusable types o
 [types]
 
 [types.<typename>]
-type = "<simple-type> | array | table | table-sequence"
+type = "<simple-type> | array | table | sequence"
 typeof = "<full-name-of-a-defined-type>"
 arraytype = "<simple-type>"
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
 optional = true|false
-minoccurs = <integer>
-maxoccurs = <integer>
-minvalue = <any>
-maxvalue = <any>
+min = <any>
+max = <any>
 minlength = <integer>
 maxlength = <integer>
 ```
@@ -190,11 +187,7 @@ type="string"
 allowedvalues=[ "red", "black", "blue" ]
 ```
 
-### Minimum and Maximum Occurrences - `minoccurs` and `maxoccurs`
-
-The conditions `minoccurs` and `maxoccurs` may only be used to set the minimum/maximum length of elements on a `table-sequence`.
-
-### Minimum Value / Maximum Value - `minvalue` and `maxvalue`
+### Minimum Value / Maximum Value - `min` and `max`
 
 This property may only be used when defining a value range for the following types:
 
@@ -205,7 +198,7 @@ This property may only be used when defining a value range for the following typ
  
 ### Length - `minlength` and `maxlength`
 
-This property may only be used when defining the allowed length of a `string` or an `array`.
+This property may only be used when defining the allowed length of a `string`, an `array`, or a `sequence`.
 
 ### Conditions on `any`
 
@@ -215,12 +208,12 @@ No min/max condition may be applied to type `any`. The parser must show an error
 
 - Array: `array`
 - Table: `table` (*)
-- Table Sequence: `table-sequence` (*)
+- Sequence: `sequence` (*)
 
 (*) The schema also explicitly defines two types:
 
 1. The implicit TOML type `table` for specifying child elements associated to the parent.
-1. A type for a sequence of tables, `table-sequence`.
+1. A type for a sequence of elements, `sequence`.
 
 For simplicity, there is no definition of `inline table` since these are just tables that can be expressed inlined in a TOML document.
 
@@ -369,7 +362,7 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
         typeof="types.nameType"
 
         [elements.datacenter.servers]
-        type = "table-sequence"
+        type = "sequence"
         typeof = "types.serverType"
 ```
 
