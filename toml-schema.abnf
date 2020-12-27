@@ -25,17 +25,17 @@ maxoccurs = ws "maxoccurs" keyval-sep integer ws-comment-newline
 pattern = ws "pattern" keyval-sep basic-string ws-comment-newline
 allowedvalues = ws "allowedvalues" keyval-sep array ws-comment-newline
 
-elementdef = table ws-comment-newline 
-[ type ws-comment-newline ] 
-[ typeref ws-comment-newline ] 
-[ arraytype ws-comment-newline ] 
-[ optional ws-comment-newline ] 
-[ default ws-comment-newline ] 
-[ minlength ws-comment-newline ] 
-[ maxlength ws-comment-newline ] 
-[ minoccurs ws-comment-newline ] 
-[ maxoccurs ws-comment-newline ] 
-[ pattern ws-comment-newline ] 
+elementdef = table ws-comment-newline
+[ type ws-comment-newline ]
+[ typeref ws-comment-newline ]
+[ arraytype ws-comment-newline ]
+[ optional ws-comment-newline ]
+[ default ws-comment-newline ]
+[ minlength ws-comment-newline ]
+[ maxlength ws-comment-newline ]
+[ minoccurs ws-comment-newline ]
+[ maxoccurs ws-comment-newline ]
+[ pattern ws-comment-newline ]
 [ allowedvalues ws-comment-newline ]
 [ ws-comment-newline ]
 
@@ -152,10 +152,10 @@ built-in-type =/ offsetdatetimetype
 built-in-type =/ arraytype
 built-in-type =/ tabletype
 ;; built-in-type =/ inlinetabletype
-built-in-type =/ tablesequencetype
+built-in-type =/ tablecollectiontype
 
 ;; Simple Types
-anytype            = %x61.6e.79                                        ; any 
+anytype            = %x61.6e.79                                        ; any
 stringtype         = %x73.74.72.69.6e.67                               ; string
 integertype        = %x69.6e.74.65.67.65.72                            ; integer
 floattype          = %x66.6c.6f.61.74                                  ; float
@@ -169,7 +169,7 @@ offsetdatetimetype = %x6f.66.66.73.65.74.2d.64.61.74.65.2d.74.69.6d.65 ; offset-
 arraytype          = %x61.72.72.61.79                            ; array
 tabletype          = %x74.61.62.6c.65                            ; table
 ;; inlinetabletype    = %x69.6e.6c.69.6e.65.2d.74.61.62.6c.65       ; inline-table
-tablesequencetype  = %x74.61.62.6c.65.2d.73.65.71.75.65.6e.63.65 ; table-sequence 
+tablecollectiontype  = %x74.61.62.6c.65.2d.63.6f.6c.6c.65.63.74.69.6f.6e ; table-collection
 
 ;; Boolean
 

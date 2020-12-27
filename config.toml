@@ -66,8 +66,8 @@ hosts = [
   "omega"
 ]
 
-# This element is a 'table-sequence' of type 'libraryType'
-# and each library can be expressed with an inlinetable
-[libraries] 
+# This element is a 'table-collection' of type 'libraryType'
+# and each library can be expressed with an inline table
+[libraries]
 lib1 = { name = "gcc", version = "10.2" }
 lib2 = { name = "make", version = "4.0" }
