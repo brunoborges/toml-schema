@@ -45,7 +45,7 @@ version = 1
 			typeref = "types.databaseType"
 
 			[types.serverType.sharding]
-			type = table-sequence
+			type = table-collection
 			typeref = "types.databaseType"
 			optional = true
 			minoccurs = 1
@@ -60,12 +60,12 @@ version = 1
 		type = string
 		pattern = "[a-zA-Z]*"
 
-		# Table Sequence requires an implicit name for childs: servers.<name>
+		# Table Collection requires an implicit name for children: servers.<name>
 		[types.serverGroupType.servers]
 		typeref = "types.listOfServersType"
 
 	[types.listOfServersType]
-	type = table-sequence
+	type = table-collection
 	typeref = "types.serverType"
 	minlength = 10
 	minoccurs = 1
@@ -73,7 +73,7 @@ version = 1
 	pattern = "[a-zA-Z]*" # applies for the key of servers
 
 	[types.listOfServerGroupsType]
-	type = table-sequence
+	type = table-collection
 	typeref = "types.serverGroupType"
 	# minoccurs = 1
 
@@ -120,5 +120,5 @@ version = 1
 	arraytype = string
 
 	[elements.libraries]
-	type = table-sequence
+	type = table-collection
 	typeref = "types.libraryType"

@@ -1,10 +1,10 @@
 # The TOML Schema Definition
 
-A [TOML Schema](https://github.com/toml-lang/tosd) is a set of TOML-based constructs that define the structure, the names, and the types of configuration data on a TOML file. 
+A [TOML Schema](https://github.com/toml-lang/tosd) is a set of TOML-based constructs that define the structure, the names, and the types of configuration data on a TOML file.
 
 The TOML Schema is used to validate the input of a TOML file during parsing to:
 
-1. Eliminate or reduce misconfiguration that could potentially damage if only validated during production evaluation, 
+1. Eliminate or reduce misconfiguration that could potentially damage if only validated during production evaluation,
 1. Be leveraged by editors and other tools to provide and enrich auto-completion and code hints for validation on the fly.
 
 The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document.
@@ -26,7 +26,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
       - [Tables](#tables)
       - [Arrays](#arrays)
         - [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays)
-      - [Sequence of Elements for Dynamic Keys](#sequence-of-elements-for-dynamic-keys)
+      - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
     - [Type Reference](#type-reference)
     - [Optionality - `optional`](#optionality---optional)
     - [Pattern - `pattern`](#pattern---pattern)
@@ -79,7 +79,7 @@ type="table"
     type = "table"
 
 [elements.servers]
-type="sequence"
+type="collection"
 typeof = "types.serverType"
 minlength = 1
 ```
@@ -108,7 +108,7 @@ A TOML Schema file has the following structure:
  - `[elements]`: table with the overall structure of the TOML document, its tables, properties, and conditions.
    - **Required**
 
-**IMPORTANT**: No other top-level table or key-value pair may appear on a TOML Schema document. 
+**IMPORTANT**: No other top-level table or key-value pair may appear on a TOML Schema document.
 
 ## Metadata Table - `[toml-schema]`
 
@@ -121,7 +121,7 @@ version = "1.0"
 
 [toml-schema.meta]
 <any> = <value> # allowed
-... 
+...
 
 [toml-schema.meta.subtable] # allowed
 
@@ -131,11 +131,11 @@ version = "1.0"
 
 ### Supported Properties
 
- - `version`: the version of this schema file. **Type:** string. 
+ - `version`: the version of this schema file. **Type:** string.
    - **Required**.
  - `toml-schema.meta`: table reserved for any custom user-provided metadata.
    - **Optional**.
- 
+
  No custom property or table may be appended under `toml-schema`, only inside `toml-schema.meta` table.
 
 ## Elements table - `[elements]`
@@ -150,7 +150,7 @@ The `[types]` table is for use when there is a need for custom, reusable types o
 [types]
 
 [types.<typename>]
-type = "<simple-type> | array | table | sequence"
+type = "<simple-type> | array | table | collection"
 typeof = "<full-name-of-a-defined-type>"
 arraytype = "<simple-type>"
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
@@ -195,10 +195,10 @@ This property may only be used when defining a value range for the following typ
  - `float`
  - `integer`
  - `date` and/or `time` types
- 
+
 ### Length - `minlength` and `maxlength`
 
-This property may only be used when defining the allowed length of a `string`, an `array`, or a `sequence`.
+This property may only be used when defining the allowed length of a `string`, an `array`, or a `collection`.
 
 ### Conditions on `any`
 
@@ -208,18 +208,18 @@ No min/max condition may be applied to type `any`. The parser must show an error
 
 - Array: `array`
 - Table: `table` (*)
-- Sequence: `sequence` (*)
+- Collection: `collection` (*)
 
 (*) The schema also explicitly defines two types:
 
 1. The implicit TOML type `table` for specifying child elements associated to the parent.
-1. A type for a sequence of elements, `sequence`.
+1. A type for a collection of elements, `collection`.
 
 For simplicity, there is no definition of `inline table` since these are just tables that can be expressed inlined in a TOML document.
 
 #### Tables
 
-A `table` may have a set of properties, or none at all. If a table has a definition of properties, then the parser must validate the input and the input must match exactly the rules of the table and its childs. 
+A `table` may have a set of properties, or none at all. If a table has a definition of properties, then the parser must validate the input and the input must match exactly the rules of the table and its children.
 
 If a property of type `table` has no defined property and/or structure, the parser must not validate its input. This is useful for representing custom JSON data payloads.
 
@@ -262,15 +262,15 @@ If `arraytype` is not defined, then the type of array elements is `any`, and any
 
 If `type` is `array` and `arraytype` is of type `array`, then automatically any data type can be used and mixed together.
 
-#### Sequence of Elements for Dynamic Keys
+#### Collection of Elements for Dynamic Keys
 
-One can set an element of type `sequence` for when there is a need to have multiple childs with dymamic, user-provided keys or table headers.
+One can set an element of type `collection` for when there is a need to have multiple children with dymamic, user-provided keys or table headers.
 
-A `sequence` is also a `table` and, therefore, it may have nested, schema-restricted key-value pairs of simple types.
+A `collection` is also a `table` and, therefore, it may have nested, schema-restricted key-value pairs of simple types.
 
-A `sequence` requires a type definition of the child elements. Each child must be given a unique key in the TOML document.
+A `collection` requires a type definition of the child elements. Each child must be given a unique key in the TOML document.
 
-The types allowed in a sequence may be defined with **only one** of the following attributes:
+The types allowed in a collection may be defined with **only one** of the following attributes:
 
  - `typeof`: a single type. Parser must validate against this type.
  - `oneof`: one type of a provided array of types. Only one type must return `true` in the validation. Parser must throw an error if more than one type is valid for the input.
@@ -278,7 +278,7 @@ The types allowed in a sequence may be defined with **only one** of the followin
 
 
 **Example:**
-The below example shows a table `servers` that is a `sequence`. 
+The below example shows a table `servers` that is a `collection`.
 Each server must be given a key, and follow the defined structure of `types.serverType`.
 A server may also have a DNS table with user-provided key names.
 
@@ -324,20 +324,20 @@ TOML Schema:
         type = "string"
 
         [types.serverType.dnstable]
-        type = "sequence"
+        type = "collection"
         anyof = [ "types.dnsType", "types.hostnameType" ]
 
 [elements]
 
     [elements.servers]
-    type = "sequence"
+    type = "collection"
     typeof = "types.serverType"
 
         [elements.servers.group]
         type = "string"
 ```
 
-A `sequence` may be represented as an array of tables in a TOML document.
+A `collection` may be represented as subtables of a common table in a TOML document.
 
 ### Type Reference
 
@@ -362,7 +362,7 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
         typeof="types.nameType"
 
         [elements.datacenter.servers]
-        type = "sequence"
+        type = "collection"
         typeof = "types.serverType"
 ```
 

@@ -6,12 +6,12 @@ version="1"
 [types]
 
     [types.schemaDef]
-    type = "sequence"
+    type = "collection"
     typeref = "types.schemaDef"
 
         [types.schemaDef.type]
         type = "string"
-        allowedvalues = [ "array", "table", "sequence", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+        allowedvalues = [ "array", "table", "collection", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
 
         [types.schemaDef.typeref]
         type = "string"
@@ -72,12 +72,11 @@ version="1"
         optional = true
 
     [elements.types]
-    type = "sequence"
+    type = "collection"
     typeof = "types.schemaDef"
     minlength = 0
 
     [elements.elements]
-    type = "sequence"
+    type = "collection"
     typeof = "types.schemaDef"
     minlength = 1
-
