@@ -30,6 +30,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
     - [Type Reference](#type-reference)
     - [Optionality - `optional`](#optionality---optional)
     - [Pattern - `pattern`](#pattern---pattern)
+- [Parsers](#parsers)
 - [Filename Extension](#filename-extension)
 - [MIME Types](#mime-types)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
@@ -377,6 +378,12 @@ Parsers must only skip a structure validation if the structure is optinal in the
 This property is only used for validating `string` input. Parsers must validate the input with the provided regular expression.
 
 Parsers must support Perl/PCRE syntax. Parsers may support more extensions and other syntaxes.
+
+# Parsers
+
+It is NOT the goal of a TOML Schema to ever modify the data output of a TOML object during parsing. 
+
+A parser that validates a TOML document against a TOML Schema must produce the exact same TOML data object as a parser that does not validate.
 
 # Filename Extension
 
