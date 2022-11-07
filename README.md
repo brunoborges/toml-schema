@@ -40,6 +40,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
 
 ## First Glance
 
+### TOML example
 Let's look at the TOML example displayed on the front page of [toml.io](https://toml.io/en/):
 
 ```toml
@@ -68,9 +69,12 @@ ip = "10.0.0.2"
 role = "backend"
 ```
 
+### TOML Schema example
+
 Example of a TOML Schema that validates the TOML document above:
 
 ```toml
+# This is a TOML Schema document
 [toml-schema]
 version = "1"
 
