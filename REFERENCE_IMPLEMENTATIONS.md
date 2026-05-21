@@ -7,6 +7,7 @@ This document tracks TOSD reference implementations and the expected validation 
 | Language | Location | Status | Notes |
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 25 library and CLI using Tomlj for TOML 1.0 parsing. |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Active reference implementation | Go CLI using go-toml for TOML 1.0 parsing. |
 | Other languages | `reference-implementations/<language>` | Not started | Future implementations should follow the same conformance expectations below. |
 
 ## Java
@@ -71,6 +72,46 @@ ValidationResult result = TomlSchema
 
 The Java test suite reads `toml-schema.abnf` as a conformance guard and checks that the implementation's supported schema properties and built-in type names match the grammar.
 
+## Go
+
+The Go reference implementation uses [go-toml](https://github.com/pelletier/go-toml) to parse TOML and validates the parsed data model against a `.tosd` schema. It can validate TOML documents from an executable CLI, and it can extract a starter schema from a sample TOML document.
+
+Run the Go test suite:
+
+```shell
+go -C reference-implementations/go test ./...
+```
+
+Validate with an explicit schema:
+
+```shell
+go -C reference-implementations/go run . validate ../../config.tosd ../../config.toml
+```
+
+Validate using `[toml-schema].location` from the TOML document:
+
+```shell
+go -C reference-implementations/go run . validate ../../config.toml
+```
+
+Validate the example schema against the TOSD self-schema:
+
+```shell
+go -C reference-implementations/go run . validate ../../toml-schema.tosd ../../config.tosd
+```
+
+Validate the TOSD self-schema against itself:
+
+```shell
+go -C reference-implementations/go run . validate ../../toml-schema.tosd ../../toml-schema.tosd
+```
+
+Extract a schema from a sample TOML document:
+
+```shell
+go -C reference-implementations/go run . extract ../../config.toml /tmp/config.generated.tosd
+```
+
 ## Conformance expectations
 
 Every reference implementation should:
@@ -83,7 +124,7 @@ Every reference implementation should:
 1. Validate `toml-schema.tosd` against itself.
 1. Keep supported schema vocabulary aligned with `toml-schema.abnf` and `toml-schema.tosd`.
 
-The GitHub Actions workflow in `.github/workflows/reference-implementations.yml` currently enforces these expectations for Java.
+The GitHub Actions workflow in `.github/workflows/reference-implementations.yml` currently enforces these expectations for Java and Go.
 
 ## Adding another implementation
 

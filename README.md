@@ -58,11 +58,16 @@ toml-schema.abnf                TOSD-layer ABNF grammar
 toml-schema.tosd                Self-schema for TOSD documents
 config.tosd / config.toml       Example schema and TOML document
 reference-implementations/java  Java reference implementation and CLI
+reference-implementations/go    Go reference implementation and CLI
 ```
 
 ## Reference implementations
 
-The Java 25 reference implementation is available as a library and CLI under `reference-implementations/java`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for build, test, validation, extraction, and future implementation details.
+The Java 25 reference implementation is available as a library and CLI under `reference-implementations/java`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document.
+
+The Go reference implementation is available as a CLI under `reference-implementations/go`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document.
+
+See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for build, test, validation, extraction, and future implementation details.
 
 ## Schema reference from TOML
 

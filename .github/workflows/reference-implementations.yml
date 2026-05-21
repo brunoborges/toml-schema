@@ -47,3 +47,45 @@ jobs:
 
       - name: Validate self-schema against itself
         run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd toml-schema.tosd
+
+  go:
+    name: Go reference implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: reference-implementations/go/go.mod
+          cache-dependency-path: reference-implementations/go/go.sum
+
+      - name: Test
+        working-directory: reference-implementations/go
+        run: go test ./...
+
+      - name: Validate checked-in example with explicit schema
+        working-directory: reference-implementations/go
+        run: go run . validate ../../config.tosd ../../config.toml
+
+      - name: Validate checked-in example with schema reference
+        working-directory: reference-implementations/go
+        run: go run . validate ../../config.toml
+
+      - name: Validate example schema against self-schema
+        working-directory: reference-implementations/go
+        run: go run . validate ../../toml-schema.tosd ../../config.tosd
+
+      - name: Validate self-schema against itself
+        working-directory: reference-implementations/go
+        run: go run . validate ../../toml-schema.tosd ../../toml-schema.tosd
+
+      - name: Extract schema from checked-in example
+        working-directory: reference-implementations/go
+        run: go run . extract ../../config.toml /tmp/config.generated.tosd
+
+      - name: Validate checked-in example with extracted schema
+        working-directory: reference-implementations/go
+        run: go run . validate /tmp/config.generated.tosd ../../config.toml
