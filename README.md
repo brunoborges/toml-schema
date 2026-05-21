@@ -599,7 +599,11 @@ location = "<uri>"
 
 Where `<uri>` can be a remote URL (e.g. https) or a local file.
 
-Only simple *built-in types* are **allowed**.
+The root `[toml-schema]` table is reserved for schema metadata. Validators should use it to locate schema information and should not treat it as application data unless the schema explicitly defines `[elements.toml-schema]`.
+
+When `[elements.toml-schema]` is omitted, validators should ignore the reserved metadata table during application-data validation. When `[elements.toml-schema]` is present, validators must validate the metadata table like any other table.
+
+Only simple *built-in types* are **allowed** in this metadata table.
 
 # Discussion
 
