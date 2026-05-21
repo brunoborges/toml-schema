@@ -1,223 +1,201 @@
 ;; TOML Schema Document Grammar and Structure
 ;; Author: Bruno Borges
+;;
+;; This grammar describes the TOML Schema Definition (TOSD) document shape and
+;; the TOML value forms that schema properties may use. It intentionally relies
+;; on TOML 1.0 parsing rules for complete key, table, array, inline-table,
+;; string, numeric, boolean, and date/time syntax.
 
 ;; Overall Structure
-;; Test with http://instaparse.mojombo.com/
 
-toml-schema = ws-comment-newline 1toml-schema-table ws-comment-newline 0*1types-table ws-comment-newline 1elements-table
+toml-schema-document = ws-comment-newline toml-schema-table
+                       ws-comment-newline [ types-table ws-comment-newline ]
+                       elements-table ws-comment-newline
 
-toml-schema-table = table-open "toml-schema" table-close ws-comment-newline version
-types-table = table-open "types" table-close ws-comment-newline 0*elementdef
-elements-table = table-open "elements" table-close ws-comment-newline 0*elementdef
+toml-schema-table = table-open "toml-schema" table-close ws-comment-newline
+                    version [ metadata-table ]
+types-table       = table-open "types" table-close ws-comment-newline *definition
+elements-table    = table-open "elements" table-close ws-comment-newline 1*definition
+metadata-table    = table-open "toml-schema" dot-sep "meta" table-close ws-comment-newline *keyval-line
 
-;; Built-in properties
-version = ws "version" keyval-sep basic-string ws-comment-newline
+;; Definitions
 
-type = ws "type" keyval-sep built-in-type ws-comment-newline
-typeof = ws "typeof" keyval-sep basic-string ws-comment-newline
-typeref = ws "typeref" keyval-sep basic-string ws-comment-newline
-arraytype =  ws "arraytype" keyval-sep built-in-type ws-comment-newline
-itemtype = ws "itemtype" keyval-sep basic-string ws-comment-newline
-optional = ws "optional" keyval-sep boolean ws-comment-newline
-default = ws "default" keyval-sep val ws-comment-newline
-minlength = ws "minlength" keyval-sep integer ws-comment-newline
-maxlength = ws "maxlength" keyval-sep integer ws-comment-newline
-minoccurs = ws "minoccurs" keyval-sep integer ws-comment-newline
-maxoccurs = ws "maxoccurs" keyval-sep integer ws-comment-newline
-pattern = ws "pattern" keyval-sep basic-string ws-comment-newline
+definition = definition-table ws-comment-newline *definition-property [ children-table ]
+
+definition-table = table-open schema-path table-close
+children-table   = table-open schema-path dot-sep "children" table-close ws-comment-newline *children-entry
+children-entry   = key keyval-sep inline-table ws-comment-newline
+
+schema-path = key *( dot-sep key )
+
+definition-property = type / typeof / typeref / arraytype / itemtype
+                    / oneof / anyof / allowedvalues / pattern / optional
+                    / default / min / max / minlength / maxlength
+                    / minoccurs / maxoccurs
+
+;; Built-in schema properties
+
+version       = ws "version" keyval-sep basic-string ws-comment-newline
+type          = ws "type" keyval-sep built-in-type ws-comment-newline
+typeof        = ws "typeof" keyval-sep basic-string ws-comment-newline
+typeref       = ws "typeref" keyval-sep basic-string ws-comment-newline ; legacy alias for typeof
+arraytype     = ws "arraytype" keyval-sep array-built-in-type ws-comment-newline
+itemtype      = ws "itemtype" keyval-sep basic-string ws-comment-newline
+oneof         = ws "oneof" keyval-sep array ws-comment-newline
+anyof         = ws "anyof" keyval-sep array ws-comment-newline
 allowedvalues = ws "allowedvalues" keyval-sep array ws-comment-newline
+pattern       = ws "pattern" keyval-sep basic-string ws-comment-newline
+optional      = ws "optional" keyval-sep boolean ws-comment-newline
+default       = ws "default" keyval-sep val ws-comment-newline
+min           = ws "min" keyval-sep val ws-comment-newline
+max           = ws "max" keyval-sep val ws-comment-newline
+minlength     = ws "minlength" keyval-sep integer ws-comment-newline
+maxlength     = ws "maxlength" keyval-sep integer ws-comment-newline
+minoccurs     = ws "minoccurs" keyval-sep integer ws-comment-newline ; legacy alias for minlength
+maxoccurs     = ws "maxoccurs" keyval-sep integer ws-comment-newline ; legacy alias for maxlength
 
-elementdef = table ws-comment-newline
-[ type ws-comment-newline ]
-[ typeof ws-comment-newline ]
-[ typeref ws-comment-newline ]
-[ arraytype ws-comment-newline ]
-[ itemtype ws-comment-newline ]
-[ optional ws-comment-newline ]
-[ default ws-comment-newline ]
-[ minlength ws-comment-newline ]
-[ maxlength ws-comment-newline ]
-[ minoccurs ws-comment-newline ]
-[ maxoccurs ws-comment-newline ]
-[ pattern ws-comment-newline ]
-[ allowedvalues ws-comment-newline ]
-[ ws-comment-newline ]
+;; Built-in Types
 
-;; Whitespace
+built-in-type = anytype / stringtype / integertype / floattype / booleantype
+              / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
+              / arraytype-name / tabletype / collectiontype / tablecollectiontype
 
-ws = *wschar
-wschar =  %x20  ; Space
-wschar =/ %x09  ; Horizontal tab
+array-built-in-type = anytype / stringtype / integertype / floattype / booleantype
+                    / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
+                    / arraytype-name / tabletype
 
-;; Newline
+anytype            = %x22 "any" %x22
+stringtype         = %x22 "string" %x22
+integertype        = %x22 "integer" %x22
+floattype          = %x22 "float" %x22
+booleantype        = %x22 "boolean" %x22
+offsetdatetimetype = %x22 "offset-date-time" %x22
+localdatetimetype  = %x22 "local-date-time" %x22
+localdatetype      = %x22 "local-date" %x22
+localtimetype      = %x22 "local-time" %x22
+arraytype-name     = %x22 "array" %x22
+tabletype          = %x22 "table" %x22
+collectiontype     = %x22 "collection" %x22
+tablecollectiontype = %x22 "table-collection" %x22 ; legacy alias for collection
 
-newline =  %x0A     ; LF
-newline =/ %x0D.0A  ; CRLF
+;; TOML 1.0 value forms used by schema properties
 
-;; Comment
+keyval-line = ws key keyval-sep val ws-comment-newline
+keyval      = key keyval-sep val
+key         = simple-key / dotted-key
+simple-key  = quoted-key / unquoted-key
+dotted-key  = simple-key 1*( dot-sep simple-key )
+unquoted-key = 1*( ALPHA / DIGIT / %x2D / %x5F )
+quoted-key   = basic-string / literal-string
 
-comment-start-symbol = %x23 ; #
-non-ascii = %x80-D7FF / %xE000-10FFFF
-non-eol = %x09 / %x20-7F / non-ascii
+val = string / boolean / array / inline-table / offset-date-time / local-date-time
+    / local-date / local-time / float / integer
 
-comment = comment-start-symbol *non-eol
-comments = *( newline ws [ comment ] )
+;; Strings
 
-;; Key-Value pairs
-
-keyval = key keyval-sep val
-
-key = simple-key / dotted-key
-simple-key = quoted-key / unquoted-key
-
-unquoted-key = 1*( ALPHA / DIGIT / %x2D / %x5F ) ; A-Z / a-z / 0-9 / - / _
-quoted-key = basic-string / literal-string
-dotted-key = simple-key 1*( dot-sep simple-key )
-
-dot-sep   = ws %x2E ws  ; . Period
-keyval-sep = ws %x3D ws ; =
-
-val = string / boolean / array / integer / float
-
-;; String
-
-string = basic-string / ml-literal-string / literal-string
-
-;; Basic String
+string = basic-string / ml-basic-string / literal-string / ml-literal-string
 
 basic-string = quotation-mark *basic-char quotation-mark
-
-quotation-mark = %x22            ; "
-
-basic-char = basic-unescaped / escaped
+basic-char   = basic-unescaped / escaped
 basic-unescaped = wschar / %x21 / %x23-5B / %x5D-7E / non-ascii
 escaped = escape escape-seq-char
 
-escape = %x5C                   ; \
-escape-seq-char =  %x22         ; "    quotation mark  U+0022
-escape-seq-char =/ %x5C         ; \    reverse solidus U+005C
-escape-seq-char =/ %x62         ; b    backspace       U+0008
-escape-seq-char =/ %x66         ; f    form feed       U+000C
-escape-seq-char =/ %x6E         ; n    line feed       U+000A
-escape-seq-char =/ %x72         ; r    carriage return U+000D
-escape-seq-char =/ %x74         ; t    tab             U+0009
-escape-seq-char =/ %x75 4HEXDIG ; uXXXX                U+XXXX
-escape-seq-char =/ %x55 8HEXDIG ; UXXXXXXXX            U+XXXXXXXX
-
-;; Literal String
+ml-basic-string = ml-basic-string-delim ml-basic-body ml-basic-string-delim
+ml-basic-string-delim = 3quotation-mark
+ml-basic-body = *ml-basic-char
+ml-basic-char = basic-char / newline
 
 literal-string = apostrophe *literal-char apostrophe
-
-apostrophe = %x27 ; ' apostrophe
-
-literal-char = %x09 / %x20-26 / %x28-7E / non-ascii
-
-;; Integer
-
-integer = dec-int
-
-minus = %x2D                       ; -
-plus = %x2B                        ; +
-underscore = %x5F                  ; _
-digit1-9 = %x31-39                 ; 1-9
-digit0-7 = %x30-37                 ; 0-7
-digit0-1 = %x30-31                 ; 0-1
-
-dec-int = [ minus ] unsigned-dec-int
-unsigned-dec-int = DIGIT / digit1-9 1*( DIGIT / underscore DIGIT )
-
-;; Float
-
-float = float-int-part ( exp / frac [ exp ] )
-float =/ special-float
-
-float-int-part = dec-int
-frac = decimal-point zero-prefixable-int
-decimal-point = %x2E               ; .
-zero-prefixable-int = DIGIT *( DIGIT / underscore DIGIT )
-
-exp = "e" float-exp-part
-float-exp-part = [ minus / plus ] zero-prefixable-int
-
-special-float = [ minus / plus ] ( inf / nan )
-inf = %x69.6e.66  ; inf
-nan = %x6e.61.6e  ; nan
-
-;; Built-in Types
-built-in-type = anytype
-built-in-type =/ stringtype
-built-in-type =/ integertype
-built-in-type =/ floattype
-built-in-type =/ booleantype
-built-in-type =/ localdatetype
-built-in-type =/ localtimetype
-built-in-type =/ localdatetimetype
-built-in-type =/ offsetdatetimetype
-built-in-type =/ arraytype
-built-in-type =/ tabletype
-;; built-in-type =/ inlinetabletype
-built-in-type =/ collectiontype
-built-in-type =/ tablecollectiontype
-
-;; Simple Types
-anytype            = %x61.6e.79                                        ; any
-stringtype         = %x73.74.72.69.6e.67                               ; string
-integertype        = %x69.6e.74.65.67.65.72                            ; integer
-floattype          = %x66.6c.6f.61.74                                  ; float
-booleantype        = %x62.6f.6f.6c.65.61.6e                            ; boolean
-localdatetype      = %x6c.6f.63.61.6c.2d.64.61.74.65                   ; local-date
-localtimetype      = %x6c.6f.63.61.6c.2d.74.69.6d.65                   ; local-time
-localdatetimetype  = %x6c.6f.63.61.6c.2d.64.61.74.65.2d.74.69.6d.65    ; local-date-time
-offsetdatetimetype = %x6f.66.66.73.65.74.2d.64.61.74.65.2d.74.69.6d.65 ; offset-date-time
-
-;; Block Types
-arraytype          = %x61.72.72.61.79                            ; array
-tabletype          = %x74.61.62.6c.65                            ; table
-;; inlinetabletype    = %x69.6e.6c.69.6e.65.2d.74.61.62.6c.65       ; inline-table
-collectiontype     = %x63.6f.6c.6c.65.63.74.69.6f.6e             ; collection
-tablecollectiontype  = %x74.61.62.6c.65.2d.63.6f.6c.6c.65.63.74.69.6f.6e ; table-collection
-
-;; Boolean
-
-boolean = true / false
-
-true    = %x74.72.75.65     ; true
-false   = %x66.61.6C.73.65  ; false
-
-;; Array
-
-array = array-open [ array-values ] ws-comment-newline array-close
-
-array-open =  %x5B ; [
-array-close = %x5D ; ]
-
-array-values =  ws-comment-newline val ws-comment-newline array-sep array-values
-array-values =/ ws-comment-newline val ws-comment-newline [ array-sep ]
-
-array-sep = %x2C  ; , Comma
-
-ws-comment-newline = *( wschar / [ comment ] newline )
-
-;; Table
-
-table = table-open key table-close
-
-table-open  = %x5B ws     ; [ Left square bracket
-table-close = ws %x5D     ; ] Right square bracket
-
-;; Multiline Literal String
+literal-char   = %x09 / %x20-26 / %x28-7E / non-ascii
 
 ml-literal-string = ml-literal-string-delim ml-literal-body ml-literal-string-delim
 ml-literal-string-delim = 3apostrophe
 ml-literal-body = *mll-content *( mll-quotes 1*mll-content ) [ mll-quotes ]
-
 mll-content = mll-char / newline
 mll-char = %x09 / %x20-26 / %x28-7E / non-ascii
 mll-quotes = 1*2apostrophe
 
+quotation-mark = %x22
+apostrophe     = %x27
+escape         = %x5C
+escape-seq-char = %x22 / %x5C / %x62 / %x66 / %x6E / %x72 / %x74 / (%x75 4HEXDIG) / (%x55 8HEXDIG)
+
+;; Numbers
+
+integer = dec-int / hex-int / oct-int / bin-int
+dec-int = [ minus / plus ] unsigned-dec-int
+unsigned-dec-int = DIGIT / digit1-9 *( DIGIT / underscore DIGIT )
+hex-int = %x30.78 1*( HEXDIG / underscore HEXDIG )
+oct-int = %x30.6F 1*( digit0-7 / underscore digit0-7 )
+bin-int = %x30.62 1*( digit0-1 / underscore digit0-1 )
+
+float = float-int-part ( exp / frac [ exp ] ) / special-float
+float-int-part = dec-int
+frac = decimal-point zero-prefixable-int
+exp = ("e" / "E") float-exp-part
+float-exp-part = [ minus / plus ] zero-prefixable-int
+zero-prefixable-int = DIGIT *( DIGIT / underscore DIGIT )
+special-float = [ minus / plus ] ( "inf" / "nan" )
+
+;; Date and time
+
+offset-date-time = full-date ( "T" / %x20 ) full-time offset
+local-date-time  = full-date ( "T" / %x20 ) partial-time
+local-date       = full-date
+local-time       = partial-time
+full-date        = 4DIGIT "-" 2DIGIT "-" 2DIGIT
+full-time        = partial-time offset
+partial-time     = 2DIGIT ":" 2DIGIT ":" 2DIGIT [ "." 1*DIGIT ]
+offset           = "Z" / ( ("+" / "-") 2DIGIT ":" 2DIGIT )
+
+;; Boolean
+
+boolean = true / false
+true    = %x74.72.75.65
+false   = %x66.61.6C.73.65
+
+;; Arrays and inline tables
+
+array = array-open [ array-values ] ws-comment-newline array-close
+array-values = ws-comment-newline val *( ws-comment-newline array-sep ws-comment-newline val ) [ ws-comment-newline array-sep ]
+array-open = %x5B
+array-close = %x5D
+array-sep = %x2C
+
+inline-table = inline-table-open ws [ inline-table-values ] ws inline-table-close
+inline-table-values = keyval *( ws inline-table-sep ws keyval )
+inline-table-open = %x7B
+inline-table-close = %x7D
+inline-table-sep = %x2C
+
+;; Tables
+
+table-open  = %x5B ws
+table-close = ws %x5D
+
+;; Whitespace, comments, and characters
+
+ws = *wschar
+wschar = %x20 / %x09
+newline = %x0A / %x0D.0A
+comment-start-symbol = %x23
+non-ascii = %x80-D7FF / %xE000-10FFFF
+non-eol = %x09 / %x20-7F / non-ascii
+comment = comment-start-symbol *non-eol
+ws-comment-newline = *( wschar / [ comment ] newline )
+
+dot-sep = ws %x2E ws
+keyval-sep = ws %x3D ws
+decimal-point = %x2E
+minus = %x2D
+plus = %x2B
+underscore = %x5F
+digit1-9 = %x31-39
+digit0-7 = %x30-37
+digit0-1 = %x30-31
 
 ;; Built-in ABNF terms, reproduced here for clarity
 
-ALPHA = %x41-5A / %x61-7A ; A-Z / a-z
-DIGIT = %x30-39 ; 0-9
-HEXDIG = DIGIT / "A" / "B" / "C" / "D" / "E" / "F"
+ALPHA = %x41-5A / %x61-7A
+DIGIT = %x30-39
+HEXDIG = DIGIT / "A" / "B" / "C" / "D" / "E" / "F" / "a" / "b" / "c" / "d" / "e" / "f"
