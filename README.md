@@ -255,12 +255,18 @@ allowedvalues=[ "red", "black", "blue" ]
 
 ### Minimum Value / Maximum Value - `min` and `max`
 
-This property may only be used when defining a value range for the following types:
+These properties define inclusive value ranges. They may only be used for:
 
- - `array`
  - `float`
  - `integer`
- - `date` and/or `time` types
+ - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
+ - `array`, when `arraytype` is one of the numeric or date/time types above
+
+For arrays, `min` and `max` apply to each array item. They cannot be combined with `itemtype`; put range constraints in the referenced item type instead.
+
+`nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries.
+
+Date/time boundaries compare only against values of the same TOML temporal type. For example, an `offset-date-time` boundary applies to `offset-date-time` values, not to `local-date-time` values.
 
 ### Length - `minlength` and `maxlength`
 

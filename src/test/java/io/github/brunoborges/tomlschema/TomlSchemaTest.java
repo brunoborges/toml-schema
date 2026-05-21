@@ -12,6 +12,7 @@ import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class TomlSchemaTest {
@@ -287,6 +288,61 @@ class TomlSchemaTest {
 
         assertFalse(result.isValid());
         assertTrue(result.errors().stream().anyMatch(error -> error.message().contains("exactly one")));
+    }
+
+    @Test
+    void validatesNumericAndDateTimeBoundaries() throws IOException {
+        Path schema = write("boundaries.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.port]
+                type = "integer"
+                min = 1
+                max = 65535
+
+                [elements.deadline]
+                type = "offset-date-time"
+                min = 2026-01-01T00:00:00Z
+
+                [elements.thresholds]
+                type = "array"
+                arraytype = "float"
+                min = -inf
+                max = inf
+                """);
+        Path document = write("boundaries.toml", """
+                port = 443
+                deadline = 2026-05-21T10:00:00Z
+                thresholds = [ -1.0, 0.0, 1.0 ]
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void rejectsMalformedBoundarySchemas() throws IOException {
+        Path anySchema = write("any-min.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.payload]
+                type = "any"
+                min = 1
+                """);
+        Path nanSchema = write("nan-min.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.value]
+                type = "float"
+                min = nan
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(anySchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(nanSchema));
     }
 
     @Test
