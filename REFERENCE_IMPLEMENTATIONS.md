@@ -11,7 +11,7 @@ This document tracks TOSD reference implementations and the expected validation 
 
 ## Java
 
-The Java 17 reference implementation uses [Tomlj](https://github.com/tomlj/tomlj) to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI.
+The Java 17 reference implementation uses [Tomlj](https://github.com/tomlj/tomlj) to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
 
 Run the full Java test suite:
 
@@ -55,6 +55,12 @@ Validate the TOSD self-schema against itself:
 java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd toml-schema.tosd
 ```
 
+Extract a schema from a sample TOML document:
+
+```shell
+java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar extract config.toml extracted.tosd
+```
+
 Use the library API:
 
 ```java
@@ -87,5 +93,6 @@ Each implementation should expose the same practical surfaces as Java where poss
 
 1. A library API that accepts a schema path and a TOML document path.
 1. A CLI validation command suitable for automation and editor/tool integration.
+1. A CLI extraction command that can generate a starter schema from a sample TOML document.
 1. Tests for the checked-in example, self-schema validation, schema-location lookup, unions, arrays, collections, and key-escaping behavior.
 1. A vocabulary conformance check against `toml-schema.abnf` or an equivalent generated/derived assertion.

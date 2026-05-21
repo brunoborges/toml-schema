@@ -460,6 +460,43 @@ class TomlSchemaTest {
         assertTrue(out.toString(StandardCharsets.UTF_8).contains("is valid"));
     }
 
+    @Test
+    void cliExtractsSchemaFromTomlDocument() throws IOException {
+        Path document = write("extract-source.toml", """
+                title = "Example"
+                enabled = true
+                ports = [8080, 8081]
+
+                [owner]
+                name = "Alice"
+
+                [toml-schema]
+                version = "1"
+                location = "ignored.tosd"
+                """);
+        Path extractedSchema = tempDir.resolve("extract-output.tosd");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"extract", document.toString(), extractedSchema.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(0, exitCode, err::toString);
+        assertTrue(out.toString(StandardCharsets.UTF_8).contains("Extracted schema to"));
+
+        String schemaText = Files.readString(extractedSchema, StandardCharsets.UTF_8);
+        assertTrue(schemaText.contains("[elements.title]"));
+        assertTrue(schemaText.contains("type = \"string\""));
+        assertTrue(schemaText.contains("[elements.owner]"));
+        assertTrue(schemaText.contains("[elements.owner.name]"));
+        assertFalse(schemaText.contains("[elements.toml-schema]"));
+
+        ValidationResult validationResult = TomlSchema.load(extractedSchema).validate(document);
+        assertTrue(validationResult.isValid(), () -> validationResult.errors().toString());
+    }
+
     private Path write(String fileName, String content) throws IOException {
         Path path = tempDir.resolve(fileName);
         Files.writeString(path, content, StandardCharsets.UTF_8);
