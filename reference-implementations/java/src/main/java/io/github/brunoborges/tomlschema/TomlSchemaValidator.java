@@ -281,37 +281,20 @@ final class TomlSchemaValidator {
     }
 
     private String typeName(Object value) {
-        if (value instanceof String) {
-            return "string";
-        }
-        if (value instanceof Long) {
-            return "integer";
-        }
-        if (value instanceof Double) {
-            return "float";
-        }
-        if (value instanceof Boolean) {
-            return "boolean";
-        }
-        if (value instanceof OffsetDateTime) {
-            return "offset-date-time";
-        }
-        if (value instanceof LocalDateTime) {
-            return "local-date-time";
-        }
-        if (value instanceof LocalDate) {
-            return "local-date";
-        }
-        if (value instanceof LocalTime) {
-            return "local-time";
-        }
-        if (value instanceof TomlArray) {
-            return "array";
-        }
-        if (value instanceof TomlTable) {
-            return "table";
-        }
-        return value == null ? "null" : value.getClass().getSimpleName();
+        return switch (value) {
+            case null -> "null";
+            case String _ -> "string";
+            case Long _ -> "integer";
+            case Double _ -> "float";
+            case Boolean _ -> "boolean";
+            case OffsetDateTime _ -> "offset-date-time";
+            case LocalDateTime _ -> "local-date-time";
+            case LocalDate _ -> "local-date";
+            case LocalTime _ -> "local-time";
+            case TomlArray _ -> "array";
+            case TomlTable _ -> "table";
+            default -> value.getClass().getSimpleName();
+        };
     }
 
     private int stringLength(String value) {
