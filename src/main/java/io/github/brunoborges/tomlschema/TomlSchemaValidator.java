@@ -179,6 +179,10 @@ final class TomlSchemaValidator {
     }
 
     private void validateCommonConstraints(String path, Object value, SchemaDefinition definition) {
+        if (value instanceof TomlArray array) {
+            validateLength(path, array.size(), definition);
+            return;
+        }
         validateAllowedValues(path, value, definition);
         validateRange(path, value, definition);
         if (value instanceof String stringValue) {
@@ -186,8 +190,6 @@ final class TomlSchemaValidator {
             if (definition.pattern() != null && !definition.pattern().matcher(stringValue).matches()) {
                 add(path, "does not match pattern " + definition.pattern().pattern());
             }
-        } else if (value instanceof TomlArray array) {
-            validateLength(path, array.size(), definition);
         }
     }
 

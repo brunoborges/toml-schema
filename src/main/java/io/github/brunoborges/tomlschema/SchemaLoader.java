@@ -158,6 +158,7 @@ final class SchemaLoader {
         if (type != SchemaType.ARRAY && itemReference != null) {
             throw new SchemaException(name + " can only define itemtype when type is array");
         }
+        validateRangeConstraints(name, type, arrayType, itemReference, table.get("min"), table.get("max"));
         return new SchemaDefinition(
                 name,
                 type,
@@ -261,6 +262,43 @@ final class SchemaLoader {
             strings.add(stringValue);
         }
         return strings;
+    }
+
+    private void validateRangeConstraints(String name, SchemaType type, SchemaType arrayType, String itemReference, Object min, Object max) {
+        if (min == null && max == null) {
+            return;
+        }
+        rejectNaNBoundary(name, "min", min);
+        rejectNaNBoundary(name, "max", max);
+        if (type == SchemaType.ANY) {
+            throw new SchemaException(name + " cannot define min or max when type is any");
+        }
+        if (type == SchemaType.ARRAY) {
+            if (itemReference != null) {
+                throw new SchemaException(name + " cannot define min or max together with itemtype");
+            }
+            SchemaType itemType = arrayType == null ? SchemaType.ANY : arrayType;
+            if (!isRangeComparable(itemType)) {
+                throw new SchemaException(name + " can only define min or max for arrays with numeric or date/time arraytype");
+            }
+            return;
+        }
+        if (type != null && !isRangeComparable(type)) {
+            throw new SchemaException(name + " can only define min or max for integer, float, date/time, or compatible array types");
+        }
+    }
+
+    private void rejectNaNBoundary(String name, String key, Object value) {
+        if (value instanceof Double doubleValue && doubleValue.isNaN()) {
+            throw new SchemaException(name + " cannot use NaN as " + key);
+        }
+    }
+
+    private boolean isRangeComparable(SchemaType type) {
+        return switch (type) {
+            case INTEGER, FLOAT, OFFSET_DATE_TIME, LOCAL_DATE_TIME, LOCAL_DATE, LOCAL_TIME -> true;
+            default -> false;
+        };
     }
 
     private String normalizeReference(String reference) {
