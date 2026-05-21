@@ -51,6 +51,7 @@ toml-schema.abnf                TOSD-layer ABNF grammar
 toml-schema.tosd                Self-schema for TOSD documents
 config.tosd / config.toml       Example schema and TOML document
 reference-implementations/java  Java reference implementation and CLI
+reference-implementations/go    Go reference implementation and CLI
 ```
 
 ## Java reference implementation
@@ -85,6 +86,28 @@ Validate using `[toml-schema].location` from the TOML document:
 
 ```shell
 java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
+```
+
+## Go reference implementation
+
+The Go reference implementation lives in `reference-implementations/go`. It uses go-toml to parse TOML and includes a CLI validator.
+
+Run the Go test suite:
+
+```shell
+go -C reference-implementations/go test ./...
+```
+
+Validate with an explicit schema:
+
+```shell
+go -C reference-implementations/go run . validate ../../config.tosd ../../config.toml
+```
+
+Validate using `[toml-schema].location` from the TOML document:
+
+```shell
+go -C reference-implementations/go run . validate ../../config.toml
 ```
 
 Use the library API:
