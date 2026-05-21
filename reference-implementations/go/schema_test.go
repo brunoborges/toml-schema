@@ -59,6 +59,34 @@ port = 70000
 	}
 }
 
+func TestPatternMustMatchEntireString(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1"
+
+[elements.id]
+type = "string"
+pattern = "\\d+"
+`)
+	documentPath := write(t, dir, "document.toml", `
+id = "abc123"
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := schema.ValidateFile(documentPath)
+
+	if result.Valid() {
+		t.Fatal("expected unanchored pattern not to match the entire string")
+	}
+	if !hasPath(result, "$.id") {
+		t.Fatalf("expected id pattern error, got %#v", result.Errors)
+	}
+}
+
 func TestValidatesUnionsAndArrayItemSchemas(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `

@@ -510,7 +510,7 @@ func (v *validator) validateCommonConstraints(path string, value any, definition
 	v.validateRange(path, value, definition)
 	if stringValue, ok := value.(string); ok {
 		v.validateLength(path, utf8.RuneCountInString(stringValue), definition)
-		if definition.pattern != nil && !definition.pattern.MatchString(stringValue) {
+		if definition.pattern != nil && !matchesEntireString(definition.pattern, stringValue) {
 			v.add(path, "does not match pattern "+definition.pattern.String())
 		}
 	}
@@ -881,6 +881,11 @@ func encodePathKey(key string) string {
 		return key
 	}
 	return fmt.Sprintf("%q", key)
+}
+
+func matchesEntireString(pattern *regexp.Regexp, value string) bool {
+	match := pattern.FindStringIndex(value)
+	return match != nil && match[0] == 0 && match[1] == len(value)
 }
 
 func hasDefinitionMarker(table map[string]any) bool {
