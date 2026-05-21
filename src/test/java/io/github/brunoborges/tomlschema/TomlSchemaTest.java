@@ -207,6 +207,89 @@ class TomlSchemaTest {
     }
 
     @Test
+    void validatesAnyOfAndOneOfDefinitions() throws IOException {
+        Path schema = write("unions.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [types.stringId]
+                type = "string"
+                pattern = "^[a-z]+$"
+
+                [types.intId]
+                type = "integer"
+                min = 1
+
+                [types.named]
+                type = "table"
+
+                    [types.named.name]
+                    type = "string"
+
+                [types.numbered]
+                type = "table"
+
+                    [types.numbered.id]
+                    type = "integer"
+
+                [elements.id]
+                anyof = [ "types.stringId", "types.intId" ]
+
+                [elements.entries]
+                type = "array"
+                arraytype = "table"
+                itemtype = "types.namedOrNumbered"
+
+                [types.namedOrNumbered]
+                oneof = [ "types.named", "types.numbered" ]
+                """);
+        Path document = write("unions.toml", """
+                id = "abc"
+                entries = [
+                  { name = "alpha" },
+                  { id = 1 }
+                ]
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void reportsUnionValidationFailures() throws IOException {
+        Path schema = write("union-failure.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [types.named]
+                type = "table"
+
+                    [types.named.name]
+                    type = "string"
+
+                [types.numbered]
+                type = "table"
+
+                    [types.numbered.id]
+                    type = "integer"
+
+                [elements.entry]
+                oneof = [ "types.named", "types.numbered" ]
+                """);
+        Path document = write("union-failure.toml", """
+                [entry]
+                name = "alpha"
+                id = 1
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertFalse(result.isValid());
+        assertTrue(result.errors().stream().anyMatch(error -> error.message().contains("exactly one")));
+    }
+
+    @Test
     void cliLocatesSchemaFromDocumentMetadata() throws IOException {
         write("schema.tosd", """
                 [toml-schema]

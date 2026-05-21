@@ -115,6 +115,11 @@ final class SchemaLoader {
             maxLength = maxOccurs;
         }
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
+        List<String> oneOf = getStringArrayValues(table, "oneof");
+        List<String> anyOf = getStringArrayValues(table, "anyof");
+        if (!oneOf.isEmpty() && !anyOf.isEmpty()) {
+            throw new SchemaException(name + " cannot define both oneof and anyof");
+        }
 
         Map<String, SchemaDefinition> children = new LinkedHashMap<>();
         TomlTable explicitChildren = table.getTable("children");
@@ -144,8 +149,8 @@ final class SchemaLoader {
                 throw new SchemaException(name + " contains unsupported property: " + key);
             }
         }
-        if (type == null && normalizedReference == null) {
-            throw new SchemaException(name + " must define type, typeof, or typeref");
+        if (type == null && normalizedReference == null && oneOf.isEmpty() && anyOf.isEmpty()) {
+            throw new SchemaException(name + " must define type, typeof, typeref, oneof, or anyof");
         }
         if (type != SchemaType.ARRAY && arrayType != null) {
             throw new SchemaException(name + " can only define arraytype when type is array");
@@ -166,6 +171,8 @@ final class SchemaLoader {
                 table.get("max"),
                 minLength,
                 maxLength,
+                oneOf.stream().map(this::normalizeReference).toList(),
+                anyOf.stream().map(this::normalizeReference).toList(),
                 children
         );
     }
@@ -242,6 +249,18 @@ final class SchemaLoader {
             values.add(array.get(i));
         }
         return values;
+    }
+
+    private List<String> getStringArrayValues(TomlTable table, String key) {
+        List<Object> values = getArrayValues(table, key);
+        List<String> strings = new ArrayList<>();
+        for (Object value : values) {
+            if (!(value instanceof String stringValue)) {
+                throw new SchemaException("Expected " + key + " to contain only strings");
+            }
+            strings.add(stringValue);
+        }
+        return strings;
     }
 
     private String normalizeReference(String reference) {
