@@ -106,18 +106,29 @@ final class TomlSchemaValidator {
     private void validateArray(String path, TomlArray array, SchemaDefinition definition) {
         validateLength(path, array.size(), definition);
         SchemaType arrayType = definition.arrayType() == null ? SchemaType.ANY : definition.arrayType();
-        if (arrayType == SchemaType.ANY) {
+        SchemaDefinition itemDefinition = definition.itemReference() == null
+                ? null
+                : resolveReference(definition.itemReference(), new HashSet<>());
+        if (arrayType == SchemaType.ANY && itemDefinition == null) {
             return;
         }
         for (int i = 0; i < array.size(); i++) {
             Object item = array.get(i);
             String itemPath = path + "[" + i + "]";
-            validateType(itemPath, item, arrayType);
-            if (!isType(item, arrayType)) {
+            boolean matchesArrayType = true;
+            if (arrayType != SchemaType.ANY) {
+                validateType(itemPath, item, arrayType);
+                matchesArrayType = isType(item, arrayType);
+            }
+            if (!matchesArrayType) {
                 continue;
             }
-            validateAllowedValues(itemPath, item, definition);
-            validateRange(itemPath, item, definition);
+            if (itemDefinition == null) {
+                validateAllowedValues(itemPath, item, definition);
+                validateRange(itemPath, item, definition);
+            } else {
+                validateValue(itemPath, item, itemDefinition);
+            }
         }
     }
 
@@ -218,6 +229,7 @@ final class TomlSchemaValidator {
                 type,
                 reference,
                 definition.arrayType() == null ? referenced.arrayType() : definition.arrayType(),
+                definition.itemReference() == null ? referenced.itemReference() : definition.itemReference(),
                 definition.optional() || referenced.optional(),
                 definition.allowedValues().isEmpty() ? referenced.allowedValues() : definition.allowedValues(),
                 definition.pattern() == null ? referenced.pattern() : definition.pattern(),

@@ -11,11 +11,13 @@ types-table = table-open "types" table-close ws-comment-newline 0*elementdef
 elements-table = table-open "elements" table-close ws-comment-newline 0*elementdef
 
 ;; Built-in properties
-version = ws "version" keyval-sep integer ws-comment-newline
+version = ws "version" keyval-sep basic-string ws-comment-newline
 
 type = ws "type" keyval-sep built-in-type ws-comment-newline
+typeof = ws "typeof" keyval-sep basic-string ws-comment-newline
 typeref = ws "typeref" keyval-sep basic-string ws-comment-newline
 arraytype =  ws "arraytype" keyval-sep built-in-type ws-comment-newline
+itemtype = ws "itemtype" keyval-sep basic-string ws-comment-newline
 optional = ws "optional" keyval-sep boolean ws-comment-newline
 default = ws "default" keyval-sep val ws-comment-newline
 minlength = ws "minlength" keyval-sep integer ws-comment-newline
@@ -27,8 +29,10 @@ allowedvalues = ws "allowedvalues" keyval-sep array ws-comment-newline
 
 elementdef = table ws-comment-newline
 [ type ws-comment-newline ]
+[ typeof ws-comment-newline ]
 [ typeref ws-comment-newline ]
 [ arraytype ws-comment-newline ]
+[ itemtype ws-comment-newline ]
 [ optional ws-comment-newline ]
 [ default ws-comment-newline ]
 [ minlength ws-comment-newline ]
@@ -152,6 +156,7 @@ built-in-type =/ offsetdatetimetype
 built-in-type =/ arraytype
 built-in-type =/ tabletype
 ;; built-in-type =/ inlinetabletype
+built-in-type =/ collectiontype
 built-in-type =/ tablecollectiontype
 
 ;; Simple Types
@@ -169,6 +174,7 @@ offsetdatetimetype = %x6f.66.66.73.65.74.2d.64.61.74.65.2d.74.69.6d.65 ; offset-
 arraytype          = %x61.72.72.61.79                            ; array
 tabletype          = %x74.61.62.6c.65                            ; table
 ;; inlinetabletype    = %x69.6e.6c.69.6e.65.2d.74.61.62.6c.65       ; inline-table
+collectiontype     = %x63.6f.6c.6c.65.63.74.69.6f.6e             ; collection
 tablecollectiontype  = %x74.61.62.6c.65.2d.63.6f.6c.6c.65.63.74.69.6f.6e ; table-collection
 
 ;; Boolean
