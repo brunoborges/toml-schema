@@ -64,6 +64,38 @@ class TomlSchemaTest {
     }
 
     @Test
+    void stringLengthCountsUnicodeScalarValues() throws IOException {
+        Path schema = write("unicode-length.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.emoji]
+                type = "string"
+                minlength = 1
+                maxlength = 1
+
+                [elements.composed]
+                type = "string"
+                maxlength = 1
+                """);
+        Path validDocument = write("unicode-length-valid.toml", """
+                emoji = "\\U0001F600"
+                composed = "\\u00E9"
+                """);
+        Path invalidDocument = write("unicode-length-invalid.toml", """
+                emoji = "\\U0001F600"
+                composed = "e\\u0301"
+                """);
+
+        TomlSchema tomlSchema = TomlSchema.load(schema);
+
+        assertTrue(tomlSchema.validate(validDocument).isValid());
+        ValidationResult invalidResult = tomlSchema.validate(invalidDocument);
+        assertFalse(invalidResult.isValid());
+        assertTrue(invalidResult.errors().stream().anyMatch(error -> error.path().equals("$.composed")));
+    }
+
+    @Test
     void supportsLegacyReferenceAndCollectionAliases() throws IOException {
         Path schema = write("legacy.tosd", """
                 [toml-schema]
