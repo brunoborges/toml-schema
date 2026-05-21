@@ -4,6 +4,7 @@
 [![License](https://img.shields.io/github/license/brunoborges/toml-schema)](LICENSE)
 [![TOML 1.0](https://img.shields.io/badge/TOML-1.0-9c4121)](https://toml.io/en/v1.0.0)
 [![Java 25](https://img.shields.io/badge/Java-25-007396)](REFERENCE_IMPLEMENTATIONS.md#java)
+[![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
 
 TOML Schema Definition (TOSD) is a TOML-based schema language for describing and validating the structure, names, and value types of TOML configuration files.
 
