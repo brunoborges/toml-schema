@@ -18,8 +18,8 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
 
 final class SchemaLoader {
-    private static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
-    private static final Set<String> DEFINITION_KEYS = Set.of(
+    static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
+    static final Set<String> DEFINITION_KEYS = Set.of(
             "type", "typeof", "typeref", "arraytype", "itemtype", "allowedvalues", "pattern",
             "optional", "default", "min", "max", "minlength", "maxlength", "minoccurs", "maxoccurs",
             "oneof", "anyof", "children"

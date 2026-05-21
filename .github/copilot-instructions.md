@@ -2,11 +2,11 @@
 
 ## Build, test, and lint
 
-- Full test suite: `mvn test`
-- Single test method: `mvn -Dtest=TomlSchemaTest#validatesCheckedInExample test`
-- Build executable CLI jar: `mvn package`
-- Validate the checked-in example with an explicit schema after packaging: `java -jar target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml`
-- Validate using `[toml-schema].location` from the TOML document after packaging: `java -jar target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml`
+- Full Java test suite: `mvn -f reference-implementations/java/pom.xml test`
+- Single Java test method: `mvn -f reference-implementations/java/pom.xml -Dtest=TomlSchemaTest#validatesCheckedInExample test`
+- Build executable Java CLI jar: `mvn -f reference-implementations/java/pom.xml package`
+- Validate the checked-in example with an explicit schema after packaging: `java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml`
+- Validate using `[toml-schema].location` from the TOML document after packaging: `java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml`
 
 No separate lint command is defined.
 
@@ -15,11 +15,12 @@ No separate lint command is defined.
 This repository contains the TOML Schema Definition (TOSD) specification/proposal plus a Java reference implementation.
 
 - `README.md` is the primary human-readable specification. It defines the purpose of TOML schema validation, the required top-level schema structure, the metadata table, reusable types, elements, block/simple types, collections, references, optionality, patterns, parser expectations, file extension, and MIME types.
-- `toml-schema.abnf` is the formal grammar companion for the schema document structure and value/property grammar. Keep grammar updates consistent with the README terminology and examples.
+- `toml-schema.abnf` is the formal TOSD-layer grammar companion for schema vocabulary and document shape. The Java tests include an ABNF conformance guard to prevent vocabulary drift.
 - `toml-schema.tosd` is a TOML schema for schema documents themselves. It models allowed schema metadata, reusable type definitions, and top-level elements.
 - `config.tosd` and `config.toml` are the worked example pair: `config.toml` declares `[toml-schema] location = "config.tosd"`, and `config.tosd` describes the allowed document shape.
-- `src/main/java/io/github/brunoborges/tomlschema` contains the Java reference implementation: schema loading/modeling, validation, result/error records, and `TomlSchemaCli`.
-- `src/test/java/io/github/brunoborges/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, legacy aliases, validation errors, and CLI schema-location lookup.
+- `reference-implementations/java/src/main/java/io/github/brunoborges/tomlschema` contains the Java reference implementation: schema loading/modeling, validation, result/error records, and `TomlSchemaCli`.
+- `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, legacy aliases, validation errors, and CLI schema-location lookup.
+- `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/AbnfConformanceTest.java` reads `toml-schema.abnf` and checks Java schema properties and built-in type names against it.
 
 ## Key conventions
 
