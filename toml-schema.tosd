@@ -60,11 +60,13 @@ version = "1"
         type = "integer"
         optional = true
         min = 0
+        # For strings, this counts Unicode scalar values after TOML parsing.
 
         [types.schemaDef.children.maxlength]
         type = "integer"
         optional = true
         min = 1
+        # For strings, this counts Unicode scalar values after TOML parsing.
 
         [types.schemaDef.children.minoccurs]
         type = "integer"

@@ -186,7 +186,7 @@ final class TomlSchemaValidator {
         validateAllowedValues(path, value, definition);
         validateRange(path, value, definition);
         if (value instanceof String stringValue) {
-            validateLength(path, stringValue.length(), definition);
+            validateLength(path, stringLength(stringValue), definition);
             if (definition.pattern() != null && !definition.pattern().matcher(stringValue).matches()) {
                 add(path, "does not match pattern " + definition.pattern().pattern());
             }
@@ -312,6 +312,10 @@ final class TomlSchemaValidator {
             return "table";
         }
         return value == null ? "null" : value.getClass().getSimpleName();
+    }
+
+    private int stringLength(String value) {
+        return value.codePointCount(0, value.length());
     }
 
     private String appendPath(String path, String key) {

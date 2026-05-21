@@ -31,6 +31,7 @@ This repository contains the TOML Schema Definition (TOSD) specification/proposa
 - Use `itemtype = "types.<name>"` on `type = "array"` definitions when array items need structural validation, including TOML arrays of tables (`[[name]]`) and arrays of inline tables.
 - Use `oneof` for exactly-one alternative type validation and `anyof` for at-least-one validation; both reference reusable `[types]` definitions and can apply to fields or array item types.
 - `min`/`max` are inclusive and only valid for numeric/date-time types, or arrays with comparable `arraytype`; NaN is not a valid boundary.
+- String `minlength`/`maxlength` count Unicode scalar values after TOML parsing, not UTF-8 bytes, UTF-16 code units, or grapheme clusters.
 - Use `[...children]` with inline table entries for literal dotted, quoted, empty, or built-in-colliding TOML keys, e.g. `"google.com" = { type = "boolean" }`.
 - Root `[toml-schema]` in TOML documents is reserved metadata and ignored during application validation unless the schema explicitly defines `[elements.toml-schema]`.
 - Optionality defaults to required behavior. Only mark a schema node optional with `optional = true` when the TOML document may omit that structure.

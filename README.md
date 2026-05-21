@@ -272,6 +272,10 @@ Date/time boundaries compare only against values of the same TOML temporal type.
 
 This property may only be used when defining the allowed length of a `string`, an `array`, or a `collection`.
 
+For `string` values, length is counted as the number of Unicode scalar values after TOML parsing and escape processing. It is not the number of UTF-8 bytes, UTF-16 code units, or user-perceived grapheme clusters. For example, `"\U0001F600"` has length 1, while `"e\u0301"` has length 2 because it is composed of two Unicode scalar values.
+
+For `array` and `collection` values, length is counted as the number of items or dynamic entries.
+
 ### Conditions on `any`
 
 No min/max condition may be applied to type `any`. The parser must show an error if this happens.
