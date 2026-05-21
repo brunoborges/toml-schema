@@ -199,7 +199,7 @@ public final class TomlSchemaCli {
     }
 
     private static String encodeTomlKey(String key) {
-        if (key.matches("[A-Za-z0-9_-]+")) {
+        if (key.matches("^[A-Za-z0-9_-]+$")) {
             return key;
         }
         StringBuilder encoded = new StringBuilder("\"");
