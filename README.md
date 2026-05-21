@@ -81,16 +81,16 @@ location = "config.tosd"
 
 See [SPEC.md](SPEC.md#toml-reference-of-a-toml-schema) for the full behavior.
 
-## Discussion
-
-If you want to share your thoughts on this proposal, please use the [project discussions](https://github.com/brunoborges/toml-schema/discussions/2).
-
 ## Related work
 
-There is an ongoing effort to bring schema support for TOML under [toml-lang/toml#116](https://github.com/toml-lang/toml/pull/116). This proposal intentionally focuses on a smaller TOML-native schema language.
+There is an ongoing effort to bring schema support for TOML under [toml-lang/toml#792](https://github.com/toml-lang/toml/pull/792). This proposal intentionally focuses on a smaller TOML-native schema language.
 
 ## Contributors
 
 Thanks to my friends!
 
 - Andres Almiray [@aalmiray](https://twitter.com/aalmiray)
+
+## License
+
+TOSD is licensed under the [MIT License](LICENSE).
