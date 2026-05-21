@@ -346,6 +346,61 @@ class TomlSchemaTest {
     }
 
     @Test
+    void ignoresReservedTomlSchemaMetadataUnlessSchemaDefinesIt() throws IOException {
+        Path schema = write("metadata-ignored.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.title]
+                type = "string"
+                """);
+        Path document = write("metadata-ignored.toml", """
+                title = "Example"
+
+                [toml-schema]
+                version = 1
+                location = "metadata-ignored.tosd"
+                extra = "ignored"
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void validatesReservedTomlSchemaMetadataWhenSchemaDefinesIt() throws IOException {
+        Path schema = write("metadata-defined.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.toml-schema]
+                type = "table"
+
+                    [elements.toml-schema.version]
+                    type = "string"
+
+                    [elements.toml-schema.location]
+                    type = "string"
+
+                [elements.title]
+                type = "string"
+                """);
+        Path document = write("metadata-defined.toml", """
+                title = "Example"
+
+                [toml-schema]
+                version = 1
+                location = "metadata-defined.tosd"
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertFalse(result.isValid());
+        assertTrue(result.errors().stream().anyMatch(error -> error.path().equals("$.toml-schema.version")));
+    }
+
+    @Test
     void cliLocatesSchemaFromDocumentMetadata() throws IOException {
         write("schema.tosd", """
                 [toml-schema]
