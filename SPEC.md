@@ -9,6 +9,36 @@ The TOML Schema is used to validate the input of a TOML file during parsing to:
 
 The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document.
 
+## Table of Contents
+
+- [First Glance](#first-glance)
+  - [TOML example](#toml-example)
+  - [TOML Schema example](#toml-schema-example)
+- [Schema Structure Reference](#schema-structure-reference)
+  - [Top-level Structure Conditions](#top-level-structure-conditions)
+- [Metadata Table - `[toml-schema]`](#metadata-table---toml-schema)
+  - [Supported Properties](#supported-properties)
+- [Elements table - `[elements]`](#elements-table---elements)
+- [Types table - `[types]`](#types-table---types)
+  - [Keys That Need Escaping](#keys-that-need-escaping)
+  - [Simple Types - `<simple-type>`](#simple-types---simple-type)
+    - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
+  - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value-maximum-value---min-and-max)
+  - [Length - `minlength` and `maxlength`](#length---minlength-and-maxlength)
+  - [Conditions on `any`](#conditions-on-any)
+  - [Block Types](#block-types)
+    - [Tables](#tables)
+    - [Arrays](#arrays)
+    - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
+  - [Type Reference](#type-reference)
+  - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
+  - [Optionality - `optional`](#optionality---optional)
+  - [Pattern - `pattern`](#pattern---pattern)
+- [Parsers](#parsers)
+- [Filename Extension](#filename-extension)
+- [MIME Types](#mime-types)
+- [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
+
 ## First Glance
 
 ### TOML example
