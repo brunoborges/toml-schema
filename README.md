@@ -87,6 +87,12 @@ Validate using `[toml-schema].location` from the TOML document:
 java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
 ```
 
+Extract a schema from a sample TOML document:
+
+```shell
+java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar extract config.toml extracted.tosd
+```
+
 Use the library API:
 
 ```java
