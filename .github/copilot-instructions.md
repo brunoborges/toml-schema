@@ -15,7 +15,8 @@ No separate lint command is defined.
 This repository contains the TOML Schema Definition (TOSD) specification/proposal plus a Java reference implementation.
 
 - `SPEC.md` is the primary human-readable specification. It defines the TOML schema language, validation semantics, parser expectations, file extension, MIME types, and schema-reference metadata.
-- `README.md` is the project overview and quickstart. Keep it concise and link to `SPEC.md` for detailed language semantics.
+- `README.md` is the project overview and quickstart. Keep it concise and link to `SPEC.md` for detailed language semantics and `REFERENCE_IMPLEMENTATIONS.md` for implementation usage.
+- `REFERENCE_IMPLEMENTATIONS.md` tracks reference implementation status, Java CLI/library usage, and cross-implementation conformance expectations.
 - `toml-schema.abnf` is the formal TOSD-layer grammar companion for schema vocabulary and document shape. The Java tests include an ABNF conformance guard to prevent vocabulary drift.
 - `toml-schema.tosd` is a TOML schema for schema documents themselves. It models allowed schema metadata, reusable type definitions, and top-level elements.
 - `config.tosd` and `config.toml` are the worked example pair: `config.toml` declares `[toml-schema] location = "config.tosd"`, and `config.tosd` describes the allowed document shape.

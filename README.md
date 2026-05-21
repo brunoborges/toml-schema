@@ -1,5 +1,10 @@
 # TOML Schema Definition (TOSD)
 
+[![Reference implementations](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml/badge.svg)](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml)
+[![License](https://img.shields.io/github/license/brunoborges/toml-schema)](LICENSE)
+[![TOML 1.0](https://img.shields.io/badge/TOML-1.0-9c4121)](https://toml.io/en/v1.0.0)
+[![Java 17](https://img.shields.io/badge/Java-17-007396)](REFERENCE_IMPLEMENTATIONS.md#java)
+
 TOML Schema Definition (TOSD) is a TOML-based schema language for describing and validating the structure, names, and value types of TOML configuration files.
 
 A TOSD schema is itself a valid TOML document. Validators can use it to catch misconfiguration before production and tooling can use it for editor validation, completion, and hints.
@@ -10,6 +15,7 @@ A TOSD schema is itself a valid TOML document. Validators can use it to catch mi
 - [ABNF grammar](toml-schema.abnf) - a compact grammar for the TOSD vocabulary and document shape, layered on top of TOML 1.0.
 - [Self-schema](toml-schema.tosd) - a TOSD schema for TOSD schema documents.
 - [Example schema](config.tosd) and [example TOML document](config.toml) - a worked example used by the reference implementation tests.
+- [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - implementation status, Java CLI/library usage, and conformance expectations.
 
 ## Quick example
 
@@ -47,55 +53,16 @@ type = "table"
 
 ```text
 SPEC.md                         Human-readable TOSD specification
+REFERENCE_IMPLEMENTATIONS.md    Reference implementation status and usage
 toml-schema.abnf                TOSD-layer ABNF grammar
 toml-schema.tosd                Self-schema for TOSD documents
 config.tosd / config.toml       Example schema and TOML document
 reference-implementations/java  Java reference implementation and CLI
 ```
 
-## Java reference implementation
+## Reference implementations
 
-The Java 17 reference implementation lives in `reference-implementations/java`. It uses Tomlj to parse TOML, validates parsed data against a `.tosd` schema, and includes an executable CLI.
-
-Run the full Java test suite:
-
-```shell
-mvn -f reference-implementations/java/pom.xml test
-```
-
-Run one test:
-
-```shell
-mvn -f reference-implementations/java/pom.xml -Dtest=TomlSchemaTest#validatesCheckedInExample test
-```
-
-Build the CLI jar:
-
-```shell
-mvn -f reference-implementations/java/pom.xml package
-```
-
-Validate with an explicit schema:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml
-```
-
-Validate using `[toml-schema].location` from the TOML document:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
-```
-
-Use the library API:
-
-```java
-ValidationResult result = TomlSchema
-    .load(Path.of("config.tosd"))
-    .validate(Path.of("config.toml"));
-```
-
-The Java test suite reads `toml-schema.abnf` as a conformance guard and checks that the implementation's supported schema properties and built-in type names match the grammar.
+The Java 17 reference implementation is available as a library and CLI under `reference-implementations/java`. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for build, test, validation, and future implementation details.
 
 ## Schema reference from TOML
 
