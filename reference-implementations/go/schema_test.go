@@ -205,6 +205,67 @@ location = "schema.tosd"
 	}
 }
 
+func TestCLIExtractsSchemaFromTomlDocument(t *testing.T) {
+	dir := t.TempDir()
+	documentPath := write(t, dir, "extract-source.toml", `
+title = "Example"
+enabled = true
+ports = [8080, 8081]
+
+[owner]
+name = "Alice"
+
+[site]
+"google.com" = true
+
+[toml-schema]
+version = "1"
+location = "ignored.tosd"
+`)
+	extractedSchema := filepath.Join(dir, "extract-output.tosd")
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+
+	exitCode := run([]string{"extract", documentPath, extractedSchema}, &out, &errOut)
+
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d: %s", exitCode, errOut.String())
+	}
+	if !strings.Contains(out.String(), "Extracted schema to") {
+		t.Fatalf("expected extract output, got %q", out.String())
+	}
+
+	schemaBytes, err := os.ReadFile(extractedSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	schemaText := string(schemaBytes)
+	for _, expected := range []string{
+		"[elements.title]",
+		`type = "string"`,
+		"[elements.owner]",
+		"[elements.owner.name]",
+		`[elements.site."google.com"]`,
+		`arraytype = "integer"`,
+	} {
+		if !strings.Contains(schemaText, expected) {
+			t.Fatalf("expected extracted schema to contain %q:\n%s", expected, schemaText)
+		}
+	}
+	if strings.Contains(schemaText, "[elements.toml-schema]") {
+		t.Fatalf("extracted schema should not include reserved metadata:\n%s", schemaText)
+	}
+
+	schema, err := LoadSchema(extractedSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := schema.ValidateFile(documentPath)
+	if !result.Valid() {
+		t.Fatalf("expected extracted schema to validate source document, got %#v", result.Errors)
+	}
+}
+
 func write(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)

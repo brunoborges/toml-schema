@@ -110,6 +110,12 @@ Validate using `[toml-schema].location` from the TOML document:
 go -C reference-implementations/go run . validate ../../config.toml
 ```
 
+Extract a draft schema from a TOML document:
+
+```shell
+go -C reference-implementations/go run . extract ../../config.toml ../../config.generated.tosd
+```
+
 Use the library API:
 
 ```java

@@ -15,17 +15,25 @@ func run(args []string, out, errOut io.Writer) int {
 		usage(out)
 		return 0
 	}
-	if args[0] != "validate" {
-		fmt.Fprintf(errOut, "Unknown command: %s\n", args[0])
-		usage(errOut)
-		return 2
-	}
-	switch len(args) {
-	case 2:
-		return validateWithEmbeddedSchema(args[1], out, errOut)
-	case 3:
-		return validate(args[1], args[2], out, errOut)
+	switch args[0] {
+	case "validate":
+		switch len(args) {
+		case 2:
+			return validateWithEmbeddedSchema(args[1], out, errOut)
+		case 3:
+			return validate(args[1], args[2], out, errOut)
+		default:
+			usage(errOut)
+			return 2
+		}
+	case "extract":
+		if len(args) != 3 {
+			usage(errOut)
+			return 2
+		}
+		return extract(args[1], args[2], out, errOut)
 	default:
+		fmt.Fprintf(errOut, "Unknown command: %s\n", args[0])
 		usage(errOut)
 		return 2
 	}
@@ -65,4 +73,5 @@ func usage(stream io.Writer) {
 	fmt.Fprintln(stream, "Usage:")
 	fmt.Fprintln(stream, "  toml-schema validate <schema.tosd> <document.toml>")
 	fmt.Fprintln(stream, "  toml-schema validate <document.toml>")
+	fmt.Fprintln(stream, "  toml-schema extract <document.toml> <schema.tosd>")
 }
