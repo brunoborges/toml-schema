@@ -1,0 +1,45 @@
+name: Reference implementations
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  java:
+    name: Java reference implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+          cache-dependency-path: reference-implementations/java/pom.xml
+
+      - name: Build and test
+        run: mvn -B -f reference-implementations/java/pom.xml package
+
+      - name: Validate checked-in example with explicit schema
+        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml
+
+      - name: Validate checked-in example with schema reference
+        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
+
+      - name: Validate example schema against self-schema
+        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd config.tosd
+
+      - name: Validate self-schema against itself
+        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd toml-schema.tosd
