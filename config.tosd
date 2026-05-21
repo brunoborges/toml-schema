@@ -1,124 +1,120 @@
 # SCHEMA: config.tosd
 
 [toml-schema]
-version = 1
+version = "1"
 
 [types]
 
-	[types.databaseType]
-	type = table
+    [types.databaseType]
+    type = "table"
 
-		[types.databaseType.server]
-		type = string
+        [types.databaseType.server]
+        type = "string"
 
-		[types.databaseType.ports]
-		type = array
-		arraytype = integer
+        [types.databaseType.ports]
+        type = "array"
+        arraytype = "integer"
 
-		[types.databaseType.connection_max]
-		type = integer
+        [types.databaseType.connection_max]
+        type = "integer"
 
-		[types.databaseType.enabled]
-		type = boolean
-		optional = false
-		default = false
+        [types.databaseType.enabled]
+        type = "boolean"
 
-	[types.serverType]
-	type = table
+    [types.serverType]
+    type = "table"
 
-			[types.serverType.ip]
-			type = string
+        [types.serverType.ip]
+        type = "string"
 
-			[types.serverType.dc]
-			type = string
+        [types.serverType.dc]
+        type = "string"
 
-			[types.serverType.firewall]
-			type = table
+        [types.serverType.firewall]
+        type = "table"
+        optional = true
 
-				[types.serverType.firewall.inbound]
-				type = string
+            [types.serverType.firewall.inbound]
+            type = "string"
 
-				[types.serverType.firewall.outbound]
-				type = string
+            [types.serverType.firewall.outbound]
+            type = "string"
 
-			[types.serverType.maindb]
-			typeref = "types.databaseType"
+        [types.serverType.maindb]
+        typeof = "types.databaseType"
+        optional = true
 
-			[types.serverType.sharding]
-			type = table-collection
-			typeref = "types.databaseType"
-			optional = true
-			minoccurs = 1
+        [types.serverType.sharding]
+        type = "collection"
+        typeof = "types.databaseType"
+        optional = true
+        minlength = 1
 
-			[types.serverType.replicas]
-			typeref = "types.listOfServersType"
+        [types.serverType.replicas]
+        typeof = "types.listOfServersType"
+        optional = true
 
-	[types.serverGroupType]
-	type = table
+    [types.serverGroupType]
+    type = "table"
 
-		[types.serverGroupType.groupname]
-		type = string
-		pattern = "[a-zA-Z]*"
+        [types.serverGroupType.groupname]
+        type = "string"
+        pattern = "[a-zA-Z0-9]*"
 
-		# Table Collection requires an implicit name for children: servers.<name>
-		[types.serverGroupType.servers]
-		typeref = "types.listOfServersType"
+        [types.serverGroupType.servers]
+        typeof = "types.listOfServersType"
 
-	[types.listOfServersType]
-	type = table-collection
-	typeref = "types.serverType"
-	minlength = 10
-	minoccurs = 1
-	maxoccurs = 2
-	pattern = "[a-zA-Z]*" # applies for the key of servers
+    [types.listOfServersType]
+    type = "collection"
+    typeof = "types.serverType"
+    minlength = 1
+    pattern = "[a-zA-Z]*"
 
-	[types.listOfServerGroupsType]
-	type = table-collection
-	typeref = "types.serverGroupType"
-	# minoccurs = 1
+    [types.listOfServerGroupsType]
+    type = "collection"
+    typeof = "types.serverGroupType"
+    minlength = 1
 
-	[types.libraryType]
-	type = table
+    [types.libraryType]
+    type = "table"
 
-		[types.library.name]
-		type = string
+        [types.libraryType.name]
+        type = "string"
 
-		[types.library.version]
-		type = string
+        [types.libraryType.version]
+        type = "string"
 
 [elements]
 
-	[elements.title]
-	type = string
-	# minlength = 10
-	# maxlength = 20
+    [elements.title]
+    type = "string"
 
-	[elements.owner]
-	type = table
+    [elements.owner]
+    type = "table"
 
-		[elements.owner.name]
-		type = string
+        [elements.owner.name]
+        type = "string"
 
-		[elements.owner.dob]
-		type = local-date
+        [elements.owner.dob]
+        type = "offset-date-time"
 
-	[elements.database]
-	typeref = "types.databaseType"
+    [elements.database]
+    typeof = "types.databaseType"
 
-	[elements.serverGroups]
-	typeref = "types.listOfServerGroupsType"
+    [elements.serverGroups]
+    typeof = "types.listOfServerGroupsType"
 
-	[elements.clients]
-	type = table
+    [elements.clients]
+    type = "table"
 
-		[elements.clients.data]
-		type = array
-		arraytype = any
+        [elements.clients.data]
+        type = "array"
+        arraytype = "array"
 
-	[elements.hosts]
-	type = array
-	arraytype = string
+        [elements.clients.hosts]
+        type = "array"
+        arraytype = "string"
 
-	[elements.libraries]
-	type = table-collection
-	typeref = "types.libraryType"
+    [elements.libraries]
+    type = "collection"
+    typeof = "types.libraryType"
