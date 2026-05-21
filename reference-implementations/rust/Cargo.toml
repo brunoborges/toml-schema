@@ -1,0 +1,19 @@
+[package]
+name = "toml-schema"
+version = "0.1.0"
+edition = "2021"
+description = "Reference implementation of TOML Schema Definition (TOSD) for Rust"
+license = "MIT"
+publish = false
+
+[lib]
+name = "toml_schema"
+path = "src/lib.rs"
+
+[[bin]]
+name = "toml-schema"
+path = "src/main.rs"
+
+[dependencies]
+toml = "0.8"
+regex = "1"

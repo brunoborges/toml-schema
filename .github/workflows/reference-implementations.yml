@@ -89,3 +89,49 @@ jobs:
       - name: Validate checked-in example with extracted schema
         working-directory: reference-implementations/go
         run: go run . validate /tmp/config.generated.tosd ../../config.toml
+
+  rust:
+    name: Rust reference implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            reference-implementations/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('reference-implementations/rust/Cargo.toml') }}
+
+      - name: Test
+        working-directory: reference-implementations/rust
+        run: cargo test --locked
+
+      - name: Build CLI
+        working-directory: reference-implementations/rust
+        run: cargo build --locked --release
+
+      - name: Validate checked-in example with explicit schema
+        run: reference-implementations/rust/target/release/toml-schema validate config.tosd config.toml
+
+      - name: Validate checked-in example with schema reference
+        run: reference-implementations/rust/target/release/toml-schema validate config.toml
+
+      - name: Validate example schema against self-schema
+        run: reference-implementations/rust/target/release/toml-schema validate toml-schema.tosd config.tosd
+
+      - name: Validate self-schema against itself
+        run: reference-implementations/rust/target/release/toml-schema validate toml-schema.tosd toml-schema.tosd
+
+      - name: Extract schema from checked-in example
+        run: reference-implementations/rust/target/release/toml-schema extract config.toml /tmp/config.generated.tosd
+
+      - name: Validate checked-in example with extracted schema
+        run: reference-implementations/rust/target/release/toml-schema validate /tmp/config.generated.tosd config.toml

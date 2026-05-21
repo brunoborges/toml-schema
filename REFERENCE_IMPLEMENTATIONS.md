@@ -8,6 +8,7 @@ This document tracks TOSD reference implementations and the expected validation 
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 25 library and CLI using Tomlj for TOML 1.0 parsing. |
 | Go | [`reference-implementations/go`](reference-implementations/go) | Active reference implementation | Go CLI using go-toml for TOML 1.0 parsing. |
+| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Active reference implementation | Rust library and CLI using the `toml` crate for TOML 1.0 parsing. |
 | Other languages | `reference-implementations/<language>` | Not started | Future implementations should follow the same conformance expectations below. |
 
 ## Java
@@ -112,6 +113,64 @@ Extract a schema from a sample TOML document:
 go -C reference-implementations/go run . extract ../../config.toml /tmp/config.generated.tosd
 ```
 
+## Rust
+
+The Rust reference implementation uses the [`toml`](https://crates.io/crates/toml) crate to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+
+Run the Rust test suite:
+
+```shell
+cargo test --manifest-path reference-implementations/rust/Cargo.toml
+```
+
+Build the CLI binary:
+
+```shell
+cargo build --manifest-path reference-implementations/rust/Cargo.toml --release
+```
+
+Validate with an explicit schema:
+
+```shell
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.tosd config.toml
+```
+
+Validate using `[toml-schema].location` from the TOML document:
+
+```shell
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.toml
+```
+
+Validate the example schema against the TOSD self-schema:
+
+```shell
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd config.tosd
+```
+
+Validate the TOSD self-schema against itself:
+
+```shell
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd toml-schema.tosd
+```
+
+Extract a schema from a sample TOML document:
+
+```shell
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- extract config.toml /tmp/config.generated.tosd
+```
+
+Use the library API:
+
+```rust
+use toml_schema::schema::Schema;
+
+let schema = Schema::load("config.tosd").unwrap();
+let result = schema.validate_file("config.toml");
+assert!(result.valid());
+```
+
+The Rust test suite includes an ABNF conformance test (`tests/abnf_conformance.rs`) that reads `toml-schema.abnf` and asserts that the implementation's supported schema keys and built-in type names match the grammar.
+
 ## Conformance expectations
 
 Every reference implementation should:
@@ -124,7 +183,7 @@ Every reference implementation should:
 1. Validate `toml-schema.tosd` against itself.
 1. Keep supported schema vocabulary aligned with `toml-schema.abnf` and `toml-schema.tosd`.
 
-The GitHub Actions workflow in `.github/workflows/reference-implementations.yml` currently enforces these expectations for Java and Go.
+The GitHub Actions workflow in `.github/workflows/reference-implementations.yml` currently enforces these expectations for Java, Go, and Rust.
 
 ## TOML version profile
 
@@ -134,6 +193,7 @@ The current reference implementations parse TOML with libraries that target TOML
 
 - Java: [Tomlj](https://github.com/tomlj/tomlj) `1.1.1`, which documents support up to TOML 1.0.0.
 - Go: [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1`, which targets TOML 1.0.
+- Rust: [`toml`](https://crates.io/crates/toml) `0.8`, which targets TOML 1.0.
 
 For that reason, the reference implementations' current effective parser profile is **TOML 1.0**. TOML 1.1 syntax (for example multi-line inline tables, trailing commas in inline tables, omitted seconds in date-times, or the `\e` and `\xHH` string escapes) is not guaranteed to parse in either reference implementation until the underlying TOML parser declares TOML 1.1 conformance.
 
