@@ -157,6 +157,56 @@ class TomlSchemaTest {
     }
 
     @Test
+    void supportsQuotedDottedAndEmptyTomlKeysWithChildrenTable() throws IOException {
+        Path schema = write("special-keys.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.site]
+                type = "table"
+
+                    [elements.site.children]
+                    "google.com" = { type = "boolean" }
+
+                [elements.children]
+                "" = { type = "string" }
+                """);
+        Path document = write("special-keys.toml", """
+                "" = "blank"
+
+                [site]
+                "google.com" = true
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void quotesSpecialKeysInValidationErrorPaths() throws IOException {
+        Path schema = write("special-key-error.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.site]
+                type = "table"
+
+                    [elements.site.children]
+                    "google.com" = { type = "boolean" }
+                """);
+        Path document = write("special-key-error.toml", """
+                [site]
+                "google.com" = "yes"
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertFalse(result.isValid());
+        assertTrue(result.errors().stream().anyMatch(error -> error.path().equals("$.site.\"google.com\"")));
+    }
+
+    @Test
     void cliLocatesSchemaFromDocumentMetadata() throws IOException {
         write("schema.tosd", """
                 [toml-schema]

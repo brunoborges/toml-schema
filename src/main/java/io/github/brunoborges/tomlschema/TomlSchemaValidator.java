@@ -36,8 +36,8 @@ final class TomlSchemaValidator {
         for (Map.Entry<String, SchemaDefinition> entry : definitions.entrySet()) {
             String key = entry.getKey();
             SchemaDefinition definition = resolve(entry.getValue(), new HashSet<>());
-            Object value = table.get(key);
-            String childPath = path + "." + key;
+            Object value = table.get(List.of(key));
+            String childPath = appendPath(path, key);
             if (value == null) {
                 if (!definition.optional()) {
                     add(childPath, "required value is missing");
@@ -72,7 +72,7 @@ final class TomlSchemaValidator {
         validateTable(path, table, definition.children());
         for (String key : table.keySet()) {
             if (!definition.children().containsKey(key)) {
-                add(path + "." + key, "unexpected key");
+                add(appendPath(path, key), "unexpected key");
             }
         }
     }
@@ -81,7 +81,7 @@ final class TomlSchemaValidator {
         int dynamicEntries = 0;
         for (Map.Entry<String, Object> entry : table.entrySet()) {
             String key = entry.getKey();
-            String childPath = path + "." + key;
+            String childPath = appendPath(path, key);
             SchemaDefinition fixedChild = definition.children().get(key);
             if (fixedChild != null) {
                 validateValue(childPath, entry.getValue(), fixedChild);
@@ -97,8 +97,8 @@ final class TomlSchemaValidator {
         }
         validateLength(path, dynamicEntries, definition);
         for (Map.Entry<String, SchemaDefinition> entry : definition.children().entrySet()) {
-            if (!table.contains(entry.getKey()) && !resolve(entry.getValue(), new HashSet<>()).optional()) {
-                add(path + "." + entry.getKey(), "required value is missing");
+            if (!table.contains(List.of(entry.getKey())) && !resolve(entry.getValue(), new HashSet<>()).optional()) {
+                add(appendPath(path, entry.getKey()), "required value is missing");
             }
         }
     }
@@ -284,6 +284,17 @@ final class TomlSchemaValidator {
             return "table";
         }
         return value == null ? "null" : value.getClass().getSimpleName();
+    }
+
+    private String appendPath(String path, String key) {
+        return path + "." + formatKey(key);
+    }
+
+    private String formatKey(String key) {
+        if (key.matches("[A-Za-z0-9_-]+")) {
+            return key;
+        }
+        return "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
     private void add(String path, String message) {

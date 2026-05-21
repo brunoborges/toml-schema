@@ -73,7 +73,17 @@ final class SchemaLoader {
         }
         Map<String, SchemaDefinition> definitions = new LinkedHashMap<>();
         for (String key : table.keySet()) {
-            Object value = table.get(key);
+            Object value = table.get(List.of(key));
+            if (key.equals("children") && value instanceof TomlTable childrenTable && !hasDefinitionMarker(childrenTable)) {
+                for (String childKey : childrenTable.keySet()) {
+                    Object childValue = childrenTable.get(List.of(childKey));
+                    if (!(childValue instanceof TomlTable childDefinitionTable)) {
+                        throw new SchemaException("[" + prefix + ".children] entry must be a table: " + childKey);
+                    }
+                    definitions.put(childKey, parseDefinition(prefix + "." + childKey, childDefinitionTable));
+                }
+                continue;
+            }
             if (!(value instanceof TomlTable definitionTable)) {
                 throw new SchemaException("[" + prefix + "] entry must be a table: " + key);
             }
@@ -110,7 +120,7 @@ final class SchemaLoader {
         TomlTable explicitChildren = table.getTable("children");
         if (explicitChildren != null) {
             for (String key : explicitChildren.keySet()) {
-                Object value = explicitChildren.get(key);
+                Object value = explicitChildren.get(List.of(key));
                 if (!(value instanceof TomlTable childTable)) {
                     throw new SchemaException(name + ".children." + key + " must be a table");
                 }
@@ -118,7 +128,7 @@ final class SchemaLoader {
             }
         }
         for (String key : table.keySet()) {
-            Object value = table.get(key);
+            Object value = table.get(List.of(key));
             if (value instanceof TomlTable childTable) {
                 if (DEFINITION_KEYS.contains(key)) {
                     if (!key.equals("children")) {
@@ -163,6 +173,12 @@ final class SchemaLoader {
     private SchemaType getSchemaType(TomlTable table, String key) {
         String value = getString(table, key);
         return value == null ? null : SchemaType.fromSchemaName(value);
+    }
+
+    private boolean hasDefinitionMarker(TomlTable table) {
+        return table.contains(List.of("type"))
+                || table.contains(List.of("typeof"))
+                || table.contains(List.of("typeref"));
     }
 
     private String getString(TomlTable table, String key) {
