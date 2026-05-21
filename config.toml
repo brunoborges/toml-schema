@@ -1,10 +1,10 @@
 # DOCUMENT: config.toml
 
-[toml-schema]
-version = 1
-location = "config.tosd"
-
 title = "TOML Example"
+
+[toml-schema]
+version = "1"
+location = "config.tosd"
 
 [owner]
 name = "Tom Preston-Werner"
@@ -38,14 +38,23 @@ enabled = true
 
 				[serverGroups.group1.servers.beta.maindb]
 				server = "192.168.1.2"
+				ports = [ 8001, 8002 ]
+				connection_max = 1000
+				enabled = true
 
 				[serverGroups.group1.servers.beta.sharding]
 
 					[serverGroups.group1.servers.beta.sharding.db1]
 					server = "192.168.1.11"
+					ports = [ 8001 ]
+					connection_max = 1000
+					enabled = true
 
 					[serverGroups.group1.servers.beta.sharding.db2]
 					server = "192.168.1.12"
+					ports = [ 8002 ]
+					connection_max = 1000
+					enabled = true
 
 		  		[serverGroups.group1.servers.beta.replicas]
 

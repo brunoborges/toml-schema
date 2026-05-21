@@ -1,0 +1,30 @@
+package io.github.brunoborges.tomlschema;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.regex.Pattern;
+
+record SchemaDefinition(
+        String name,
+        SchemaType type,
+        String reference,
+        SchemaType arrayType,
+        boolean optional,
+        List<Object> allowedValues,
+        Pattern pattern,
+        Object min,
+        Object max,
+        Integer minLength,
+        Integer maxLength,
+        Map<String, SchemaDefinition> children
+) {
+    SchemaDefinition {
+        allowedValues = List.copyOf(allowedValues);
+        children = Map.copyOf(children);
+    }
+
+    Optional<String> referenceName() {
+        return Optional.ofNullable(reference);
+    }
+}

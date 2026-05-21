@@ -1,61 +1,90 @@
 # Metadata
 [toml-schema]
-version="1"
+version = "1"
 
 # Types
 [types]
 
     [types.schemaDef]
     type = "collection"
-    typeref = "types.schemaDef"
+    typeof = "types.schemaDef"
 
-        [types.schemaDef.type]
+        [types.schemaDef.children.type]
         type = "string"
-        allowedvalues = [ "array", "table", "collection", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+        allowedvalues = [ "array", "table", "collection", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time", "table-collection" ]
+        optional = true
 
-        [types.schemaDef.typeref]
+        [types.schemaDef.children.typeof]
         type = "string"
         optional = true
 
-        [types.schemaDef.arraytype]
+        [types.schemaDef.children.typeref]
         type = "string"
-        allowedvalues = ["any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
         optional = true
 
-        [types.schemaDef.allowedvalues]
+        [types.schemaDef.children.arraytype]
+        type = "string"
+        allowedvalues = [ "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time", "array", "table" ]
+        optional = true
+
+        [types.schemaDef.children.allowedvalues]
         type = "array"
         arraytype = "any"
         optional = true
 
-        [types.schemaDef.pattern]
+        [types.schemaDef.children.pattern]
         type = "string"
         optional = true
 
-        [types.schemaDef.optional]
+        [types.schemaDef.children.optional]
         type = "boolean"
         optional = true
 
-        [types.schemaDef.min]
+        [types.schemaDef.children.default]
         type = "any"
         optional = true
 
-        [types.schemaDef.max]
+        [types.schemaDef.children.min]
         type = "any"
         optional = true
 
-        [types.schemaDef.minlength]
+        [types.schemaDef.children.max]
+        type = "any"
+        optional = true
+
+        [types.schemaDef.children.minlength]
         type = "integer"
         optional = true
         min = 0
 
-        [types.schemaDef.maxlength]
+        [types.schemaDef.children.maxlength]
         type = "integer"
         optional = true
         min = 1
 
-        [types.schemaDef.oneof]
+        [types.schemaDef.children.minoccurs]
+        type = "integer"
+        optional = true
+        min = 0
+
+        [types.schemaDef.children.maxoccurs]
+        type = "integer"
+        optional = true
+        min = 1
+
+        [types.schemaDef.children.oneof]
         type = "array"
         arraytype = "string"
+        optional = true
+
+        [types.schemaDef.children.anyof]
+        type = "array"
+        arraytype = "string"
+        optional = true
+
+        [types.schemaDef.children.children]
+        type = "collection"
+        typeof = "types.schemaDef"
         optional = true
 
 # Elements
@@ -65,7 +94,7 @@ version="1"
     type = "table"
 
         [elements.toml-schema.version]
-        type = "integer"
+        type = "any"
 
         [elements.toml-schema.meta]
         type = "table"

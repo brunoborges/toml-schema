@@ -31,6 +31,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
     - [Optionality - `optional`](#optionality---optional)
     - [Pattern - `pattern`](#pattern---pattern)
 - [Parsers](#parsers)
+  - [Java Reference Implementation](#java-reference-implementation)
 - [Filename Extension](#filename-extension)
 - [MIME Types](#mime-types)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
@@ -417,6 +418,38 @@ It is NOT the goal of a TOML Schema to ever modify the data output of a TOML obj
 
 A parser that validates a TOML document against a TOML Schema must produce the exact same TOML data object as a parser that does not validate.
 
+## Java Reference Implementation
+
+This repository includes a Java 17 reference implementation with a library API and a CLI. It uses a TOML parser to read documents, then validates the parsed TOML data against a `.tosd` schema without transforming the parsed values.
+
+Build and test:
+
+```shell
+mvn test
+mvn -Dtest=TomlSchemaTest#validatesCheckedInExample test
+mvn package
+```
+
+Run the CLI with an explicit schema:
+
+```shell
+java -jar target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml
+```
+
+Run the CLI using the TOML document's `[toml-schema].location` metadata:
+
+```shell
+java -jar target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
+```
+
+Use the library API:
+
+```java
+ValidationResult result = TomlSchema
+    .load(Path.of("config.tosd"))
+    .validate(Path.of("config.toml"));
+```
+
 # Filename Extension
 
 TOML Schema files should use the extension `.tosd`.
@@ -434,7 +467,7 @@ When transferring TOML Schema files over the internet, the appropriate MIME type
 
 # TOML Reference of a TOML Schema
 
-A TOML file must have this indication at the top, to reference which schema file to use for validation:
+A TOML file can include this indication to reference which schema file to use for validation:
 
 ```toml
 [toml-schema]
