@@ -30,7 +30,8 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
         - [Array Item Schemas and Arrays of Tables](#array-item-schemas-and-arrays-of-tables)
       - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
     - [Type Reference](#type-reference)
-    - [Optionality - `optional`](#optionality---optional)
+      - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
+      - [Optionality - `optional`](#optionality---optional)
     - [Pattern - `pattern`](#pattern---pattern)
 - [Parsers](#parsers)
   - [Java Reference Implementation](#java-reference-implementation)
@@ -190,6 +191,8 @@ type = "<simple-type> | array | table | collection"
 typeof = "<full-name-of-a-defined-type>"
 arraytype = "<simple-type> | array | table"
 itemtype = "<full-name-of-a-defined-type>"
+oneof = [ "<full-name-of-a-defined-type>", ... ]
+anyof = [ "<full-name-of-a-defined-type>", ... ]
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
 optional = true|false
@@ -489,6 +492,28 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
         [elements.datacenter.servers]
         type = "collection"
         typeof = "types.serverType"
+```
+
+### Alternative Types - `oneof` and `anyof`
+
+Use `oneof` or `anyof` when a value may validate against alternative reusable type definitions.
+
+- `oneof`: exactly one referenced type must validate.
+- `anyof`: at least one referenced type must validate.
+
+These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array items.
+
+```toml
+[types.stringId]
+type = "string"
+pattern = "^[a-z]+$"
+
+[types.integerId]
+type = "integer"
+min = 1
+
+[elements.id]
+anyof = [ "types.stringId", "types.integerId" ]
 ```
 
 ### Optionality - `optional`

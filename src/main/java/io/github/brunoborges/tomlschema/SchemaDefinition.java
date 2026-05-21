@@ -17,10 +17,14 @@ record SchemaDefinition(
         Object max,
         Integer minLength,
         Integer maxLength,
+        List<String> oneOf,
+        List<String> anyOf,
         Map<String, SchemaDefinition> children
 ) {
     SchemaDefinition {
         allowedValues = List.copyOf(allowedValues);
+        oneOf = List.copyOf(oneOf);
+        anyOf = List.copyOf(anyOf);
         children = Map.copyOf(children);
     }
 

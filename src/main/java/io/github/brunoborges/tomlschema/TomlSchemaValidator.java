@@ -50,6 +50,10 @@ final class TomlSchemaValidator {
 
     private void validateValue(String path, Object value, SchemaDefinition definition) {
         SchemaDefinition resolved = resolve(definition, new HashSet<>());
+        if (!resolved.oneOf().isEmpty() || !resolved.anyOf().isEmpty()) {
+            validateUnion(path, value, resolved);
+            return;
+        }
         SchemaType type = resolved.type() == null ? SchemaType.ANY : resolved.type();
         validateType(path, value, type);
         if (!isType(value, type)) {
@@ -63,6 +67,26 @@ final class TomlSchemaValidator {
             default -> {
             }
         }
+    }
+
+    private void validateUnion(String path, Object value, SchemaDefinition definition) {
+        List<String> alternatives = definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
+        long matches = alternatives.stream()
+                .map(reference -> validateAgainst(path, value, resolveReference(reference, new HashSet<>())))
+                .filter(List::isEmpty)
+                .count();
+        if (!definition.oneOf().isEmpty() && matches != 1) {
+            add(path, "expected exactly one matching type from oneof but found " + matches);
+        }
+        if (!definition.anyOf().isEmpty() && matches == 0) {
+            add(path, "expected at least one matching type from anyof");
+        }
+    }
+
+    private List<ValidationError> validateAgainst(String path, Object value, SchemaDefinition definition) {
+        TomlSchemaValidator validator = new TomlSchemaValidator(schema);
+        validator.validateValue(path, value, definition);
+        return validator.errors;
     }
 
     private void validateTableValue(String path, TomlTable table, SchemaDefinition definition) {
@@ -237,6 +261,8 @@ final class TomlSchemaValidator {
                 definition.max() == null ? referenced.max() : definition.max(),
                 definition.minLength() == null ? referenced.minLength() : definition.minLength(),
                 definition.maxLength() == null ? referenced.maxLength() : definition.maxLength(),
+                definition.oneOf().isEmpty() ? referenced.oneOf() : definition.oneOf(),
+                definition.anyOf().isEmpty() ? referenced.anyOf() : definition.anyOf(),
                 children
         );
     }
