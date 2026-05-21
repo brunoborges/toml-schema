@@ -274,8 +274,8 @@ Arrays can be defined by mixing the following properties:
  - `itemtype`: a reusable `[types]` definition used to validate each item in the array.
  - `minlength`: the minimum length of the array (e.g. no less than 2 elements).
  - `maxlength`: the maximum length of the array (e.g. no more than 2 elements).
- - `minvalue`: the minimum value of the array (e.g. 80).
- - `maxvalue`: the maximum value of the array (e.g. 8080).
+ - `min`: the minimum value allowed for each comparable array item (e.g. 80).
+ - `max`: the maximum value allowed for each comparable array item (e.g. 8080).
  - `allowedvalues`: enumeration of possible values.
 
 Example for schema definition:
@@ -294,13 +294,13 @@ colors=[ "red", "yellow", "green" ]
 
 ##### Observations on Conditions to Arrays
 
-The `minvalue` and `maxvalue` conditions are used to set a valid range of values, and it may be applied only to properties where `arraytype` is one of the following: `integer`, `float`, and the four available `date` and/or `time` types. Both properties are **inclusive**.
+The `min` and `max` conditions are used to set a valid range of values, and it may be applied only to properties where `arraytype` is one of the following: `integer`, `float`, and the four available `date` and/or `time` types. Both properties are **inclusive**.
 
 Dates and Times are naturally sorted by past, present, future, meaning that the first element is in the past, and the furthest element is in the future.
 
-`allowedvalues` does not have to be naturally sorted, but the lowest value must match `minvalue` if it is available. The highest/furthest value must match `maxvalue` if it is available.
+`allowedvalues` does not have to be naturally sorted, but the lowest value must match `min` if it is available. The highest/furthest value must match `max` if it is available.
 
-If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `minvalue` and `maxvalue`, the parser must throw an error indicating that the TOML Schema is malformed.
+If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `min` and `max`, the parser must throw an error indicating that the TOML Schema is malformed.
 
 If `arraytype` is not defined, then the type of array elements is `any`, and any data type can be used and mixed together.
 
