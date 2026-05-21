@@ -12,6 +12,8 @@ import (
 	toml "github.com/pelletier/go-toml/v2"
 )
 
+var bareTomlKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
 func extract(documentPath, schemaPath string, out, errOut io.Writer) int {
 	document, err := parseTOMLFile(documentPath)
 	if err != nil {
@@ -103,7 +105,7 @@ func inferArrayType(array []any) string {
 }
 
 func encodeTomlKey(key string) string {
-	if regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(key) {
+	if bareTomlKeyPattern.MatchString(key) {
 		return key
 	}
 	var encoded strings.Builder
