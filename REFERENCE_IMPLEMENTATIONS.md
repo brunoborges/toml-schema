@@ -6,12 +6,12 @@ This document tracks TOSD reference implementations and the expected validation 
 
 | Language | Location | Status | Notes |
 | --- | --- | --- | --- |
-| Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 17 library and CLI using Tomlj for TOML 1.0 parsing. |
+| Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 25 library and CLI using Tomlj for TOML 1.0 parsing. |
 | Other languages | `reference-implementations/<language>` | Not started | Future implementations should follow the same conformance expectations below. |
 
 ## Java
 
-The Java 17 reference implementation uses [Tomlj](https://github.com/tomlj/tomlj) to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+The Java 25 reference implementation uses [Tomlj](https://github.com/tomlj/tomlj) to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
 
 Run the full Java test suite:
 
