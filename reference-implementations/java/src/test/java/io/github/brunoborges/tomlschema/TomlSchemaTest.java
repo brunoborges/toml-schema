@@ -21,17 +21,17 @@ class TomlSchemaTest {
 
     @Test
     void validatesCheckedInExample() throws IOException {
-        ValidationResult result = TomlSchema.load(Path.of("config.tosd")).validate(Path.of("config.toml"));
+        ValidationResult result = TomlSchema.load(fixture("config.tosd")).validate(fixture("config.toml"));
 
         assertTrue(result.isValid(), () -> result.errors().toString());
     }
 
     @Test
     void selfSchemaValidatesSchemaDocuments() throws IOException {
-        TomlSchema schemaSchema = TomlSchema.load(Path.of("toml-schema.tosd"));
+        TomlSchema schemaSchema = TomlSchema.load(fixture("toml-schema.tosd"));
 
-        assertTrue(schemaSchema.validate(Path.of("config.tosd")).isValid());
-        assertTrue(schemaSchema.validate(Path.of("toml-schema.tosd")).isValid());
+        assertTrue(schemaSchema.validate(fixture("config.tosd")).isValid());
+        assertTrue(schemaSchema.validate(fixture("toml-schema.tosd")).isValid());
     }
 
     @Test
@@ -432,5 +432,13 @@ class TomlSchemaTest {
         Path path = tempDir.resolve(fileName);
         Files.writeString(path, content, StandardCharsets.UTF_8);
         return path;
+    }
+
+    private Path fixture(String fileName) {
+        Path fromRepositoryRoot = Path.of(fileName);
+        if (Files.exists(fromRepositoryRoot)) {
+            return fromRepositoryRoot;
+        }
+        return Path.of("..", "..", fileName);
     }
 }

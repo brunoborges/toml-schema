@@ -542,26 +542,28 @@ A parser that validates a TOML document against a TOML Schema must produce the e
 
 ## Java Reference Implementation
 
-This repository includes a Java 17 reference implementation with a library API and a CLI. It uses a TOML parser to read documents, then validates the parsed TOML data against a `.tosd` schema without transforming the parsed values.
+This repository includes a Java 17 reference implementation in `reference-implementations/java`, with a library API and a CLI. It uses a TOML parser to read documents, then validates the parsed TOML data against a `.tosd` schema without transforming the parsed values.
+
+The Java implementation does not use the ABNF as a TOML parser. Instead, its test suite reads `toml-schema.abnf` as a conformance guard and checks that the implementation's supported schema properties and built-in type names match the grammar.
 
 Build and test:
 
 ```shell
-mvn test
-mvn -Dtest=TomlSchemaTest#validatesCheckedInExample test
-mvn package
+mvn -f reference-implementations/java/pom.xml test
+mvn -f reference-implementations/java/pom.xml -Dtest=TomlSchemaTest#validatesCheckedInExample test
+mvn -f reference-implementations/java/pom.xml package
 ```
 
 Run the CLI with an explicit schema:
 
 ```shell
-java -jar target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml
+java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml
 ```
 
 Run the CLI using the TOML document's `[toml-schema].location` metadata:
 
 ```shell
-java -jar target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
+java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
 ```
 
 Use the library API:
