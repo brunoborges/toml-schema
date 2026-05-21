@@ -27,6 +27,7 @@ This repository contains the TOML Schema Definition (TOSD) specification/proposa
 - Custom metadata belongs under `[toml-schema.meta]`; do not add arbitrary keys or subtables directly under `[toml-schema]`.
 - Reusable definitions live under `[types.<name>]` and are referenced from `[elements]` or nested type definitions rather than duplicating structures.
 - Prefer canonical `typeof` and `collection` in schema examples. The Java implementation still accepts legacy aliases `typeref` and `table-collection` for compatibility.
+- Use `itemtype = "types.<name>"` on `type = "array"` definitions when array items need structural validation, including TOML arrays of tables (`[[name]]`) and arrays of inline tables.
 - Use `[...children.<name>]` in schema documents when defining a child whose name collides with built-in schema properties like `type`, `typeof`, or `optional`; `toml-schema.tosd` uses this for the self-schema.
 - Optionality defaults to required behavior. Only mark a schema node optional with `optional = true` when the TOML document may omit that structure.
 - Tables with no defined child structure are intentionally open-ended; tables with defined child properties are intended to validate exactly against those children.

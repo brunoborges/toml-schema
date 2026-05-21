@@ -27,6 +27,10 @@ version = "1"
         allowedvalues = [ "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time", "array", "table" ]
         optional = true
 
+        [types.schemaDef.children.itemtype]
+        type = "string"
+        optional = true
+
         [types.schemaDef.children.allowedvalues]
         type = "array"
         arraytype = "any"

@@ -89,6 +89,74 @@ class TomlSchemaTest {
     }
 
     @Test
+    void validatesArrayOfTablesWithItemSchema() throws IOException {
+        Path schema = write("products.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [types.product]
+                type = "table"
+
+                    [types.product.name]
+                    type = "string"
+
+                    [types.product.sku]
+                    type = "integer"
+
+                [elements.products]
+                type = "array"
+                arraytype = "table"
+                itemtype = "types.product"
+                minlength = 2
+                """);
+        Path document = write("products.toml", """
+                [[products]]
+                name = "Hammer"
+                sku = 738594937
+
+                [[products]]
+                name = "Nail"
+                sku = 284758393
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void validatesArraysOfInlineTablesWithItemSchema() throws IOException {
+        Path schema = write("points.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [types.point]
+                type = "table"
+
+                    [types.point.x]
+                    type = "integer"
+
+                    [types.point.y]
+                    type = "integer"
+
+                [elements.points]
+                type = "array"
+                arraytype = "table"
+                itemtype = "types.point"
+                """);
+        Path document = write("points.toml", """
+                points = [
+                  { x = 1, y = 2 },
+                  { x = 3, y = 4 }
+                ]
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
     void cliLocatesSchemaFromDocumentMetadata() throws IOException {
         write("schema.tosd", """
                 [toml-schema]

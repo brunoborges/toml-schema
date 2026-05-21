@@ -2,7 +2,6 @@ package io.github.brunoborges.tomlschema;
 
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.regex.Pattern;
 
 record SchemaDefinition(
@@ -10,6 +9,7 @@ record SchemaDefinition(
         SchemaType type,
         String reference,
         SchemaType arrayType,
+        String itemReference,
         boolean optional,
         List<Object> allowedValues,
         Pattern pattern,
@@ -24,7 +24,4 @@ record SchemaDefinition(
         children = Map.copyOf(children);
     }
 
-    Optional<String> referenceName() {
-        return Optional.ofNullable(reference);
-    }
 }

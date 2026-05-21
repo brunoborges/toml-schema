@@ -84,6 +84,32 @@ version = "1"
         [types.libraryType.version]
         type = "string"
 
+    [types.productType]
+    type = "table"
+
+        [types.productType.name]
+        type = "string"
+
+        [types.productType.sku]
+        type = "integer"
+
+        [types.productType.color]
+        type = "string"
+        optional = true
+
+    [types.pointType]
+    type = "table"
+
+        [types.pointType.x]
+        type = "integer"
+
+        [types.pointType.y]
+        type = "integer"
+
+        [types.pointType.z]
+        type = "integer"
+        optional = true
+
 [elements]
 
     [elements.title]
@@ -115,6 +141,17 @@ version = "1"
         type = "array"
         arraytype = "string"
 
+        [elements.clients.points]
+        type = "array"
+        arraytype = "table"
+        itemtype = "types.pointType"
+
     [elements.libraries]
     type = "collection"
     typeof = "types.libraryType"
+
+    [elements.products]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.productType"
+    minlength = 1

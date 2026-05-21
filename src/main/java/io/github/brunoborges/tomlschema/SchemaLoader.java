@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     private static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     private static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "typeof", "typeref", "arraytype", "allowedvalues", "pattern",
+            "type", "typeof", "typeref", "arraytype", "itemtype", "allowedvalues", "pattern",
             "optional", "default", "min", "max", "minlength", "maxlength", "minoccurs", "maxoccurs",
             "oneof", "anyof", "children"
     );
@@ -91,6 +91,7 @@ final class SchemaLoader {
         }
         String normalizedReference = normalizeReference(reference != null ? reference : legacyReference);
         SchemaType arrayType = getSchemaType(table, "arraytype");
+        String itemReference = normalizeReference(getString(table, "itemtype"));
         Boolean optional = getBoolean(table, "optional");
         Pattern pattern = getPattern(name, table);
         Integer minLength = getInteger(table, "minlength");
@@ -139,11 +140,15 @@ final class SchemaLoader {
         if (type != SchemaType.ARRAY && arrayType != null) {
             throw new SchemaException(name + " can only define arraytype when type is array");
         }
+        if (type != SchemaType.ARRAY && itemReference != null) {
+            throw new SchemaException(name + " can only define itemtype when type is array");
+        }
         return new SchemaDefinition(
                 name,
                 type,
                 normalizedReference,
                 arrayType,
+                itemReference,
                 optional != null && optional,
                 allowedValues,
                 pattern,

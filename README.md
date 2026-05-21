@@ -26,6 +26,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
       - [Tables](#tables)
       - [Arrays](#arrays)
         - [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays)
+        - [Array Item Schemas and Arrays of Tables](#array-item-schemas-and-arrays-of-tables)
       - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
     - [Type Reference](#type-reference)
     - [Optionality - `optional`](#optionality---optional)
@@ -186,7 +187,8 @@ The `[types]` table is for use when there is a need for custom, reusable types o
 [types.<typename>]
 type = "<simple-type> | array | table | collection"
 typeof = "<full-name-of-a-defined-type>"
-arraytype = "<simple-type>"
+arraytype = "<simple-type> | array | table"
+itemtype = "<full-name-of-a-defined-type>"
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
 optional = true|false
@@ -261,7 +263,8 @@ If a property of type `table` has no defined property and/or structure, the pars
 
 Arrays can be defined by mixing the following properties:
 
- - `arraytype`: the type of the value in the array (e.g. string).
+ - `arraytype`: the built-in type of each value in the array (e.g. string, array, or table).
+ - `itemtype`: a reusable `[types]` definition used to validate each item in the array.
  - `minlength`: the minimum length of the array (e.g. no less than 2 elements).
  - `maxlength`: the maximum length of the array (e.g. no more than 2 elements).
  - `minvalue`: the minimum value of the array (e.g. 80).
@@ -295,6 +298,67 @@ If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `m
 If `arraytype` is not defined, then the type of array elements is `any`, and any data type can be used and mixed together.
 
 If `type` is `array` and `arraytype` is of type `array`, then automatically any data type can be used and mixed together.
+
+##### Array Item Schemas and Arrays of Tables
+
+Use `itemtype` when each array item must be validated against a reusable schema definition. This is required for TOML arrays of tables and arrays of inline tables, because both parse as arrays whose items are table values.
+
+Example with TOML arrays of tables:
+
+```toml
+[[products]]
+name = "Hammer"
+sku = 738594937
+
+[[products]]
+name = "Nail"
+sku = 284758393
+```
+
+Schema:
+
+```toml
+[types.productType]
+type = "table"
+
+    [types.productType.name]
+    type = "string"
+
+    [types.productType.sku]
+    type = "integer"
+
+[elements.products]
+type = "array"
+arraytype = "table"
+itemtype = "types.productType"
+```
+
+Example with TOML arrays of inline tables:
+
+```toml
+points = [
+  { x = 1, y = 2 },
+  { x = 3, y = 4 }
+]
+```
+
+Schema:
+
+```toml
+[types.pointType]
+type = "table"
+
+    [types.pointType.x]
+    type = "integer"
+
+    [types.pointType.y]
+    type = "integer"
+
+[elements.points]
+type = "array"
+arraytype = "table"
+itemtype = "types.pointType"
+```
 
 #### Collection of Elements for Dynamic Keys
 

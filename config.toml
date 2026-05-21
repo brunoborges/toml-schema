@@ -75,8 +75,23 @@ hosts = [
   "omega"
 ]
 
+points = [
+  { x = 1, y = 2, z = 3 },
+  { x = 7, y = 8, z = 9 },
+  { x = 2, y = 4 }
+]
+
 # This element is a 'table-collection' of type 'libraryType'
 # and each library can be expressed with an inline table
 [libraries]
 lib1 = { name = "gcc", version = "10.2" }
 lib2 = { name = "make", version = "4.0" }
+
+[[products]]
+name = "Hammer"
+sku = 738594937
+
+[[products]]
+name = "Nail"
+sku = 284758393
+color = "gray"
