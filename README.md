@@ -3,7 +3,7 @@
 [![Reference implementations](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml/badge.svg)](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml)
 [![License](https://img.shields.io/github/license/brunoborges/toml-schema)](LICENSE)
 [![TOML 1.0](https://img.shields.io/badge/TOML-1.0-9c4121)](https://toml.io/en/v1.0.0)
-[![Java 17](https://img.shields.io/badge/Java-17-007396)](REFERENCE_IMPLEMENTATIONS.md#java)
+[![Java 25](https://img.shields.io/badge/Java-25-007396)](REFERENCE_IMPLEMENTATIONS.md#java)
 
 TOML Schema Definition (TOSD) is a TOML-based schema language for describing and validating the structure, names, and value types of TOML configuration files.
 
@@ -62,7 +62,7 @@ reference-implementations/java  Java reference implementation and CLI
 
 ## Reference implementations
 
-The Java 17 reference implementation is available as a library and CLI under `reference-implementations/java`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for build, test, validation, extraction, and future implementation details.
+The Java 25 reference implementation is available as a library and CLI under `reference-implementations/java`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for build, test, validation, extraction, and future implementation details.
 
 ## Schema reference from TOML
 

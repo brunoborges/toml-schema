@@ -152,37 +152,19 @@ public final class TomlSchemaCli {
     }
 
     private static String schemaType(Object value) {
-        if (value instanceof String) {
-            return "string";
-        }
-        if (value instanceof Long) {
-            return "integer";
-        }
-        if (value instanceof Double) {
-            return "float";
-        }
-        if (value instanceof Boolean) {
-            return "boolean";
-        }
-        if (value instanceof OffsetDateTime) {
-            return "offset-date-time";
-        }
-        if (value instanceof LocalDateTime) {
-            return "local-date-time";
-        }
-        if (value instanceof LocalDate) {
-            return "local-date";
-        }
-        if (value instanceof LocalTime) {
-            return "local-time";
-        }
-        if (value instanceof TomlArray) {
-            return "array";
-        }
-        if (value instanceof TomlTable) {
-            return "table";
-        }
-        return "any";
+        return switch (value) {
+            case String _ -> "string";
+            case Long _ -> "integer";
+            case Double _ -> "float";
+            case Boolean _ -> "boolean";
+            case OffsetDateTime _ -> "offset-date-time";
+            case LocalDateTime _ -> "local-date-time";
+            case LocalDate _ -> "local-date";
+            case LocalTime _ -> "local-time";
+            case TomlArray _ -> "array";
+            case TomlTable _ -> "table";
+            default -> "any";
+        };
     }
 
     private static String inferArrayType(TomlArray array) {
