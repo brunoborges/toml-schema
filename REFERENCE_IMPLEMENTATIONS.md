@@ -126,6 +126,23 @@ Every reference implementation should:
 
 The GitHub Actions workflow in `.github/workflows/reference-implementations.yml` currently enforces these expectations for Java and Go.
 
+## TOML version profile
+
+TOSD targets the TOML logical value model (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, inline table, array of tables). That model is unchanged between [TOML 1.0.0](https://toml.io/en/v1.0.0) and [TOML 1.1.0](https://toml.io/en/v1.1.0); the TOML 1.1 changes are mostly parser/input-syntax clarifications and additions (for example `\e` and `\xHH` string escapes, optional seconds in date-times, multi-line inline tables, and trailing commas in inline tables). No new TOSD schema keywords or built-in type names are required to support TOML 1.1.
+
+The current reference implementations parse TOML with libraries that target TOML 1.0:
+
+- Java: [Tomlj](https://github.com/tomlj/tomlj) `1.1.1`, which documents support up to TOML 1.0.0.
+- Go: [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1`, which targets TOML 1.0.
+
+For that reason, the reference implementations' current effective parser profile is **TOML 1.0**. TOML 1.1 syntax (for example multi-line inline tables, trailing commas in inline tables, omitted seconds in date-times, or the `\e` and `\xHH` string escapes) is not guaranteed to parse in either reference implementation until the underlying TOML parser declares TOML 1.1 conformance.
+
+Upgrading either reference implementation to a TOML 1.1-conformant parser is tracked separately. When that happens, the expected follow-up changes are:
+
+1. Bump the TOML badge in [`README.md`](README.md) and the parser notes in the status table above to TOML 1.1.
+1. Update the ABNF preamble in [`toml-schema.abnf`](toml-schema.abnf) to reference TOML 1.1 as the underlying grammar.
+1. Add parser conformance fixtures exercising the new TOML 1.1 syntax (multi-line inline tables, trailing commas, omitted seconds, `\e` and `\xHH` escapes) against the checked-in schemas.
+
 ## Adding another implementation
 
 Future implementations should live under `reference-implementations/<language>` and include language-native build and test instructions. When a new implementation is added, update this file and extend `.github/workflows/reference-implementations.yml` with a separate job for that language.

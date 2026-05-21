@@ -5,6 +5,12 @@
 ;; and document shape layered on top of TOML; TOML 1.0 remains authoritative for
 ;; base key, table, array, inline-table, string, number, boolean, and date/time
 ;; syntax.
+;;
+;; The TOSD vocabulary defined below is independent of TOML version: the same
+;; schema keys and built-in type names apply when targeting TOML 1.1 documents,
+;; provided the underlying TOML parser supports TOML 1.1. See
+;; REFERENCE_IMPLEMENTATIONS.md ("TOML version profile") for the current
+;; reference-implementation parser profile.
 
 toml-schema-document = toml-schema-table [ types-table ] elements-table
 
