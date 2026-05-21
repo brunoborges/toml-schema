@@ -17,6 +17,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
     - [Supported Properties](#supported-properties)
   - [Elements table - `[elements]`](#elements-table---elements)
   - [Types table - `[types]`](#types-table---types)
+    - [Keys That Need Escaping](#keys-that-need-escaping)
     - [Simple Types - `<simple-type>`](#simple-types---simple-type)
       - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
     - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
@@ -196,6 +197,32 @@ min = <any>
 max = <any>
 minlength = <integer>
 maxlength = <integer>
+```
+
+### Keys That Need Escaping
+
+Schema child definitions usually use nested TOML tables, but TOML keys can be quoted, empty, contain dots, or collide with built-in schema property names such as `type`, `typeof`, and `optional`. Use a `children` table to define those keys unambiguously.
+
+Example TOML document:
+
+```toml
+"" = "blank"
+
+[site]
+"google.com" = true
+```
+
+Schema:
+
+```toml
+[elements.children]
+"" = { type = "string" }
+
+[elements.site]
+type = "table"
+
+    [elements.site.children]
+    "google.com" = { type = "boolean" }
 ```
 
 ### Simple Types - `<simple-type>`
