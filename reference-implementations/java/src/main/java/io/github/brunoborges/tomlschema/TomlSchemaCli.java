@@ -202,7 +202,27 @@ public final class TomlSchemaCli {
         if (key.matches("[A-Za-z0-9_-]+")) {
             return key;
         }
-        return "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+        StringBuilder encoded = new StringBuilder("\"");
+        for (int i = 0; i < key.length(); i++) {
+            char current = key.charAt(i);
+            switch (current) {
+                case '\\' -> encoded.append("\\\\");
+                case '"' -> encoded.append("\\\"");
+                case '\b' -> encoded.append("\\b");
+                case '\t' -> encoded.append("\\t");
+                case '\n' -> encoded.append("\\n");
+                case '\f' -> encoded.append("\\f");
+                case '\r' -> encoded.append("\\r");
+                default -> {
+                    if (current < 0x20) {
+                        encoded.append(String.format("\\u%04X", (int) current));
+                    } else {
+                        encoded.append(current);
+                    }
+                }
+            }
+        }
+        return encoded.append("\"").toString();
     }
 
     private static void usage(PrintStream stream) {

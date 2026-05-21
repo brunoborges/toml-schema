@@ -490,6 +490,7 @@ class TomlSchemaTest {
         assertTrue(schemaText.contains("[elements.title]"));
         assertTrue(schemaText.contains("type = \"string\""));
         assertTrue(schemaText.contains("[elements.owner]"));
+        assertTrue(schemaText.contains("[elements.owner.name]"));
         assertFalse(schemaText.contains("[elements.toml-schema]"));
 
         ValidationResult validationResult = TomlSchema.load(extractedSchema).validate(document);
