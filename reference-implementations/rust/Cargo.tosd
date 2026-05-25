@@ -1,3 +1,5 @@
+# Based on https://dirname.github.io/rust-std-doc/cargo/reference/manifest.html
+
 [toml-schema]
 version = "1.0.0"
 
