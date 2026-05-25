@@ -13,14 +13,19 @@
       document.documentElement.setAttribute("data-theme", theme);
     })();
   </script>
-  <link rel="stylesheet" href="/styles.css">
+  <link rel="stylesheet" href="./styles.css">
 </head>
 <body>
   <div class="page">
     <header>
       <a class="brand" href="/" aria-label="TOML Schema home">
-        <span class="brand-mark" aria-hidden="true">TS</span>
-        <span>TOML Schema</span>
+        <svg class="brand-logo" viewBox="0 0 420 128" preserveAspectRatio="xMinYMid meet" aria-hidden="true" focusable="false">
+          <polygon class="logo-bracket" points="0 0 34 0 34 14 18 14 18 114 34 114 34 128 0 128" />
+          <polygon class="logo-t" points="42 26 104 26 104 42 80 42 80 110 66 110 66 42 42 42" />
+          <polygon class="logo-bracket" points="112 0 146 0 146 128 112 128 112 114 128 114 128 14 112 14" />
+          <text class="logo-schema" x="160" y="110">Schema</text>
+        </svg>
+        <span class="visually-hidden">TOML Schema</span>
       </a>
       <nav aria-label="Primary navigation">
         <a href="#why">Why</a>

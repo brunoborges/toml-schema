@@ -23,6 +23,7 @@
   --cp-panel-strong: rgba(255, 255, 255, 0.96);
   --cp-sheen: rgba(255, 255, 255, 0.55);
   --cp-highlight: rgba(177, 31, 75, 0.12);
+  --toml-logo-red: #9c4221;
 }
 html[data-theme="dark"] {
   color-scheme: dark;
@@ -49,6 +50,7 @@ html[data-theme="dark"] {
   --cp-panel-strong: rgba(41, 41, 41, 0.96);
   --cp-sheen: rgba(255, 255, 255, 0.04);
   --cp-highlight: rgba(253, 142, 161, 0.12);
+  --toml-logo-red: #9c4221;
 }
 * {
   box-sizing: border-box;
@@ -92,16 +94,31 @@ header {
   gap: 10px;
   text-decoration: none;
 }
-.brand-mark {
-  align-items: center;
-  background: var(--cp-accent-soft);
-  border: 1px solid var(--cp-border);
-  border-radius: 0.625rem;
-  color: var(--cp-accent);
-  display: inline-flex;
-  height: 40px;
-  justify-content: center;
-  width: 40px;
+.brand-logo {
+  display: block;
+  height: 48px;
+  width: 210px;
+}
+.logo-bracket {
+  fill: var(--toml-logo-red);
+}
+.logo-t {
+  fill: var(--cp-text);
+}
+.logo-schema {
+  fill: var(--cp-text-muted);
+  font-family: "Segoe UI", Aptos, Calibri, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-size: 52px;
+  font-weight: 700;
+}
+.visually-hidden {
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  height: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+  width: 1px;
 }
 nav {
   display: flex;
