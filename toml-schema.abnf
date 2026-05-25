@@ -31,7 +31,7 @@ definition-property = type / typeof / typeref / arraytype / itemtype / items / o
                     / allowedvalues / pattern / optional / default / min / max
                     / minlength / maxlength / minoccurs / maxoccurs
 
-version       = "version" keyval-sep toml-string
+version       = "version" keyval-sep semver-string
 type          = "type" keyval-sep built-in-type
 typeof        = "typeof" keyval-sep toml-string
 typeref       = "typeref" keyval-sep toml-string       ; legacy alias for typeof
@@ -76,6 +76,7 @@ tablecollectiontype = DQUOTE %x74.61.62.6c.65.2d.63.6f.6c.6c.65.63.74.69.6f.6e D
 
 ;; TOML 1.0 grammar terminals used by TOSD.
 
+semver-string                     = <TOML string containing a Semantic Versioning 2.0.0 value>
 toml-table-header-toml-schema      = <TOML 1.0 table header for [toml-schema]>
 toml-table-header-types            = <TOML 1.0 table header for [types]>
 toml-table-header-elements         = <TOML 1.0 table header for [elements]>

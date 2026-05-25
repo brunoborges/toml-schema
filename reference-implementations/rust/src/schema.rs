@@ -112,6 +112,8 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "children",
 ];
 
+pub const CURRENT_TOSD_VERSION: &str = "1.0.0";
+
 fn is_definition_key(key: &str) -> bool {
     DEFINITION_KEYS.contains(&key)
 }
@@ -191,9 +193,10 @@ impl Schema {
             .get("toml-schema")
             .and_then(Value::as_table)
             .expect("checked above");
-        if !metadata.contains_key("version") {
-            return Err("[toml-schema] must contain version".to_string());
-        }
+        let version = metadata
+            .get("version")
+            .ok_or_else(|| "[toml-schema] must contain version".to_string())?;
+        Self::validate_schema_version(version)?;
         for key in metadata.keys() {
             if key != "version" && key != "meta" {
                 return Err(format!("unsupported [toml-schema] key: {key}"));
@@ -213,6 +216,26 @@ impl Schema {
     /// Returns the path the schema was loaded from.
     pub fn source(&self) -> &Path {
         &self.source
+    }
+
+    fn validate_schema_version(value: &Value) -> Result<(), String> {
+        let Some(version) = value.as_str() else {
+            return Err("[toml-schema].version must be a SemVer string".to_string());
+        };
+        let semver = Regex::new(
+            r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$",
+        )
+        .expect("valid SemVer regex");
+        let Some(captures) = semver.captures(version) else {
+            return Err("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax".to_string());
+        };
+        if captures.get(1).map(|major| major.as_str()) != Some("1") {
+            return Err(format!("unsupported TOSD major version: {version}"));
+        }
+        if captures.get(2).map(|minor| minor.as_str()) != Some("0") {
+            return Err(format!("unsupported TOSD minor version: {version}"));
+        }
+        Ok(())
     }
 
     /// Validates the TOML document at `path` against this schema.

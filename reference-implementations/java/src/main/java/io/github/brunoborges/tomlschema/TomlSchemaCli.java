@@ -122,7 +122,7 @@ public final class TomlSchemaCli {
     private static String generateSchema(TomlTable document) {
         StringBuilder schema = new StringBuilder();
         schema.append("[toml-schema]\n");
-        schema.append("version = \"1\"\n\n");
+        schema.append("version = \"").append(TosdVersion.CURRENT).append("\"\n\n");
         schema.append("[elements]\n");
         for (String key : document.keySet()) {
             if ("toml-schema".equals(key)) {

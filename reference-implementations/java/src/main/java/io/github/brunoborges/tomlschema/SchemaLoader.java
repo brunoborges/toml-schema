@@ -57,6 +57,7 @@ final class SchemaLoader {
         if (metadata == null || !metadata.contains("version")) {
             throw new SchemaException("[toml-schema] must contain version");
         }
+        TosdVersion.validate(metadata.get("version"));
         for (String key : metadata.keySet()) {
             if (!key.equals("version") && !key.equals("meta")) {
                 throw new SchemaException("Unsupported [toml-schema] key: " + key);

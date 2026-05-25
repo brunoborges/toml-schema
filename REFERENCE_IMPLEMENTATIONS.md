@@ -177,6 +177,7 @@ Every reference implementation should:
 
 1. Parse TOML documents with a TOML 1.0-compliant parser rather than reimplementing TOML parsing.
 1. Treat `.tosd` schemas as valid TOML documents.
+1. Require `[toml-schema].version` to be a SemVer string compatible with the implementation's supported TOSD version.
 1. Validate the checked-in `config.toml` document against `config.tosd`.
 1. Support schema lookup through `[toml-schema].location`.
 1. Validate `config.tosd` against `toml-schema.tosd`.
