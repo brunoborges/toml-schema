@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "typeof", "typeref", "arraytype", "itemtype", "allowedvalues", "pattern",
+            "type", "typeof", "typeref", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
             "optional", "default", "min", "max", "minlength", "maxlength", "minoccurs", "maxoccurs",
             "oneof", "anyof", "children"
     );
@@ -102,6 +102,7 @@ final class SchemaLoader {
         String normalizedReference = normalizeReference(reference != null ? reference : legacyReference);
         SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));
+        List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
         Boolean optional = getBoolean(table, "optional");
         Pattern pattern = getPattern(name, table);
         Integer minLength = getInteger(table, "minlength");
@@ -158,6 +159,20 @@ final class SchemaLoader {
         if (type != SchemaType.ARRAY && itemReference != null) {
             throw new SchemaException(name + " can only define itemtype when type is array");
         }
+        if (type != SchemaType.ARRAY && !items.isEmpty()) {
+            throw new SchemaException(name + " can only define items when type is array");
+        }
+        if (!items.isEmpty()) {
+            if (arrayType != null) {
+                throw new SchemaException(name + " cannot define both items and arraytype");
+            }
+            if (itemReference != null) {
+                throw new SchemaException(name + " cannot define both items and itemtype");
+            }
+            if (minLength != null || maxLength != null || minOccurs != null || maxOccurs != null) {
+                throw new SchemaException(name + " cannot define minlength, maxlength, minoccurs, or maxoccurs together with items");
+            }
+        }
         validateRangeConstraints(name, type, arrayType, itemReference, table.get("min"), table.get("max"));
         return new SchemaDefinition(
                 name,
@@ -165,6 +180,7 @@ final class SchemaLoader {
                 normalizedReference,
                 arrayType,
                 itemReference,
+                items,
                 optional != null && optional,
                 allowedValues,
                 pattern,

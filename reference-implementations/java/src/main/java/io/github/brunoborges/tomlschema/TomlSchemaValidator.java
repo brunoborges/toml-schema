@@ -129,6 +129,10 @@ final class TomlSchemaValidator {
 
     private void validateArray(String path, TomlArray array, SchemaDefinition definition) {
         validateLength(path, array.size(), definition);
+        if (!definition.items().isEmpty()) {
+            validateTupleArray(path, array, definition);
+            return;
+        }
         SchemaType arrayType = definition.arrayType() == null ? SchemaType.ANY : definition.arrayType();
         SchemaDefinition itemDefinition = definition.itemReference() == null
                 ? null
@@ -152,6 +156,24 @@ final class TomlSchemaValidator {
                 validateRange(itemPath, item, definition);
             } else {
                 validateValue(itemPath, item, itemDefinition);
+            }
+        }
+
+        private void validateTupleArray(String path, TomlArray array, SchemaDefinition definition) {
+            if (array.size() != definition.items().size()) {
+                add(path, "expected array length " + definition.items().size() + " but found " + array.size());
+            }
+            int upperBound = Math.min(array.size(), definition.items().size());
+            for (int i = 0; i < upperBound; i++) {
+                String itemPath = path + "[" + i + "]";
+                SchemaDefinition itemDefinition;
+                try {
+                    itemDefinition = resolveReference(definition.items().get(i), new HashSet<>());
+                } catch (SchemaException e) {
+                    add(itemPath, e.getMessage());
+                    continue;
+                }
+                validateValue(itemPath, array.get(i), itemDefinition);
             }
         }
     }
@@ -256,6 +278,7 @@ final class TomlSchemaValidator {
                 reference,
                 definition.arrayType() == null ? referenced.arrayType() : definition.arrayType(),
                 definition.itemReference() == null ? referenced.itemReference() : definition.itemReference(),
+                definition.items().isEmpty() ? referenced.items() : definition.items(),
                 definition.optional() || referenced.optional(),
                 definition.allowedValues().isEmpty() ? referenced.allowedValues() : definition.allowedValues(),
                 definition.pattern() == null ? referenced.pattern() : definition.pattern(),

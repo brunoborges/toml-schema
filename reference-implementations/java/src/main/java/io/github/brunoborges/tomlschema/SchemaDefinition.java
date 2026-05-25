@@ -10,6 +10,7 @@ record SchemaDefinition(
         String reference,
         SchemaType arrayType,
         String itemReference,
+        List<String> items,
         boolean optional,
         List<Object> allowedValues,
         Pattern pattern,
@@ -25,6 +26,7 @@ record SchemaDefinition(
         allowedValues = List.copyOf(allowedValues);
         oneOf = List.copyOf(oneOf);
         anyOf = List.copyOf(anyOf);
+        items = List.copyOf(items);
         children = Map.copyOf(children);
     }
 

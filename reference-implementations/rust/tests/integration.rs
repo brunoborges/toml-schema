@@ -219,6 +219,136 @@ entries = [
 }
 
 #[test]
+fn validates_tuple_arrays_by_position() {
+    let directory = tempfile_dir("tuple-arrays");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1"
+
+[types.coordinate]
+type = "float"
+
+[types.label]
+type = "string"
+
+[types.coordinateLabel]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+
+[elements.value]
+type = "array"
+items = [ "types.coordinateLabel", "types.coordinate" ]
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+value = [ [ 1.5, "Hello" ], 2.0 ]
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load schema");
+    let result = schema.validate_file(&document_path);
+    assert!(
+        result.valid(),
+        "expected valid document, got {:#?}",
+        result.errors
+    );
+}
+
+#[test]
+fn rejects_invalid_tuple_arrays() {
+    let directory = tempfile_dir("tuple-arrays-invalid");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1"
+
+[types.coordinate]
+type = "float"
+
+[types.label]
+type = "string"
+
+[elements.value]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+"#,
+    );
+    let wrong_order = write_file(
+        &directory,
+        "wrong-order.toml",
+        r#"
+value = [ "Hello", 1.5 ]
+"#,
+    );
+    let too_short = write_file(
+        &directory,
+        "too-short.toml",
+        r#"
+value = [ 1.5 ]
+"#,
+    );
+    let too_long = write_file(
+        &directory,
+        "too-long.toml",
+        r#"
+value = [ 1.5, "Hello", true ]
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load schema");
+    let wrong_order_result = schema.validate_file(&wrong_order);
+    assert!(!wrong_order_result.valid());
+    assert!(has_path(&wrong_order_result, "$.value[0]"));
+    assert!(has_path(&wrong_order_result, "$.value[1]"));
+
+    let too_short_result = schema.validate_file(&too_short);
+    assert!(!too_short_result.valid());
+    assert!(has_path(&too_short_result, "$.value"));
+
+    let too_long_result = schema.validate_file(&too_long);
+    assert!(!too_long_result.valid());
+    assert!(has_path(&too_long_result, "$.value"));
+}
+
+#[test]
+fn rejects_tuple_schema_with_conflicting_properties() {
+    let directory = tempfile_dir("tuple-arrays-conflicts");
+    let conflicts = [
+        r#"
+[toml-schema]
+version = "1"
+
+[elements.value]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+arraytype = "string"
+"#,
+        r#"
+[toml-schema]
+version = "1"
+
+[elements.value]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+minlength = 2
+"#,
+    ];
+    for (index, content) in conflicts.iter().enumerate() {
+        let schema_path = write_file(&directory, &format!("schema-{index}.tosd"), content);
+        let error = Schema::load(&schema_path).expect_err("expected schema conflict error");
+        assert!(error.contains("items"));
+    }
+}
+
+#[test]
 fn supports_quoted_dotted_and_empty_keys_with_children_table() {
     let directory = tempfile_dir("children-keys");
     let schema_path = write_file(

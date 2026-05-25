@@ -74,6 +74,8 @@ The Rust reference implementation is available as a library and CLI under `refer
 
 See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for build, test, validation, extraction, and future implementation details.
 
+For array tuple/positional validation (`items`), see [SPEC.md: Tuple / Positional Array Validation](SPEC.md#tuple--positional-array-validation---items).
+
 ## Schema reference from TOML
 
 A TOML document can point to a schema with reserved metadata:

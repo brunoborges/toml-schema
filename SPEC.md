@@ -29,6 +29,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Block Types](#block-types)
     - [Tables](#tables)
     - [Arrays](#arrays)
+      - [Tuple / Positional Array Validation - `items`](#tuple--positional-array-validation---items)
     - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
   - [Type Reference](#type-reference)
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
@@ -188,6 +189,7 @@ type = "<simple-type> | array | table | collection"
 typeof = "<full-name-of-a-defined-type>"
 arraytype = "<simple-type> | array | table"
 itemtype = "<full-name-of-a-defined-type>"
+items = [ "<full-name-of-a-defined-type>", ... ]
 oneof = [ "<full-name-of-a-defined-type>", ... ]
 anyof = [ "<full-name-of-a-defined-type>", ... ]
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
@@ -302,6 +304,7 @@ Arrays can be defined by mixing the following properties:
 
  - `arraytype`: the built-in type of each value in the array (e.g. string, array, or table).
  - `itemtype`: a reusable `[types]` definition used to validate each item in the array.
+ - `items`: ordered type references for tuple-style positional validation with fixed arity.
  - `minlength`: the minimum length of the array (e.g. no less than 2 elements).
  - `maxlength`: the maximum length of the array (e.g. no more than 2 elements).
  - `min`: the minimum value allowed for each comparable array item (e.g. 80).
@@ -396,6 +399,25 @@ type = "array"
 arraytype = "table"
 itemtype = "types.pointType"
 ```
+
+##### Tuple / Positional Array Validation - `items`
+
+Use `items` to validate each array entry by position with an exact length.
+
+Example:
+
+```toml
+[types.coordinateLabel]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+```
+
+Semantics:
+
+ - `items` is ordered, and each index validates against the corresponding referenced type.
+ - When `items` is present, the array must have exactly the same number of items.
+ - `items` is mutually exclusive with `arraytype` and `itemtype`.
+ - `items` is also mutually exclusive with `minlength` and `maxlength` (and aliases `minoccurs` / `maxoccurs`).
 
 #### Collection of Elements for Dynamic Keys
 
