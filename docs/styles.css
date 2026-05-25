@@ -259,6 +259,33 @@ pre {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-top: 24px;
 }
+.tour {
+  display: grid;
+  gap: 16px;
+  margin-top: 24px;
+}
+.tour-step {
+  align-items: start;
+  background: var(--cp-surface);
+  border: 1px solid var(--cp-border);
+  border-radius: 16px;
+  display: grid;
+  gap: 20px;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
+  padding: 22px;
+}
+.tour-step h3 {
+  margin-top: 12px;
+}
+.tour-step p {
+  color: var(--cp-text-muted);
+  margin: 10px 0 0;
+}
+.tour-step pre {
+  background: var(--cp-surface-soft);
+  border: 1px solid var(--cp-border);
+  border-radius: 0.625rem;
+}
 .spec-item {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);
@@ -313,6 +340,7 @@ footer {
     margin-top: 28px;
   }
   .grid,
+  .tour-step,
   .implementations,
   .spec-list {
     grid-template-columns: 1fr;
