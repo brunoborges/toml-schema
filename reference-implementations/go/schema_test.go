@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -247,7 +248,7 @@ minlength = 2
 `,
 	}
 	for index, schemaContent := range conflicts {
-		_, err := LoadSchema(write(t, dir, "schema-"+string(rune('a'+index))+".tosd", schemaContent))
+		_, err := LoadSchema(write(t, dir, fmt.Sprintf("schema-%d.tosd", index), schemaContent))
 		if err == nil {
 			t.Fatalf("expected schema conflict error for case %d", index)
 		}
