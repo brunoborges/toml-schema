@@ -1,0 +1,1406 @@
+# Based on https://gohugo.io/configuration/
+
+[toml-schema]
+version = "1.0.0"
+
+[types.anyValue]
+type = "any"
+
+[types.booleanValue]
+type = "boolean"
+
+[types.integerValue]
+type = "integer"
+
+[types.floatValue]
+type = "float"
+
+[types.stringValue]
+type = "string"
+
+[types.stringArray]
+type = "array"
+arraytype = "string"
+
+[types.anyArray]
+type = "array"
+arraytype = "any"
+
+[types.numberValue]
+oneof = [ "types.integerValue", "types.floatValue" ]
+
+[types.stringOrStringArray]
+oneof = [ "types.stringValue", "types.stringArray" ]
+
+[types.anyMap]
+type = "collection"
+typeof = "types.anyValue"
+
+[types.stringMap]
+type = "collection"
+typeof = "types.stringValue"
+
+[types.buildStats]
+type = "table"
+
+    [types.buildStats.disableClasses]
+    type = "boolean"
+    optional = true
+
+    [types.buildStats.disableIDs]
+    type = "boolean"
+    optional = true
+
+    [types.buildStats.disableTags]
+    type = "boolean"
+    optional = true
+
+    [types.buildStats.enable]
+    type = "boolean"
+    optional = true
+
+[types.cacheBuster]
+type = "table"
+
+    [types.cacheBuster.source]
+    type = "string"
+
+    [types.cacheBuster.target]
+    type = "string"
+
+[types.cacheBusters]
+type = "array"
+arraytype = "table"
+itemtype = "types.cacheBuster"
+
+[types.build]
+type = "table"
+
+    [types.build.buildStats]
+    typeof = "types.buildStats"
+    optional = true
+
+    [types.build.cacheBusters]
+    typeof = "types.cacheBusters"
+    optional = true
+
+    [types.build.cachebusters]
+    typeof = "types.cacheBusters"
+    optional = true
+
+    [types.build.noJSConfigInAssets]
+    type = "boolean"
+    optional = true
+
+    [types.build.useResourceCacheWhen]
+    type = "string"
+    allowedvalues = [ "always", "fallback", "never" ]
+    optional = true
+
+[types.cache]
+type = "table"
+
+    [types.cache.dir]
+    type = "string"
+    optional = true
+
+    [types.cache.maxAge]
+    type = "string"
+    optional = true
+
+[types.caches]
+type = "collection"
+typeof = "types.cache"
+
+[types.cascade]
+oneof = [ "types.anyMap", "types.anyArray" ]
+
+[types.frontmatter]
+type = "table"
+
+    [types.frontmatter.date]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.frontmatter.expiryDate]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.frontmatter.lastmod]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.frontmatter.publishDate]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.imagingExif]
+type = "table"
+
+    [types.imagingExif.disableDate]
+    type = "boolean"
+    optional = true
+
+    [types.imagingExif.disableLatLong]
+    type = "boolean"
+    optional = true
+
+    [types.imagingExif.excludeFields]
+    type = "string"
+    optional = true
+
+    [types.imagingExif.includeFields]
+    type = "string"
+    optional = true
+
+[types.imagingMeta]
+type = "table"
+
+    [types.imagingMeta.fields]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.imagingMeta.sources]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.imagingWebp]
+type = "table"
+
+    [types.imagingWebp.hint]
+    type = "string"
+    allowedvalues = [ "drawing", "icon", "photo", "picture", "text" ]
+    optional = true
+
+    [types.imagingWebp.method]
+    type = "integer"
+    min = 0
+    max = 6
+    optional = true
+
+    [types.imagingWebp.useSharpYuv]
+    type = "boolean"
+    optional = true
+
+[types.imaging]
+type = "table"
+
+    [types.imaging.anchor]
+    type = "string"
+    optional = true
+
+    [types.imaging.bgColor]
+    type = "string"
+    optional = true
+
+    [types.imaging.compression]
+    type = "string"
+    allowedvalues = [ "lossless", "lossy" ]
+    optional = true
+
+    [types.imaging.exif]
+    typeof = "types.imagingExif"
+    optional = true
+
+    [types.imaging.meta]
+    typeof = "types.imagingMeta"
+    optional = true
+
+    [types.imaging.quality]
+    type = "integer"
+    min = 1
+    max = 100
+    optional = true
+
+    [types.imaging.resampleFilter]
+    type = "string"
+    optional = true
+
+    [types.imaging.webp]
+    typeof = "types.imagingWebp"
+    optional = true
+
+[types.menuEntry]
+type = "table"
+
+    [types.menuEntry.identifier]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.name]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.params]
+    typeof = "types.anyMap"
+    optional = true
+
+    [types.menuEntry.parent]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.pageRef]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.post]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.pre]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.title]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.url]
+    type = "string"
+    optional = true
+
+    [types.menuEntry.weight]
+    type = "integer"
+    optional = true
+
+[types.menu]
+type = "array"
+arraytype = "table"
+itemtype = "types.menuEntry"
+
+[types.menus]
+type = "collection"
+typeof = "types.menu"
+
+[types.outputFormats]
+type = "collection"
+typeof = "types.outputFormat"
+
+[types.outputFormat]
+type = "table"
+
+    [types.outputFormat.baseName]
+    type = "string"
+    optional = true
+
+    [types.outputFormat.isHTML]
+    type = "boolean"
+    optional = true
+
+    [types.outputFormat.isPlainText]
+    type = "boolean"
+    optional = true
+
+    [types.outputFormat.mediaType]
+    type = "string"
+    optional = true
+
+    [types.outputFormat.noUgly]
+    type = "boolean"
+    optional = true
+
+    [types.outputFormat.notAlternative]
+    type = "boolean"
+    optional = true
+
+    [types.outputFormat.path]
+    type = "string"
+    optional = true
+
+    [types.outputFormat.permalinkable]
+    type = "boolean"
+    optional = true
+
+    [types.outputFormat.protocol]
+    type = "string"
+    optional = true
+
+    [types.outputFormat.rel]
+    type = "string"
+    optional = true
+
+    [types.outputFormat.root]
+    type = "boolean"
+    optional = true
+
+    [types.outputFormat.ugly]
+    type = "boolean"
+    optional = true
+
+    [types.outputFormat.weight]
+    type = "integer"
+    optional = true
+
+[types.outputs]
+type = "collection"
+typeof = "types.stringArray"
+
+[types.mediaTypes]
+type = "collection"
+typeof = "types.mediaType"
+
+[types.mediaType]
+type = "table"
+
+    [types.mediaType.delimiter]
+    type = "string"
+    optional = true
+
+    [types.mediaType.firstSuffix]
+    type = "string"
+    optional = true
+
+    [types.mediaType.suffix]
+    type = "string"
+    optional = true
+
+    [types.mediaType.suffixes]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.goldmarkExtensionToggle]
+type = "table"
+
+    [types.goldmarkExtensionToggle.enable]
+    type = "boolean"
+    optional = true
+
+[types.goldmarkExtensionsExtras]
+type = "table"
+
+    [types.goldmarkExtensionsExtras.delete]
+    typeof = "types.goldmarkExtensionToggle"
+    optional = true
+
+    [types.goldmarkExtensionsExtras.insert]
+    typeof = "types.goldmarkExtensionToggle"
+    optional = true
+
+    [types.goldmarkExtensionsExtras.mark]
+    typeof = "types.goldmarkExtensionToggle"
+    optional = true
+
+    [types.goldmarkExtensionsExtras.subscript]
+    typeof = "types.goldmarkExtensionToggle"
+    optional = true
+
+    [types.goldmarkExtensionsExtras.superscript]
+    typeof = "types.goldmarkExtensionToggle"
+    optional = true
+
+[types.goldmarkExtensions]
+type = "table"
+
+    [types.goldmarkExtensions.cjk]
+    type = "table"
+    optional = true
+
+    [types.goldmarkExtensions.definitionList]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkExtensions.extras]
+    typeof = "types.goldmarkExtensionsExtras"
+    optional = true
+
+    [types.goldmarkExtensions.footnote]
+    type = "table"
+    optional = true
+
+    [types.goldmarkExtensions.linkify]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkExtensions.linkifyProtocol]
+    type = "string"
+    optional = true
+
+    [types.goldmarkExtensions.passthrough]
+    type = "table"
+    optional = true
+
+    [types.goldmarkExtensions.strikethrough]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkExtensions.table]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkExtensions.taskList]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkExtensions.typographer]
+    type = "table"
+    optional = true
+
+[types.goldmarkParser]
+type = "table"
+
+    [types.goldmarkParser.attribute]
+    type = "table"
+    optional = true
+
+    [types.goldmarkParser.autoDefinitionTermID]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkParser.autoHeadingID]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkParser.autoIDType]
+    type = "string"
+    allowedvalues = [ "blackfriday", "github", "github-ascii" ]
+    optional = true
+
+    [types.goldmarkParser.wrapStandAloneImageWithinParagraph]
+    type = "boolean"
+    optional = true
+
+[types.goldmarkRenderHooks]
+type = "table"
+
+    [types.goldmarkRenderHooks.image]
+    type = "table"
+    optional = true
+
+    [types.goldmarkRenderHooks.link]
+    type = "table"
+    optional = true
+
+[types.goldmarkRenderer]
+type = "table"
+
+    [types.goldmarkRenderer.hardWraps]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkRenderer.unsafe]
+    type = "boolean"
+    optional = true
+
+    [types.goldmarkRenderer.xhtml]
+    type = "boolean"
+    optional = true
+
+[types.goldmark]
+type = "table"
+
+    [types.goldmark.duplicateResourceFiles]
+    type = "boolean"
+    optional = true
+
+    [types.goldmark.extensions]
+    typeof = "types.goldmarkExtensions"
+    optional = true
+
+    [types.goldmark.parser]
+    typeof = "types.goldmarkParser"
+    optional = true
+
+    [types.goldmark.renderHooks]
+    typeof = "types.goldmarkRenderHooks"
+    optional = true
+
+    [types.goldmark.renderer]
+    typeof = "types.goldmarkRenderer"
+    optional = true
+
+[types.highlight]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.highlight.anchorLineNos]
+    type = "boolean"
+    optional = true
+
+    [types.highlight.codeFences]
+    type = "boolean"
+    optional = true
+
+    [types.highlight.guessSyntax]
+    type = "boolean"
+    optional = true
+
+    [types.highlight.hl_Lines]
+    type = "string"
+    optional = true
+
+    [types.highlight.lineAnchors]
+    type = "string"
+    optional = true
+
+    [types.highlight.lineNoStart]
+    type = "integer"
+    optional = true
+
+    [types.highlight.lineNos]
+    type = "boolean"
+    optional = true
+
+    [types.highlight.lineNumbersInTable]
+    type = "boolean"
+    optional = true
+
+    [types.highlight.noClasses]
+    type = "boolean"
+    optional = true
+
+    [types.highlight.noHl]
+    type = "boolean"
+    optional = true
+
+    [types.highlight.style]
+    type = "string"
+    optional = true
+
+    [types.highlight.tabWidth]
+    type = "integer"
+    optional = true
+
+[types.tableOfContents]
+type = "table"
+
+    [types.tableOfContents.endLevel]
+    type = "integer"
+    optional = true
+
+    [types.tableOfContents.ordered]
+    type = "boolean"
+    optional = true
+
+    [types.tableOfContents.startLevel]
+    type = "integer"
+    optional = true
+
+[types.markup]
+type = "table"
+
+    [types.markup.asciidocExt]
+    type = "table"
+    optional = true
+
+    [types.markup.defaultMarkdownHandler]
+    type = "string"
+    allowedvalues = [ "asciidocext", "goldmark", "org", "pandoc", "rst" ]
+    optional = true
+
+    [types.markup.goldmark]
+    typeof = "types.goldmark"
+    optional = true
+
+    [types.markup.highlight]
+    typeof = "types.highlight"
+    optional = true
+
+    [types.markup.tableOfContents]
+    typeof = "types.tableOfContents"
+    optional = true
+
+[types.minifyTdewolff]
+type = "table"
+
+    [types.minifyTdewolff.css]
+    type = "table"
+    optional = true
+
+    [types.minifyTdewolff.html]
+    type = "table"
+    optional = true
+
+    [types.minifyTdewolff.js]
+    type = "table"
+    optional = true
+
+    [types.minifyTdewolff.json]
+    type = "table"
+    optional = true
+
+    [types.minifyTdewolff.svg]
+    type = "table"
+    optional = true
+
+    [types.minifyTdewolff.xml]
+    type = "table"
+    optional = true
+
+[types.minify]
+type = "table"
+
+    [types.minify.disableCSS]
+    type = "boolean"
+    optional = true
+
+    [types.minify.disableHTML]
+    type = "boolean"
+    optional = true
+
+    [types.minify.disableJS]
+    type = "boolean"
+    optional = true
+
+    [types.minify.disableJSON]
+    type = "boolean"
+    optional = true
+
+    [types.minify.disableSVG]
+    type = "boolean"
+    optional = true
+
+    [types.minify.disableXML]
+    type = "boolean"
+    optional = true
+
+    [types.minify.minifyOutput]
+    type = "boolean"
+    optional = true
+
+    [types.minify.tdewolff]
+    typeof = "types.minifyTdewolff"
+    optional = true
+
+[types.moduleImport]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.moduleImport.path]
+    type = "string"
+    optional = true
+
+    [types.moduleImport.disable]
+    type = "boolean"
+    optional = true
+
+    [types.moduleImport.ignoreConfig]
+    type = "boolean"
+    optional = true
+
+    [types.moduleImport.ignoreImports]
+    type = "boolean"
+    optional = true
+
+    [types.moduleImport.mounts]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.moduleMount"
+    optional = true
+
+[types.moduleMount]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.moduleMount.source]
+    type = "string"
+    optional = true
+
+    [types.moduleMount.target]
+    type = "string"
+    optional = true
+
+    [types.moduleMount.lang]
+    type = "string"
+    optional = true
+
+    [types.moduleMount.disableWatch]
+    type = "boolean"
+    optional = true
+
+    [types.moduleMount.includeFiles]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.moduleMount.excludeFiles]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.module]
+type = "table"
+
+    [types.module.imports]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.moduleImport"
+    optional = true
+
+    [types.module.mounts]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.moduleMount"
+    optional = true
+
+    [types.module.noProxy]
+    type = "string"
+    optional = true
+
+    [types.module.private]
+    type = "string"
+    optional = true
+
+    [types.module.proxy]
+    type = "string"
+    optional = true
+
+    [types.module.replacements]
+    type = "string"
+    optional = true
+
+    [types.module.workspace]
+    type = "string"
+    optional = true
+
+[types.pagination]
+type = "table"
+
+    [types.pagination.disableAliases]
+    type = "boolean"
+    optional = true
+
+    [types.pagination.pagerSize]
+    type = "integer"
+    min = 1
+    optional = true
+
+    [types.pagination.path]
+    type = "string"
+    optional = true
+
+[types.permalinks]
+type = "collection"
+typeof = "types.anyValue"
+
+[types.privacyDisqus]
+type = "table"
+
+    [types.privacyDisqus.disable]
+    type = "boolean"
+    optional = true
+
+[types.privacyGoogleAnalytics]
+typeof = "types.privacyDisqus"
+
+    [types.privacyGoogleAnalytics.respectDoNotTrack]
+    type = "boolean"
+    optional = true
+
+[types.privacySimple]
+typeof = "types.privacyDisqus"
+
+    [types.privacySimple.simple]
+    type = "boolean"
+    optional = true
+
+[types.privacyDnt]
+typeof = "types.privacySimple"
+
+    [types.privacyDnt.enableDNT]
+    type = "boolean"
+    optional = true
+
+[types.privacyYouTube]
+typeof = "types.privacyDisqus"
+
+    [types.privacyYouTube.privacyEnhanced]
+    type = "boolean"
+    optional = true
+
+[types.privacy]
+type = "table"
+
+    [types.privacy.disqus]
+    typeof = "types.privacyDisqus"
+    optional = true
+
+    [types.privacy.googleAnalytics]
+    typeof = "types.privacyGoogleAnalytics"
+    optional = true
+
+    [types.privacy.instagram]
+    typeof = "types.privacySimple"
+    optional = true
+
+    [types.privacy.vimeo]
+    typeof = "types.privacyDnt"
+    optional = true
+
+    [types.privacy.x]
+    typeof = "types.privacyDnt"
+    optional = true
+
+    [types.privacy.youTube]
+    typeof = "types.privacyYouTube"
+    optional = true
+
+[types.securityAllowDeny]
+type = "table"
+
+    [types.securityAllowDeny.allow]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.securityAllowDeny.deny]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.securityHttp]
+typeof = "types.securityAllowDeny"
+
+    [types.securityHttp.mediaTypes]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.securityHttp.methods]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.securityHttp.urls]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.security]
+type = "table"
+
+    [types.security.enableInlineShortcodes]
+    type = "boolean"
+    optional = true
+
+    [types.security.exec]
+    typeof = "types.securityAllowDeny"
+    optional = true
+
+    [types.security.funcs]
+    typeof = "types.securityAllowDeny"
+    optional = true
+
+    [types.security.getenv]
+    typeof = "types.securityAllowDeny"
+    optional = true
+
+    [types.security.http]
+    typeof = "types.securityHttp"
+    optional = true
+
+[types.server]
+type = "collection"
+typeof = "types.anyValue"
+
+[types.services]
+type = "collection"
+typeof = "types.anyValue"
+
+[types.sitemap]
+type = "table"
+
+    [types.sitemap.changeFreq]
+    type = "string"
+    allowedvalues = [ "", "always", "hourly", "daily", "weekly", "monthly", "yearly", "never" ]
+    optional = true
+
+    [types.sitemap.disable]
+    type = "boolean"
+    optional = true
+
+    [types.sitemap.filename]
+    type = "string"
+    optional = true
+
+    [types.sitemap.priority]
+    typeof = "types.numberValue"
+    optional = true
+
+[types.taxonomies]
+type = "collection"
+typeof = "types.stringValue"
+
+[types.language]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.language.baseURL]
+    type = "string"
+    optional = true
+
+    [types.language.contentDir]
+    type = "string"
+    optional = true
+
+    [types.language.direction]
+    type = "string"
+    allowedvalues = [ "ltr", "rtl" ]
+    optional = true
+
+    [types.language.disabled]
+    type = "boolean"
+    optional = true
+
+    [types.language.label]
+    type = "string"
+    optional = true
+
+    [types.language.languageCode]
+    type = "string"
+    optional = true
+
+    [types.language.languageDirection]
+    type = "string"
+    optional = true
+
+    [types.language.languageName]
+    type = "string"
+    optional = true
+
+    [types.language.locale]
+    type = "string"
+    optional = true
+
+    [types.language.menus]
+    typeof = "types.menus"
+    optional = true
+
+    [types.language.pagination]
+    typeof = "types.pagination"
+    optional = true
+
+    [types.language.params]
+    typeof = "types.anyMap"
+    optional = true
+
+    [types.language.timeZone]
+    type = "string"
+    optional = true
+
+    [types.language.title]
+    type = "string"
+    optional = true
+
+    [types.language.weight]
+    type = "integer"
+    optional = true
+
+[types.languages]
+type = "collection"
+typeof = "types.language"
+
+[elements]
+
+[elements.archetypeDir]
+type = "string"
+optional = true
+
+[elements.assetDir]
+type = "string"
+optional = true
+
+[elements.baseURL]
+type = "string"
+optional = true
+
+[elements.build]
+typeof = "types.build"
+optional = true
+
+[elements.buildDrafts]
+type = "boolean"
+optional = true
+
+[elements.buildExpired]
+type = "boolean"
+optional = true
+
+[elements.buildFuture]
+type = "boolean"
+optional = true
+
+[elements.cacheDir]
+type = "string"
+optional = true
+
+[elements.caches]
+typeof = "types.caches"
+optional = true
+
+[elements.canonifyURLs]
+type = "boolean"
+optional = true
+
+[elements.capitalizeListTitles]
+type = "boolean"
+optional = true
+
+[elements.cascade]
+typeof = "types.cascade"
+optional = true
+
+[elements.cleanDestinationDir]
+type = "boolean"
+optional = true
+
+[elements.contentDir]
+type = "string"
+optional = true
+
+[elements.copyright]
+type = "string"
+optional = true
+
+[elements.dataDir]
+type = "string"
+optional = true
+
+[elements.defaultContentLanguage]
+type = "string"
+optional = true
+
+[elements.defaultContentLanguageInSubdir]
+type = "boolean"
+optional = true
+
+[elements.defaultContentRole]
+type = "string"
+optional = true
+
+[elements.defaultContentRoleInSubdir]
+type = "boolean"
+optional = true
+
+[elements.defaultContentVersion]
+type = "string"
+optional = true
+
+[elements.defaultContentVersionInSubdir]
+type = "boolean"
+optional = true
+
+[elements.defaultOutputFormat]
+type = "string"
+optional = true
+
+[elements.deployment]
+typeof = "types.anyMap"
+optional = true
+
+[elements.disableAliases]
+type = "boolean"
+optional = true
+
+[elements.disableDefaultLanguageRedirect]
+type = "boolean"
+optional = true
+
+[elements.disableDefaultSiteRedirect]
+type = "boolean"
+optional = true
+
+[elements.disableHugoGeneratorInject]
+type = "boolean"
+optional = true
+
+[elements.disableKinds]
+type = "array"
+arraytype = "string"
+optional = true
+
+[elements.disableLanguages]
+type = "array"
+arraytype = "string"
+optional = true
+
+[elements.disableLiveReload]
+type = "boolean"
+optional = true
+
+[elements.disablePathToLower]
+type = "boolean"
+optional = true
+
+[elements.enableEmoji]
+type = "boolean"
+optional = true
+
+[elements.enableGitInfo]
+type = "boolean"
+optional = true
+
+[elements.enableMissingTranslationPlaceholders]
+type = "boolean"
+optional = true
+
+[elements.enableRobotsTXT]
+type = "boolean"
+optional = true
+
+[elements.environment]
+type = "string"
+optional = true
+
+[elements.frontmatter]
+typeof = "types.frontmatter"
+optional = true
+
+[elements.hasCJKLanguage]
+type = "boolean"
+optional = true
+
+[elements.HTTPCache]
+typeof = "types.anyMap"
+optional = true
+
+[elements.i18nDir]
+type = "string"
+optional = true
+
+[elements.ignoreCache]
+type = "boolean"
+optional = true
+
+[elements.ignoreFiles]
+type = "array"
+arraytype = "string"
+optional = true
+
+[elements.ignoreLogs]
+type = "array"
+arraytype = "string"
+optional = true
+
+[elements.ignoreVendorPaths]
+type = "string"
+optional = true
+
+[elements.imaging]
+typeof = "types.imaging"
+optional = true
+
+[elements.languageCode]
+type = "string"
+optional = true
+
+[elements.languages]
+typeof = "types.languages"
+optional = true
+
+[elements.layoutDir]
+type = "string"
+optional = true
+
+[elements.locale]
+type = "string"
+optional = true
+
+[elements.mainSections]
+typeof = "types.stringOrStringArray"
+optional = true
+
+[elements.markup]
+typeof = "types.markup"
+optional = true
+
+[elements.mediaTypes]
+typeof = "types.mediaTypes"
+optional = true
+
+[elements.menus]
+typeof = "types.menus"
+optional = true
+
+[elements.minify]
+typeof = "types.minify"
+optional = true
+
+[elements.module]
+typeof = "types.module"
+optional = true
+
+[elements.newContentEditor]
+type = "string"
+optional = true
+
+[elements.noBuildLock]
+type = "boolean"
+optional = true
+
+[elements.noChmod]
+type = "boolean"
+optional = true
+
+[elements.noTimes]
+type = "boolean"
+optional = true
+
+[elements.outputFormats]
+typeof = "types.outputFormats"
+optional = true
+
+[elements.outputs]
+typeof = "types.outputs"
+optional = true
+
+[elements.page]
+typeof = "types.anyMap"
+optional = true
+
+[elements.pagination]
+typeof = "types.pagination"
+optional = true
+
+[elements.panicOnWarning]
+type = "boolean"
+optional = true
+
+[elements.params]
+typeof = "types.anyMap"
+optional = true
+
+[elements.permalinks]
+typeof = "types.permalinks"
+optional = true
+
+[elements.pluralizeListTitles]
+type = "boolean"
+optional = true
+
+[elements.printI18nWarnings]
+type = "boolean"
+optional = true
+
+[elements.printPathWarnings]
+type = "boolean"
+optional = true
+
+[elements.printUnusedTemplates]
+type = "boolean"
+optional = true
+
+[elements.privacy]
+typeof = "types.privacy"
+optional = true
+
+[elements.publishDir]
+type = "string"
+optional = true
+
+[elements.refLinksErrorLevel]
+type = "string"
+allowedvalues = [ "ERROR", "WARNING" ]
+optional = true
+
+[elements.refLinksNotFoundURL]
+type = "string"
+optional = true
+
+[elements.related]
+typeof = "types.anyMap"
+optional = true
+
+[elements.relativeURLs]
+type = "boolean"
+optional = true
+
+[elements.removePathAccents]
+type = "boolean"
+optional = true
+
+[elements.renderSegments]
+type = "array"
+arraytype = "string"
+optional = true
+
+[elements.resourceDir]
+type = "string"
+optional = true
+
+[elements.roles]
+typeof = "types.anyMap"
+optional = true
+
+[elements.sectionPagesMenu]
+type = "string"
+optional = true
+
+[elements.security]
+typeof = "types.security"
+optional = true
+
+[elements.segments]
+typeof = "types.anyMap"
+optional = true
+
+[elements.server]
+typeof = "types.server"
+optional = true
+
+[elements.services]
+typeof = "types.services"
+optional = true
+
+[elements.sitemap]
+typeof = "types.sitemap"
+optional = true
+
+[elements.staticDir]
+typeof = "types.stringOrStringArray"
+optional = true
+
+[elements.summaryLength]
+type = "integer"
+optional = true
+
+[elements.taxonomies]
+typeof = "types.taxonomies"
+optional = true
+
+[elements.templateMetrics]
+type = "boolean"
+optional = true
+
+[elements.templateMetricsHints]
+type = "boolean"
+optional = true
+
+[elements.theme]
+typeof = "types.stringOrStringArray"
+optional = true
+
+[elements.themesDir]
+type = "string"
+optional = true
+
+[elements.timeout]
+type = "string"
+optional = true
+
+[elements.timeZone]
+type = "string"
+optional = true
+
+[elements.title]
+type = "string"
+optional = true
+
+[elements.titleCaseStyle]
+type = "string"
+allowedvalues = [ "ap", "chicago", "firstupper", "go", "none" ]
+optional = true
+
+[elements.uglyurls]
+typeof = "types.anyMap"
+optional = true
+
+[elements.versions]
+typeof = "types.anyMap"
+optional = true

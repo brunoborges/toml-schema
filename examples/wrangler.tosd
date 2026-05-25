@@ -1,0 +1,1199 @@
+# Based on https://developers.cloudflare.com/workers/wrangler/configuration/
+
+[toml-schema]
+version = "1.0.0"
+
+[types.anyValue]
+type = "any"
+
+[types.booleanValue]
+type = "boolean"
+
+[types.integerValue]
+type = "integer"
+
+[types.floatValue]
+type = "float"
+
+[types.stringValue]
+type = "string"
+
+[types.numberValue]
+oneof = [ "types.integerValue", "types.floatValue" ]
+
+[types.stringArray]
+type = "array"
+arraytype = "string"
+
+[types.numberArray]
+type = "array"
+arraytype = "any"
+itemtype = "types.numberValue"
+
+[types.stringMap]
+type = "collection"
+typeof = "types.stringValue"
+
+[types.anyMap]
+type = "collection"
+typeof = "types.anyValue"
+
+[types.stringOrStringArray]
+oneof = [ "types.stringValue", "types.stringArray" ]
+
+[types.booleanOrStringArray]
+oneof = [ "types.booleanValue", "types.stringArray" ]
+
+[types.numberOrNumberArray]
+oneof = [ "types.numberValue", "types.numberArray" ]
+
+[types.compatibilityDate]
+type = "string"
+pattern = '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+
+[types.workerName]
+type = "string"
+pattern = '^[A-Za-z0-9][A-Za-z0-9-]{0,254}$'
+
+[types.routeTable]
+type = "table"
+
+    [types.routeTable.children]
+    pattern = { type = "string" }
+
+    [types.routeTable.custom_domain]
+    type = "boolean"
+    optional = true
+
+    [types.routeTable.zone_id]
+    type = "string"
+    optional = true
+
+    [types.routeTable.zone_name]
+    type = "string"
+    optional = true
+
+[types.route]
+oneof = [ "types.stringValue", "types.routeTable" ]
+
+[types.routes]
+type = "array"
+arraytype = "any"
+itemtype = "types.route"
+
+[types.triggers]
+type = "table"
+
+    [types.triggers.crons]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.observability]
+type = "table"
+
+    [types.observability.enabled]
+    type = "boolean"
+
+    [types.observability.head_sampling_rate]
+    typeof = "types.numberValue"
+    optional = true
+
+[types.build]
+type = "table"
+
+    [types.build.command]
+    type = "string"
+    optional = true
+
+    [types.build.cwd]
+    type = "string"
+    optional = true
+
+    [types.build.watch_dir]
+    typeof = "types.stringOrStringArray"
+    optional = true
+
+[types.limits]
+type = "table"
+
+    [types.limits.cpu_ms]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.limits.subrequests]
+    typeof = "types.numberValue"
+    optional = true
+
+[types.placement]
+type = "table"
+
+    [types.placement.mode]
+    type = "string"
+    allowedvalues = [ "smart" ]
+    optional = true
+
+    [types.placement.region]
+    type = "string"
+    optional = true
+
+    [types.placement.host]
+    type = "string"
+    optional = true
+
+    [types.placement.hostname]
+    type = "string"
+    optional = true
+
+[types.assets]
+type = "table"
+
+    [types.assets.binding]
+    type = "string"
+    optional = true
+
+    [types.assets.directory]
+    type = "string"
+    optional = true
+
+    [types.assets.html_handling]
+    type = "string"
+    allowedvalues = [ "auto-trailing-slash", "force-trailing-slash", "drop-trailing-slash", "none" ]
+    optional = true
+
+    [types.assets.not_found_handling]
+    type = "string"
+    allowedvalues = [ "single-page-application", "404-page", "none" ]
+    optional = true
+
+    [types.assets.run_worker_first]
+    typeof = "types.booleanOrStringArray"
+    optional = true
+
+[types.moduleRule]
+type = "table"
+
+    [types.moduleRule.children]
+    type = { type = "string", allowedvalues = [ "CommonJS", "CompiledWasm", "Data", "ESModule", "Text" ] }
+
+    [types.moduleRule.globs]
+    type = "array"
+    arraytype = "string"
+
+    [types.moduleRule.fallthrough]
+    type = "boolean"
+    optional = true
+
+[types.rules]
+type = "array"
+arraytype = "table"
+itemtype = "types.moduleRule"
+
+[types.pythonModules]
+type = "table"
+
+    [types.pythonModules.excludes]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.dev]
+type = "table"
+
+    [types.dev.container_engine]
+    type = "string"
+    optional = true
+
+    [types.dev.enable_containers]
+    type = "boolean"
+    optional = true
+
+    [types.dev.generate_types]
+    type = "boolean"
+    optional = true
+
+    [types.dev.host]
+    type = "string"
+    optional = true
+
+    [types.dev.ip]
+    type = "string"
+    optional = true
+
+    [types.dev.local_protocol]
+    type = "string"
+    allowedvalues = [ "http", "https" ]
+    optional = true
+
+    [types.dev.port]
+    type = "integer"
+    min = 1
+    max = 65535
+    optional = true
+
+    [types.dev.upstream_protocol]
+    type = "string"
+    allowedvalues = [ "http", "https" ]
+    optional = true
+
+[types.kvNamespace]
+type = "table"
+
+    [types.kvNamespace.binding]
+    type = "string"
+
+    [types.kvNamespace.id]
+    type = "string"
+    optional = true
+
+    [types.kvNamespace.preview_id]
+    type = "string"
+    optional = true
+
+[types.kvNamespaces]
+type = "array"
+arraytype = "table"
+itemtype = "types.kvNamespace"
+
+[types.d1Database]
+type = "table"
+
+    [types.d1Database.binding]
+    type = "string"
+
+    [types.d1Database.database_id]
+    type = "string"
+    optional = true
+
+    [types.d1Database.database_name]
+    type = "string"
+    optional = true
+
+    [types.d1Database.migrations_dir]
+    type = "string"
+    optional = true
+
+    [types.d1Database.preview_database_id]
+    type = "string"
+    optional = true
+
+[types.d1Databases]
+type = "array"
+arraytype = "table"
+itemtype = "types.d1Database"
+
+[types.r2Bucket]
+type = "table"
+
+    [types.r2Bucket.binding]
+    type = "string"
+
+    [types.r2Bucket.bucket_name]
+    type = "string"
+    optional = true
+
+    [types.r2Bucket.jurisdiction]
+    type = "string"
+    optional = true
+
+    [types.r2Bucket.preview_bucket_name]
+    type = "string"
+    optional = true
+
+[types.r2Buckets]
+type = "array"
+arraytype = "table"
+itemtype = "types.r2Bucket"
+
+[types.simpleBinding]
+type = "table"
+
+    [types.simpleBinding.binding]
+    type = "string"
+
+[types.idBinding]
+typeof = "types.simpleBinding"
+
+    [types.idBinding.id]
+    type = "string"
+
+[types.nameBinding]
+typeof = "types.simpleBinding"
+
+    [types.nameBinding.name]
+    type = "string"
+
+[types.namespaceBinding]
+typeof = "types.simpleBinding"
+
+    [types.namespaceBinding.namespace]
+    type = "string"
+
+[types.aiSearchInstance]
+typeof = "types.simpleBinding"
+
+    [types.aiSearchInstance.instance_name]
+    type = "string"
+
+[types.indexBinding]
+typeof = "types.simpleBinding"
+
+    [types.indexBinding.index_name]
+    type = "string"
+
+[types.datasetBinding]
+typeof = "types.simpleBinding"
+
+    [types.datasetBinding.dataset]
+    type = "string"
+    optional = true
+
+[types.serviceBinding]
+typeof = "types.simpleBinding"
+
+    [types.serviceBinding.service]
+    type = "string"
+
+    [types.serviceBinding.entrypoint]
+    type = "string"
+    optional = true
+
+[types.certificateBinding]
+typeof = "types.simpleBinding"
+
+    [types.certificateBinding.certificate_id]
+    type = "string"
+
+[types.workflowBinding]
+typeof = "types.simpleBinding"
+
+    [types.workflowBinding.class_name]
+    type = "string"
+
+    [types.workflowBinding.name]
+    type = "string"
+
+    [types.workflowBinding.script_name]
+    type = "string"
+    optional = true
+
+[types.dispatchOutbound]
+type = "table"
+
+    [types.dispatchOutbound.service]
+    type = "string"
+
+    [types.dispatchOutbound.parameters]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.dispatchNamespace]
+typeof = "types.namespaceBinding"
+
+    [types.dispatchNamespace.outbound]
+    typeof = "types.dispatchOutbound"
+    optional = true
+
+[types.durableObjectBinding]
+type = "table"
+
+    [types.durableObjectBinding.name]
+    type = "string"
+
+    [types.durableObjectBinding.class_name]
+    type = "string"
+
+    [types.durableObjectBinding.environment]
+    type = "string"
+    optional = true
+
+    [types.durableObjectBinding.script_name]
+    type = "string"
+    optional = true
+
+[types.durableObjects]
+type = "table"
+
+    [types.durableObjects.bindings]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.durableObjectBinding"
+    optional = true
+
+[types.renameClass]
+type = "table"
+
+    [types.renameClass.from]
+    type = "string"
+
+    [types.renameClass.to]
+    type = "string"
+
+[types.migration]
+type = "table"
+
+    [types.migration.tag]
+    type = "string"
+
+    [types.migration.deleted_classes]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.migration.new_classes]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.migration.new_sqlite_classes]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.migration.renamed_classes]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.renameClass"
+    optional = true
+
+    [types.migration.transferred_classes]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.migrations]
+type = "array"
+arraytype = "table"
+itemtype = "types.migration"
+
+[types.emailBinding]
+type = "table"
+
+    [types.emailBinding.name]
+    type = "string"
+
+    [types.emailBinding.allowed_destination_addresses]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.emailBinding.destination_address]
+    type = "string"
+    optional = true
+
+[types.queueProducer]
+typeof = "types.simpleBinding"
+
+    [types.queueProducer.delivery_delay]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.queueProducer.queue]
+    type = "string"
+
+[types.queueConsumer]
+type = "table"
+
+    [types.queueConsumer.queue]
+    type = "string"
+
+    [types.queueConsumer.dead_letter_queue]
+    type = "string"
+    optional = true
+
+    [types.queueConsumer.max_batch_size]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.queueConsumer.max_batch_timeout]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.queueConsumer.max_concurrency]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.queueConsumer.max_retries]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.queueConsumer.retry_delay]
+    typeof = "types.numberValue"
+    optional = true
+
+[types.queues]
+type = "table"
+
+    [types.queues.consumers]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.queueConsumer"
+    optional = true
+
+    [types.queues.producers]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.queueProducer"
+    optional = true
+
+[types.secrets]
+type = "table"
+
+    [types.secrets.required]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.secretsStoreSecret]
+typeof = "types.simpleBinding"
+
+    [types.secretsStoreSecret.store_id]
+    type = "string"
+    optional = true
+
+    [types.secretsStoreSecret.secret_name]
+    type = "string"
+    optional = true
+
+[types.site]
+type = "table"
+
+    [types.site.bucket]
+    type = "string"
+
+    [types.site.exclude]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.site.include]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.instanceType]
+type = "table"
+
+    [types.instanceType.disk_mb]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.instanceType.memory_mib]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.instanceType.vcpu]
+    typeof = "types.numberValue"
+    optional = true
+
+[types.namedInstanceType]
+type = "string"
+allowedvalues = [ "lite", "basic", "standard-1", "standard-2", "standard-3", "standard-4" ]
+
+[types.containerInstanceType]
+oneof = [ "types.namedInstanceType", "types.instanceType" ]
+
+[types.ssh]
+type = "table"
+
+    [types.ssh.enabled]
+    type = "boolean"
+    optional = true
+
+    [types.ssh.port]
+    type = "integer"
+    min = 1
+    max = 65535
+    optional = true
+
+[types.authorizedKey]
+type = "table"
+
+    [types.authorizedKey.name]
+    type = "string"
+
+    [types.authorizedKey.public_key]
+    type = "string"
+
+[types.containerConstraints]
+type = "table"
+
+    [types.containerConstraints.jurisdiction]
+    type = "string"
+    allowedvalues = [ "eu", "fedramp" ]
+    optional = true
+
+    [types.containerConstraints.regions]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.container]
+type = "table"
+
+    [types.container.class_name]
+    type = "string"
+
+    [types.container.image]
+    type = "string"
+
+    [types.container.authorized_keys]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.authorizedKey"
+    optional = true
+
+    [types.container.constraints]
+    typeof = "types.containerConstraints"
+    optional = true
+
+    [types.container.image_build_context]
+    type = "string"
+    optional = true
+
+    [types.container.image_vars]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.container.instance_type]
+    typeof = "types.containerInstanceType"
+    optional = true
+
+    [types.container.max_instances]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.container.name]
+    type = "string"
+    optional = true
+
+    [types.container.rollout_active_grace_period]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.container.rollout_step_percentage]
+    typeof = "types.numberOrNumberArray"
+    optional = true
+
+    [types.container.ssh]
+    typeof = "types.ssh"
+    optional = true
+
+    [types.container.wrangler_ssh]
+    typeof = "types.ssh"
+    optional = true
+
+[types.containers]
+type = "array"
+arraytype = "table"
+itemtype = "types.container"
+
+[types.arrayOfSimpleBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.simpleBinding"
+
+[types.arrayOfIdBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.idBinding"
+
+[types.arrayOfNameBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.nameBinding"
+
+[types.arrayOfNamespaceBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.namespaceBinding"
+
+[types.arrayOfIndexBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.indexBinding"
+
+[types.arrayOfDatasetBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.datasetBinding"
+
+[types.arrayOfServiceBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.serviceBinding"
+
+[types.arrayOfCertificateBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.certificateBinding"
+
+[types.arrayOfWorkflowBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.workflowBinding"
+
+[types.arrayOfDispatchNamespaces]
+type = "array"
+arraytype = "table"
+itemtype = "types.dispatchNamespace"
+
+[types.arrayOfEmailBindings]
+type = "array"
+arraytype = "table"
+itemtype = "types.emailBinding"
+
+[types.arrayOfSecretsStoreSecrets]
+type = "array"
+arraytype = "table"
+itemtype = "types.secretsStoreSecret"
+
+[types.workerSettings]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.workerSettings.account_id]
+    type = "string"
+    optional = true
+
+    [types.workerSettings.ai]
+    typeof = "types.simpleBinding"
+    optional = true
+
+    [types.workerSettings.ai_search]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.aiSearchInstance"
+    optional = true
+
+    [types.workerSettings.ai_search_namespaces]
+    typeof = "types.arrayOfNamespaceBindings"
+    optional = true
+
+    [types.workerSettings.alias]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.workerSettings.analytics_engine_datasets]
+    typeof = "types.arrayOfDatasetBindings"
+    optional = true
+
+    [types.workerSettings.assets]
+    typeof = "types.assets"
+    optional = true
+
+    [types.workerSettings.base_dir]
+    type = "string"
+    optional = true
+
+    [types.workerSettings.browser]
+    typeof = "types.simpleBinding"
+    optional = true
+
+    [types.workerSettings.build]
+    typeof = "types.build"
+    optional = true
+
+    [types.workerSettings.compatibility_date]
+    typeof = "types.compatibilityDate"
+    optional = true
+
+    [types.workerSettings.compatibility_flags]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.workerSettings.containers]
+    typeof = "types.containers"
+    optional = true
+
+    [types.workerSettings.d1_databases]
+    typeof = "types.d1Databases"
+    optional = true
+
+    [types.workerSettings.define]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.workerSettings.dev]
+    typeof = "types.dev"
+    optional = true
+
+    [types.workerSettings.dispatch_namespaces]
+    typeof = "types.arrayOfDispatchNamespaces"
+    optional = true
+
+    [types.workerSettings.durable_objects]
+    typeof = "types.durableObjects"
+    optional = true
+
+    [types.workerSettings.find_additional_modules]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.hyperdrive]
+    typeof = "types.arrayOfIdBindings"
+    optional = true
+
+    [types.workerSettings.images]
+    typeof = "types.simpleBinding"
+    optional = true
+
+    [types.workerSettings.keep_names]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.kv_namespaces]
+    typeof = "types.kvNamespaces"
+    optional = true
+
+    [types.workerSettings.limits]
+    typeof = "types.limits"
+    optional = true
+
+    [types.workerSettings.logpush]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.main]
+    type = "string"
+    optional = true
+
+    [types.workerSettings.minify]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.mtls_certificates]
+    typeof = "types.arrayOfCertificateBindings"
+    optional = true
+
+    [types.workerSettings.name]
+    typeof = "types.workerName"
+    optional = true
+
+    [types.workerSettings.no_bundle]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.observability]
+    typeof = "types.observability"
+    optional = true
+
+    [types.workerSettings.placement]
+    typeof = "types.placement"
+    optional = true
+
+    [types.workerSettings.preserve_file_names]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.preview_urls]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.python_modules]
+    typeof = "types.pythonModules"
+    optional = true
+
+    [types.workerSettings.queues]
+    typeof = "types.queues"
+    optional = true
+
+    [types.workerSettings.r2_buckets]
+    typeof = "types.r2Buckets"
+    optional = true
+
+    [types.workerSettings.route]
+    typeof = "types.route"
+    optional = true
+
+    [types.workerSettings.routes]
+    typeof = "types.routes"
+    optional = true
+
+    [types.workerSettings.rules]
+    typeof = "types.rules"
+    optional = true
+
+    [types.workerSettings.secrets]
+    typeof = "types.secrets"
+    optional = true
+
+    [types.workerSettings.secrets_store_secrets]
+    typeof = "types.arrayOfSecretsStoreSecrets"
+    optional = true
+
+    [types.workerSettings.send_email]
+    typeof = "types.arrayOfEmailBindings"
+    optional = true
+
+    [types.workerSettings.services]
+    typeof = "types.arrayOfServiceBindings"
+    optional = true
+
+    [types.workerSettings.tail_consumers]
+    typeof = "types.arrayOfServiceBindings"
+    optional = true
+
+    [types.workerSettings.triggers]
+    typeof = "types.triggers"
+    optional = true
+
+    [types.workerSettings.tsconfig]
+    type = "string"
+    optional = true
+
+    [types.workerSettings.upload_source_maps]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.vars]
+    typeof = "types.anyMap"
+    optional = true
+
+    [types.workerSettings.vectorize]
+    typeof = "types.arrayOfIndexBindings"
+    optional = true
+
+    [types.workerSettings.workers_dev]
+    type = "boolean"
+    optional = true
+
+    [types.workerSettings.workflows]
+    typeof = "types.arrayOfWorkflowBindings"
+    optional = true
+
+[types.env]
+type = "collection"
+typeof = "types.workerSettings"
+
+[elements]
+
+[elements.name]
+typeof = "types.workerName"
+
+[elements.main]
+type = "string"
+
+[elements.compatibility_date]
+typeof = "types.compatibilityDate"
+
+[elements.account_id]
+type = "string"
+optional = true
+
+[elements.ai]
+typeof = "types.simpleBinding"
+optional = true
+
+[elements.ai_search]
+type = "array"
+arraytype = "table"
+itemtype = "types.aiSearchInstance"
+optional = true
+
+[elements.ai_search_namespaces]
+typeof = "types.arrayOfNamespaceBindings"
+optional = true
+
+[elements.alias]
+typeof = "types.stringMap"
+optional = true
+
+[elements.analytics_engine_datasets]
+typeof = "types.arrayOfDatasetBindings"
+optional = true
+
+[elements.assets]
+typeof = "types.assets"
+optional = true
+
+[elements.base_dir]
+type = "string"
+optional = true
+
+[elements.browser]
+typeof = "types.simpleBinding"
+optional = true
+
+[elements.build]
+typeof = "types.build"
+optional = true
+
+[elements.compatibility_flags]
+type = "array"
+arraytype = "string"
+optional = true
+
+[elements.containers]
+typeof = "types.containers"
+optional = true
+
+[elements.d1_databases]
+typeof = "types.d1Databases"
+optional = true
+
+[elements.define]
+typeof = "types.stringMap"
+optional = true
+
+[elements.dev]
+typeof = "types.dev"
+optional = true
+
+[elements.dispatch_namespaces]
+typeof = "types.arrayOfDispatchNamespaces"
+optional = true
+
+[elements.durable_objects]
+typeof = "types.durableObjects"
+optional = true
+
+[elements.env]
+typeof = "types.env"
+optional = true
+
+[elements.find_additional_modules]
+type = "boolean"
+optional = true
+
+[elements.hyperdrive]
+typeof = "types.arrayOfIdBindings"
+optional = true
+
+[elements.images]
+typeof = "types.simpleBinding"
+optional = true
+
+[elements.keep_names]
+type = "boolean"
+optional = true
+
+[elements.keep_vars]
+type = "boolean"
+optional = true
+
+[elements.kv_namespaces]
+typeof = "types.kvNamespaces"
+optional = true
+
+[elements.limits]
+typeof = "types.limits"
+optional = true
+
+[elements.logpush]
+type = "boolean"
+optional = true
+
+[elements.migrations]
+typeof = "types.migrations"
+optional = true
+
+[elements.minify]
+type = "boolean"
+optional = true
+
+[elements.mtls_certificates]
+typeof = "types.arrayOfCertificateBindings"
+optional = true
+
+[elements.no_bundle]
+type = "boolean"
+optional = true
+
+[elements.observability]
+typeof = "types.observability"
+optional = true
+
+[elements.placement]
+typeof = "types.placement"
+optional = true
+
+[elements.preserve_file_names]
+type = "boolean"
+optional = true
+
+[elements.preview_urls]
+type = "boolean"
+optional = true
+
+[elements.python_modules]
+typeof = "types.pythonModules"
+optional = true
+
+[elements.queues]
+typeof = "types.queues"
+optional = true
+
+[elements.r2_buckets]
+typeof = "types.r2Buckets"
+optional = true
+
+[elements.route]
+typeof = "types.route"
+optional = true
+
+[elements.routes]
+typeof = "types.routes"
+optional = true
+
+[elements.rules]
+typeof = "types.rules"
+optional = true
+
+[elements.secrets]
+typeof = "types.secrets"
+optional = true
+
+[elements.secrets_store_secrets]
+typeof = "types.arrayOfSecretsStoreSecrets"
+optional = true
+
+[elements.send_email]
+typeof = "types.arrayOfEmailBindings"
+optional = true
+
+[elements.send_metrics]
+type = "boolean"
+optional = true
+
+[elements.services]
+typeof = "types.arrayOfServiceBindings"
+optional = true
+
+[elements.site]
+typeof = "types.site"
+optional = true
+
+[elements.tail_consumers]
+typeof = "types.arrayOfServiceBindings"
+optional = true
+
+[elements.triggers]
+typeof = "types.triggers"
+optional = true
+
+[elements.tsconfig]
+type = "string"
+optional = true
+
+[elements.upload_source_maps]
+type = "boolean"
+optional = true
+
+[elements.vars]
+typeof = "types.anyMap"
+optional = true
+
+[elements.vectorize]
+typeof = "types.arrayOfIndexBindings"
+optional = true
+
+[elements.workers_dev]
+type = "boolean"
+optional = true
+
+[elements.workflows]
+typeof = "types.arrayOfWorkflowBindings"
+optional = true
