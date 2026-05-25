@@ -31,7 +31,7 @@ func extract(documentPath, schemaPath string, out, errOut io.Writer) int {
 func generateSchema(document map[string]any) string {
 	var schema strings.Builder
 	schema.WriteString("[toml-schema]\n")
-	fmt.Fprintf(&schema, "version = %q\n\n", currentTOSDVersion)
+	fmt.Fprintf(&schema, "version = %q\n\n", currentTomlSchemaVersion)
 	schema.WriteString("[elements]\n")
 	for _, key := range sortedKeys(document) {
 		if key == "toml-schema" {

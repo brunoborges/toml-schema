@@ -1,7 +1,7 @@
-//! Rust reference implementation for TOML Schema Definition (TOSD).
+//! Rust reference implementation for TOML Schema.
 //!
 //! See `REFERENCE_IMPLEMENTATIONS.md` and `SPEC.md` at the repository root for the
-//! TOSD language and the conformance expectations every reference implementation
+//! TOML Schema language and the conformance expectations every reference implementation
 //! must meet.
 
 pub mod cli;

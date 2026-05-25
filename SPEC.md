@@ -1,6 +1,6 @@
-# TOML Schema Definition (TOSD) Specification
+# TOML Schema Specification
 
-A [TOML Schema](https://github.com/toml-lang/tosd) is a set of TOML-based constructs that define the structure, the names, and the types of configuration data on a TOML file.
+TOML Schema is a set of TOML-based constructs that define the structure, the names, and the types of configuration data on a TOML file.
 
 The TOML Schema is used to validate the input of a TOML file during parsing to:
 
@@ -38,7 +38,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Pattern - `pattern`](#pattern---pattern)
 - [Parsers](#parsers)
 - [Filename Extension](#filename-extension)
-- [MIME Types](#mime-types)
+- [MIME Type](#mime-type)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
 
 ## First Glance
@@ -176,9 +176,9 @@ version = "1.0.0"
 
 ### Schema Versioning
 
-TOSD follows the same version-numbering policy as the TOML specification: schema language versions use [Semantic Versioning](https://semver.org/).
+TOML Schema follows the same version-numbering policy as the TOML specification: schema language versions use [Semantic Versioning](https://semver.org/).
 
-The `version` property MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form. The current TOSD version is `1.0.0`.
+The `version` property MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form. The current TOML Schema version is `1.0.0`.
 
 ```toml
 [toml-schema]
@@ -187,7 +187,7 @@ version = "1.0.0"
 
 Parsers MUST reject schema documents whose `version` is missing, is not a string, or is not a valid SemVer value. Shorthand values such as `"1"` and `"1.0"` are invalid.
 
-A parser that supports TOSD version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the parser's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect parser compatibility. Parsers MUST reject schema documents with an unsupported major version or a greater minor version.
+A parser that supports TOML Schema version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the parser's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect parser compatibility. Parsers MUST reject schema documents with an unsupported major version or a greater minor version.
 
 ## Elements table - `[elements]`
 
@@ -581,18 +581,13 @@ A parser that validates a TOML document against a TOML Schema must produce the e
 
 ## Filename Extension
 
-TOML Schema files should use the extension `.tosd`.
+TOML Schema files MUST use the extension `.tosd`.
 
-## MIME Types
+## MIME Type
 
-When transferring TOML Schema files over the internet, the appropriate MIME types are:
+When transferring TOML Schema files over the internet, the MIME type MUST be:
 
  - application/tosd
- - application/vnd.tosd
- - application/x-tosd
- - text/tosd
- - text/vnd.tosd
- - text/x-tosd
 
 ## TOML Reference of a TOML Schema
 
