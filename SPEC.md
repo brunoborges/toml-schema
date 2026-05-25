@@ -561,6 +561,23 @@ min = 1
 anyof = [ "types.stringId", "types.integerId" ]
 ```
 
+Built-in type names are not valid entries in `oneof` or `anyof`; alternatives must
+reference named definitions. Keeping alternatives as definitions gives every branch
+a place for constraints such as `pattern`, `min`, `allowedvalues`, `arraytype`, or
+child fields. For simple unions, define a small reusable wrapper for each built-in
+type that participates in the union.
+
+```toml
+[types.stringValue]
+type = "string"
+
+[types.inlineDependency]
+type = "table"
+
+[types.dependency]
+oneof = [ "types.stringValue", "types.inlineDependency" ]
+```
+
 ### Optionality - `optional`
 
 Properties may be defined as optional in the schema. By default, optional equals false, and the structure is required.
