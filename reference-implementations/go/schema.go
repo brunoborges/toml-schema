@@ -37,6 +37,10 @@ var definitionKeys = map[string]bool{
 	"oneof": true, "anyof": true, "children": true,
 }
 
+const currentTOSDVersion = "1.0.0"
+
+var semverPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
+
 type Schema struct {
 	source   string
 	types    map[string]Definition
@@ -92,8 +96,12 @@ func LoadSchema(path string) (*Schema, error) {
 		}
 	}
 	metadata := parsed["toml-schema"].(map[string]any)
-	if _, ok := metadata["version"]; !ok {
+	version, ok := metadata["version"]
+	if !ok {
 		return nil, fmt.Errorf("[toml-schema] must contain version")
+	}
+	if err := validateSchemaVersion(version); err != nil {
+		return nil, err
 	}
 	for key := range metadata {
 		if key != "version" && key != "meta" {
@@ -109,6 +117,24 @@ func LoadSchema(path string) (*Schema, error) {
 		return nil, err
 	}
 	return &Schema{source: path, types: types, elements: elements}, nil
+}
+
+func validateSchemaVersion(value any) error {
+	version, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("[toml-schema].version must be a SemVer string")
+	}
+	matches := semverPattern.FindStringSubmatch(version)
+	if matches == nil {
+		return fmt.Errorf("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
+	}
+	if matches[1] != "1" {
+		return fmt.Errorf("unsupported TOSD major version: %s", version)
+	}
+	if matches[2] != "0" {
+		return fmt.Errorf("unsupported TOSD minor version: %s", version)
+	}
+	return nil
 }
 
 func (s *Schema) ValidateFile(path string) ValidationResult {

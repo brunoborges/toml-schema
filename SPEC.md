@@ -18,6 +18,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Top-level Structure Conditions](#top-level-structure-conditions)
 - [Metadata Table - `[toml-schema]`](#metadata-table---toml-schema)
   - [Supported Properties](#supported-properties)
+  - [Schema Versioning](#schema-versioning)
 - [Elements table - `[elements]`](#elements-table---elements)
 - [Types table - `[types]`](#types-table---types)
   - [Keys That Need Escaping](#keys-that-need-escaping)
@@ -29,7 +30,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Block Types](#block-types)
     - [Tables](#tables)
     - [Arrays](#arrays)
-      - [Tuple / Positional Array Validation - `items`](#tuple--positional-array-validation---items)
+      - [Tuple / Positional Array Validation - `items`](#tuple-positional-array-validation---items)
     - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
   - [Type Reference](#type-reference)
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
@@ -78,7 +79,7 @@ Example of a TOML Schema that validates the TOML document above:
 ```toml
 # This is a TOML Schema document
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [types.serverType]
 type="table"
@@ -151,7 +152,7 @@ This table is reserved for metadata regarding the TOML Schema itself.
 
 ```toml
 [toml-schema]
-version = "1.0"
+version = "1.0.0"
 # custom = "value" # *NOT allowed
 
 [toml-schema.meta]
@@ -172,6 +173,21 @@ version = "1.0"
    - **Optional**.
 
  No custom property or table may be appended under `toml-schema`, only inside `toml-schema.meta` table.
+
+### Schema Versioning
+
+TOSD follows the same version-numbering policy as the TOML specification: schema language versions use [Semantic Versioning](https://semver.org/).
+
+The `version` property MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form. The current TOSD version is `1.0.0`.
+
+```toml
+[toml-schema]
+version = "1.0.0"
+```
+
+Parsers MUST reject schema documents whose `version` is missing, is not a string, or is not a valid SemVer value. Shorthand values such as `"1"` and `"1.0"` are invalid.
+
+A parser that supports TOSD version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the parser's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect parser compatibility. Parsers MUST reject schema documents with an unsupported major version or a greater minor version.
 
 ## Elements table - `[elements]`
 
@@ -584,7 +600,7 @@ A TOML file can include this indication to reference which schema file to use fo
 
 ```toml
 [toml-schema]
-version = "1"
+version = "1.0.0"
 location = "<uri>"
 ```
 

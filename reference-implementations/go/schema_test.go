@@ -22,11 +22,38 @@ func TestValidatesCheckedInExample(t *testing.T) {
 	}
 }
 
+func TestEnforcesSemverSchemaVersions(t *testing.T) {
+	dir := t.TempDir()
+	compatibleSchema := write(t, dir, "compatible-version.tosd", `
+[toml-schema]
+version = "1.0.1+build.1"
+
+[elements.title]
+type = "string"
+`)
+	if _, err := LoadSchema(compatibleSchema); err != nil {
+		t.Fatalf("expected compatible patch version to load: %v", err)
+	}
+
+	for _, version := range []string{"1", "1.0", "01.0.0", "1.1.0", "2.0.0"} {
+		schemaPath := write(t, dir, "invalid-version-"+strings.ReplaceAll(version, ".", "-")+".tosd", fmt.Sprintf(`
+[toml-schema]
+version = %q
+
+[elements.title]
+type = "string"
+`, version))
+		if _, err := LoadSchema(schemaPath); err == nil {
+			t.Fatalf("expected version %q to be rejected", version)
+		}
+	}
+}
+
 func TestReportsValidationErrors(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.name]
 type = "string"
@@ -64,7 +91,7 @@ func TestPatternMustMatchEntireString(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.id]
 type = "string"
@@ -92,7 +119,7 @@ func TestValidatesUnionsAndArrayItemSchemas(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [types.stringId]
 type = "string"
@@ -148,7 +175,7 @@ func TestValidatesTupleArraysByPosition(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [types.coordinate]
 type = "float"
@@ -183,7 +210,7 @@ func TestRejectsInvalidTupleArrays(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [types.coordinate]
 type = "float"
@@ -230,7 +257,7 @@ func TestRejectsTupleSchemaWithConflictingProperties(t *testing.T) {
 	conflicts := []string{
 		`
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.value]
 type = "array"
@@ -239,7 +266,7 @@ arraytype = "string"
 `,
 		`
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.value]
 type = "array"
@@ -259,7 +286,7 @@ func TestSupportsQuotedDottedAndEmptyKeysWithChildrenTable(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.site]
 type = "table"
@@ -292,7 +319,7 @@ func TestCLILocatesSchemaFromDocumentMetadata(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "schema.tosd", `
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.title]
 type = "string"
@@ -301,7 +328,7 @@ type = "string"
 title = "Example"
 
 [toml-schema]
-version = "1"
+version = "1.0.0"
 location = "schema.tosd"
 `)
 	var out bytes.Buffer
@@ -331,7 +358,7 @@ name = "Alice"
 "google.com" = true
 
 [toml-schema]
-version = "1"
+version = "1.0.0"
 location = "ignored.tosd"
 `)
 	extractedSchema := filepath.Join(dir, "extract-output.tosd")
@@ -353,6 +380,7 @@ location = "ignored.tosd"
 	}
 	schemaText := string(schemaBytes)
 	for _, expected := range []string{
+		`version = "1.0.0"`,
 		"[elements.title]",
 		`type = "string"`,
 		"[elements.owner]",

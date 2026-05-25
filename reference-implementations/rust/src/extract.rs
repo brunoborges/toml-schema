@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use toml::value::Datetime;
 use toml::{Table, Value};
 
-use crate::schema::{encode_path_key, SchemaType};
+use crate::schema::{encode_path_key, SchemaType, CURRENT_TOSD_VERSION};
 
 /// Renders a TOSD schema as a TOML string from the parsed sample document. Keys
 /// are emitted in the natural order of the parsed [`Table`] (which is sorted
@@ -14,7 +14,7 @@ use crate::schema::{encode_path_key, SchemaType};
 pub fn generate_schema(document: &Table) -> String {
     let mut schema = String::new();
     schema.push_str("[toml-schema]\n");
-    schema.push_str("version = \"1\"\n\n");
+    writeln!(schema, "version = \"{CURRENT_TOSD_VERSION}\"\n").expect("write to String");
     schema.push_str("[elements]\n");
     for (key, value) in document.iter() {
         if key == "toml-schema" {

@@ -27,6 +27,7 @@ This repository contains the TOML Schema Definition (TOSD) specification/proposa
 ## Key conventions
 
 - Schema documents are intended to be valid TOML documents. The required top-level tables are `[toml-schema]` and `[elements]`; `[types]` is optional and exists for reusable definitions.
+- Use full SemVer strings for `[toml-schema].version`; the current TOSD version is `1.0.0`, and shorthand values like `"1"` or `"1.0"` are invalid.
 - Custom metadata belongs under `[toml-schema.meta]`; do not add arbitrary keys or subtables directly under `[toml-schema]`.
 - Reusable definitions live under `[types.<name>]` and are referenced from `[elements]` or nested type definitions rather than duplicating structures.
 - Prefer canonical `typeof` and `collection` in schema examples. The Java implementation still accepts legacy aliases `typeref` and `table-collection` for compatibility.

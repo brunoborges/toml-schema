@@ -56,6 +56,43 @@ fn validates_checked_in_example() {
 }
 
 #[test]
+fn enforces_semver_schema_versions() {
+    let directory = tempfile_dir("schema-versions");
+    let compatible_schema = write_file(
+        &directory,
+        "compatible-version.tosd",
+        r#"
+[toml-schema]
+version = "1.0.1+build.1"
+
+[elements.title]
+type = "string"
+"#,
+    );
+    Schema::load(&compatible_schema).expect("compatible patch version");
+
+    for version in ["1", "1.0", "01.0.0", "1.1.0", "2.0.0"] {
+        let schema_path = write_file(
+            &directory,
+            &format!("invalid-version-{}.tosd", version.replace('.', "-")),
+            &format!(
+                r#"
+[toml-schema]
+version = "{version}"
+
+[elements.title]
+type = "string"
+"#
+            ),
+        );
+        assert!(
+            Schema::load(&schema_path).is_err(),
+            "expected version {version:?} to be rejected"
+        );
+    }
+}
+
+#[test]
 fn validates_self_schema_against_itself() {
     let schema = Schema::load(fixture("toml-schema.tosd")).expect("load toml-schema.tosd");
     let result = schema.validate_file(fixture("toml-schema.tosd"));
@@ -85,7 +122,7 @@ fn reports_validation_errors() {
         "schema.tosd",
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.name]
 type = "string"
@@ -129,7 +166,7 @@ fn pattern_must_match_entire_string() {
         "schema.tosd",
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.id]
 type = "string"
@@ -162,7 +199,7 @@ fn validates_unions_and_array_item_schemas() {
         "schema.tosd",
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [types.stringId]
 type = "string"
@@ -226,7 +263,7 @@ fn validates_tuple_arrays_by_position() {
         "schema.tosd",
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [types.coordinate]
 type = "float"
@@ -268,7 +305,7 @@ fn rejects_invalid_tuple_arrays() {
         "schema.tosd",
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [types.coordinate]
 type = "float"
@@ -324,7 +361,7 @@ fn rejects_tuple_schema_with_conflicting_properties() {
     let conflicts = [
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.value]
 type = "array"
@@ -333,7 +370,7 @@ arraytype = "string"
 "#,
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.value]
 type = "array"
@@ -356,7 +393,7 @@ fn supports_quoted_dotted_and_empty_keys_with_children_table() {
         "schema.tosd",
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.site]
 type = "table"
@@ -396,7 +433,7 @@ fn cli_locates_schema_from_document_metadata() {
         "schema.tosd",
         r#"
 [toml-schema]
-version = "1"
+version = "1.0.0"
 
 [elements.title]
 type = "string"
@@ -409,7 +446,7 @@ type = "string"
 title = "Example"
 
 [toml-schema]
-version = "1"
+version = "1.0.0"
 location = "schema.tosd"
 "#,
     );
@@ -438,7 +475,7 @@ name = "Alice"
 "google.com" = true
 
 [toml-schema]
-version = "1"
+version = "1.0.0"
 location = "ignored.tosd"
 "#,
     );
@@ -457,6 +494,7 @@ location = "ignored.tosd"
 
     let schema_text = fs::read_to_string(&extracted_schema).expect("read extracted schema");
     for expected in [
+        "version = \"1.0.0\"",
         "[elements.title]",
         "type = \"string\"",
         "[elements.owner]",

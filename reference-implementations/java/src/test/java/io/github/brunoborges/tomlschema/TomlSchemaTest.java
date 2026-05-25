@@ -9,7 +9,9 @@ import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -35,10 +37,35 @@ class TomlSchemaTest {
     }
 
     @Test
+    void enforcesSemverSchemaVersions() throws IOException {
+        Path compatiblePatchSchema = write("compatible-version.tosd", """
+                [toml-schema]
+                version = "1.0.1+build.1"
+
+                [elements.title]
+                type = "string"
+                """);
+
+        assertDoesNotThrow(() -> TomlSchema.load(compatiblePatchSchema));
+
+        for (String version : List.of("1", "1.0", "01.0.0", "1.1.0", "2.0.0")) {
+            Path schema = write("invalid-version-" + version.replace('.', '-') + ".tosd", """
+                    [toml-schema]
+                    version = "%s"
+
+                    [elements.title]
+                    type = "string"
+                    """.formatted(version));
+
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema), version);
+        }
+    }
+
+    @Test
     void reportsValidationErrors() throws IOException {
         Path schema = write("schema.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.name]
                 type = "string"
@@ -67,7 +94,7 @@ class TomlSchemaTest {
     void stringLengthCountsUnicodeScalarValues() throws IOException {
         Path schema = write("unicode-length.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.emoji]
                 type = "string"
@@ -99,7 +126,7 @@ class TomlSchemaTest {
     void supportsLegacyReferenceAndCollectionAliases() throws IOException {
         Path schema = write("legacy.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [types.item]
                 type = "table"
@@ -125,7 +152,7 @@ class TomlSchemaTest {
     void validatesArrayOfTablesWithItemSchema() throws IOException {
         Path schema = write("products.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [types.product]
                 type = "table"
@@ -161,7 +188,7 @@ class TomlSchemaTest {
     void validatesArraysOfInlineTablesWithItemSchema() throws IOException {
         Path schema = write("points.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [types.point]
                 type = "table"
@@ -193,7 +220,7 @@ class TomlSchemaTest {
     void validatesTupleArraysByPosition() throws IOException {
         Path schema = write("tuple-array.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [types.coordinate]
                 type = "float"
@@ -228,7 +255,7 @@ class TomlSchemaTest {
     void rejectsInvalidTupleArrays() throws IOException {
         Path schema = write("tuple-array-invalid.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [types.coordinate]
                 type = "float"
@@ -268,7 +295,7 @@ class TomlSchemaTest {
     void rejectsTupleArraySchemaWithConflictingProperties() throws IOException {
         Path withArrayType = write("tuple-arraytype-conflict.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.value]
                 type = "array"
@@ -277,7 +304,7 @@ class TomlSchemaTest {
                 """);
         Path withLength = write("tuple-length-conflict.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.value]
                 type = "array"
@@ -293,7 +320,7 @@ class TomlSchemaTest {
     void supportsQuotedDottedAndEmptyTomlKeysWithChildrenTable() throws IOException {
         Path schema = write("special-keys.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.site]
                 type = "table"
@@ -320,7 +347,7 @@ class TomlSchemaTest {
     void quotesSpecialKeysInValidationErrorPaths() throws IOException {
         Path schema = write("special-key-error.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.site]
                 type = "table"
@@ -343,7 +370,7 @@ class TomlSchemaTest {
     void validatesAnyOfAndOneOfDefinitions() throws IOException {
         Path schema = write("unions.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [types.stringId]
                 type = "string"
@@ -393,7 +420,7 @@ class TomlSchemaTest {
     void reportsUnionValidationFailures() throws IOException {
         Path schema = write("union-failure.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [types.named]
                 type = "table"
@@ -426,7 +453,7 @@ class TomlSchemaTest {
     void validatesNumericAndDateTimeBoundaries() throws IOException {
         Path schema = write("boundaries.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.port]
                 type = "integer"
@@ -458,7 +485,7 @@ class TomlSchemaTest {
     void rejectsMalformedBoundarySchemas() throws IOException {
         Path anySchema = write("any-min.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.payload]
                 type = "any"
@@ -466,7 +493,7 @@ class TomlSchemaTest {
                 """);
         Path nanSchema = write("nan-min.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.value]
                 type = "float"
@@ -481,7 +508,7 @@ class TomlSchemaTest {
     void ignoresReservedTomlSchemaMetadataUnlessSchemaDefinesIt() throws IOException {
         Path schema = write("metadata-ignored.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.title]
                 type = "string"
@@ -504,7 +531,7 @@ class TomlSchemaTest {
     void validatesReservedTomlSchemaMetadataWhenSchemaDefinesIt() throws IOException {
         Path schema = write("metadata-defined.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.toml-schema]
                 type = "table"
@@ -536,7 +563,7 @@ class TomlSchemaTest {
     void cliLocatesSchemaFromDocumentMetadata() throws IOException {
         write("schema.tosd", """
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
 
                 [elements.title]
                 type = "string"
@@ -545,7 +572,7 @@ class TomlSchemaTest {
                 title = "Example"
 
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
                 location = "schema.tosd"
                 """);
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -571,7 +598,7 @@ class TomlSchemaTest {
                 name = "Alice"
 
                 [toml-schema]
-                version = "1"
+                version = "1.0.0"
                 location = "ignored.tosd"
                 """);
         Path extractedSchema = tempDir.resolve("extract-output.tosd");
@@ -587,6 +614,7 @@ class TomlSchemaTest {
         assertTrue(out.toString(StandardCharsets.UTF_8).contains("Extracted schema to"));
 
         String schemaText = Files.readString(extractedSchema, StandardCharsets.UTF_8);
+        assertTrue(schemaText.contains("version = \"1.0.0\""));
         assertTrue(schemaText.contains("[elements.title]"));
         assertTrue(schemaText.contains("type = \"string\""));
         assertTrue(schemaText.contains("[elements.owner]"));
