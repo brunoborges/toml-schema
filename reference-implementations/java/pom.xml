@@ -8,7 +8,7 @@
     <artifactId>toml-schema</artifactId>
     <version>0.1.0-SNAPSHOT</version>
     <name>TOML Schema</name>
-    <description>Java reference implementation for TOML Schema Definition (TOSD)</description>
+    <description>Java reference implementation for TOML Schema</description>
 
     <properties>
         <maven.compiler.release>25</maven.compiler.release>

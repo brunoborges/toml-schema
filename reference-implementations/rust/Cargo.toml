@@ -2,7 +2,7 @@
 name = "toml-schema"
 version = "0.1.0"
 edition = "2021"
-description = "Reference implementation of TOML Schema Definition (TOSD) for Rust"
+description = "Reference implementation of TOML Schema for Rust"
 license = "MIT"
 publish = false
 

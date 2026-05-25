@@ -37,7 +37,7 @@ var definitionKeys = map[string]bool{
 	"oneof": true, "anyof": true, "children": true,
 }
 
-const currentTOSDVersion = "1.0.0"
+const currentTomlSchemaVersion = "1.0.0"
 
 var semverPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
 
@@ -129,10 +129,10 @@ func validateSchemaVersion(value any) error {
 		return fmt.Errorf("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
 	}
 	if matches[1] != "1" {
-		return fmt.Errorf("unsupported TOSD major version: %s", version)
+		return fmt.Errorf("unsupported TOML Schema major version: %s", version)
 	}
 	if matches[2] != "0" {
-		return fmt.Errorf("unsupported TOSD minor version: %s", version)
+		return fmt.Errorf("unsupported TOML Schema minor version: %s", version)
 	}
 	return nil
 }

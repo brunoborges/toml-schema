@@ -3,7 +3,7 @@ package io.github.brunoborges.tomlschema;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-final class TosdVersion {
+final class TomlSchemaVersion {
     static final String CURRENT = "1.0.0";
 
     private static final String SUPPORTED_MAJOR = "1";
@@ -14,7 +14,7 @@ final class TosdVersion {
                     + "(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$"
     );
 
-    private TosdVersion() {
+    private TomlSchemaVersion() {
     }
 
     static void validate(Object value) {
@@ -28,10 +28,10 @@ final class TosdVersion {
         String major = matcher.group(1);
         String minor = matcher.group(2);
         if (!SUPPORTED_MAJOR.equals(major)) {
-            throw new SchemaException("Unsupported TOSD major version: " + version);
+            throw new SchemaException("Unsupported TOML Schema major version: " + version);
         }
         if (!SUPPORTED_MINOR.equals(minor)) {
-            throw new SchemaException("Unsupported TOSD minor version: " + version);
+            throw new SchemaException("Unsupported TOML Schema minor version: " + version);
         }
     }
 }

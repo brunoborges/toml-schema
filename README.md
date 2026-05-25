@@ -1,4 +1,4 @@
-# TOML Schema Definition (TOSD)
+# TOML Schema
 
 [![Reference implementations](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml/badge.svg)](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml)
 [![License](https://img.shields.io/github/license/brunoborges/toml-schema)](LICENSE)
@@ -7,15 +7,15 @@
 [![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
 [![Rust 1.75](https://img.shields.io/badge/Rust-1.75-dea584)](REFERENCE_IMPLEMENTATIONS.md#rust)
 
-TOML Schema Definition (TOSD) is a TOML-based schema language for describing and validating the structure, names, and value types of TOML configuration files.
+TOML Schema is a TOML-based schema language for describing and validating the structure, names, and value types of TOML configuration files.
 
-A TOSD schema is itself a valid TOML document. Validators can use it to catch misconfiguration before production and tooling can use it for editor validation, completion, and hints.
+A TOML Schema document is itself a valid TOML document. Validators can use it to catch misconfiguration before production and tooling can use it for editor validation, completion, and hints.
 
 ## Documentation
 
-- [Specification](SPEC.md) - the TOSD language, validation semantics, file extension, MIME types, and TOML schema-reference metadata.
-- [ABNF grammar](toml-schema.abnf) - a compact grammar for the TOSD vocabulary and document shape, layered on top of TOML 1.0.
-- [Self-schema](toml-schema.tosd) - a TOSD schema for TOSD schema documents.
+- [Specification](SPEC.md) - the TOML Schema language, validation semantics, file extension, MIME type, and TOML schema-reference metadata.
+- [ABNF grammar](toml-schema.abnf) - a compact grammar for the TOML Schema vocabulary and document shape, layered on top of TOML 1.0.
+- [Self-schema](toml-schema.tosd) - a TOML Schema document for TOML Schema documents.
 - [Example schema](config.tosd) and [example TOML document](config.toml) - a worked example used by the reference implementation tests.
 - [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - implementation status, Java CLI/library usage, and conformance expectations.
 
@@ -31,7 +31,7 @@ enabled = true
 ports = [8000, 8001, 8002]
 ```
 
-TOSD schema:
+TOML Schema document:
 
 ```toml
 [toml-schema]
@@ -54,10 +54,10 @@ type = "table"
 ## Repository layout
 
 ```text
-SPEC.md                         Human-readable TOSD specification
+SPEC.md                         Human-readable TOML Schema specification
 REFERENCE_IMPLEMENTATIONS.md    Reference implementation status and usage
-toml-schema.abnf                TOSD-layer ABNF grammar
-toml-schema.tosd                Self-schema for TOSD documents
+toml-schema.abnf                TOML Schema-layer ABNF grammar
+toml-schema.tosd                Self-schema for TOML Schema documents
 config.tosd / config.toml       Example schema and TOML document
 reference-implementations/java  Java reference implementation and CLI
 reference-implementations/go    Go reference implementation and CLI
@@ -68,7 +68,7 @@ reference-implementations/rust  Rust reference implementation and CLI
 
 Java, Go, and Rust reference implementations live under `reference-implementations/`. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation status, build/test commands, CLI usage, schema extraction, and conformance expectations.
 
-For array tuple/positional validation (`items`), see [SPEC.md: Tuple / Positional Array Validation](SPEC.md#tuple--positional-array-validation---items).
+For array tuple/positional validation (`items`), see [SPEC.md: Tuple / Positional Array Validation](SPEC.md#tuple-positional-array-validation---items).
 
 ## Schema reference from TOML
 
@@ -94,4 +94,4 @@ Thanks to my friends!
 
 ## License
 
-TOSD is licensed under the [MIT License](LICENSE).
+TOML Schema is licensed under the [MIT License](LICENSE).

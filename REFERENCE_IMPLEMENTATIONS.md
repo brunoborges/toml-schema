@@ -1,6 +1,6 @@
 # Reference Implementations
 
-This document tracks TOSD reference implementations and the expected validation surface for each implementation.
+This document tracks TOML Schema reference implementations and the expected validation surface for each implementation.
 
 ## Status
 
@@ -45,13 +45,13 @@ Validate using `[toml-schema].location` from the TOML document:
 java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
 ```
 
-Validate the example schema against the TOSD self-schema:
+Validate the example schema against the TOML Schema self-schema:
 
 ```shell
 java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd config.tosd
 ```
 
-Validate the TOSD self-schema against itself:
+Validate the TOML Schema self-schema against itself:
 
 ```shell
 java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd toml-schema.tosd
@@ -95,13 +95,13 @@ Validate using `[toml-schema].location` from the TOML document:
 go -C reference-implementations/go run . validate ../../config.toml
 ```
 
-Validate the example schema against the TOSD self-schema:
+Validate the example schema against the TOML Schema self-schema:
 
 ```shell
 go -C reference-implementations/go run . validate ../../toml-schema.tosd ../../config.tosd
 ```
 
-Validate the TOSD self-schema against itself:
+Validate the TOML Schema self-schema against itself:
 
 ```shell
 go -C reference-implementations/go run . validate ../../toml-schema.tosd ../../toml-schema.tosd
@@ -141,13 +141,13 @@ Validate using `[toml-schema].location` from the TOML document:
 cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.toml
 ```
 
-Validate the example schema against the TOSD self-schema:
+Validate the example schema against the TOML Schema self-schema:
 
 ```shell
 cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd config.tosd
 ```
 
-Validate the TOSD self-schema against itself:
+Validate the TOML Schema self-schema against itself:
 
 ```shell
 cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd toml-schema.tosd
@@ -177,7 +177,7 @@ Every reference implementation should:
 
 1. Parse TOML documents with a TOML 1.0-compliant parser rather than reimplementing TOML parsing.
 1. Treat `.tosd` schemas as valid TOML documents.
-1. Require `[toml-schema].version` to be a SemVer string compatible with the implementation's supported TOSD version.
+1. Require `[toml-schema].version` to be a SemVer string compatible with the implementation's supported TOML Schema version.
 1. Validate the checked-in `config.toml` document against `config.tosd`.
 1. Support schema lookup through `[toml-schema].location`.
 1. Validate `config.tosd` against `toml-schema.tosd`.
@@ -188,7 +188,7 @@ The GitHub Actions workflow in `.github/workflows/reference-implementations.yml`
 
 ## TOML version profile
 
-TOSD targets the TOML logical value model (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, inline table, array of tables). That model is unchanged between [TOML 1.0.0](https://toml.io/en/v1.0.0) and [TOML 1.1.0](https://toml.io/en/v1.1.0); the TOML 1.1 changes are mostly parser/input-syntax clarifications and additions (for example `\e` and `\xHH` string escapes, optional seconds in date-times, multi-line inline tables, and trailing commas in inline tables). No new TOSD schema keywords or built-in type names are required to support TOML 1.1.
+TOML Schema targets the TOML logical value model (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, inline table, array of tables). That model is unchanged between [TOML 1.0.0](https://toml.io/en/v1.0.0) and [TOML 1.1.0](https://toml.io/en/v1.1.0); the TOML 1.1 changes are mostly parser/input-syntax clarifications and additions (for example `\e` and `\xHH` string escapes, optional seconds in date-times, multi-line inline tables, and trailing commas in inline tables). No new TOML Schema keywords or built-in type names are required to support TOML 1.1.
 
 The current reference implementations parse TOML with libraries that target TOML 1.0:
 

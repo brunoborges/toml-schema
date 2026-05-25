@@ -1,12 +1,12 @@
-;; TOML Schema Definition (TOSD) grammar layer
+;; TOML Schema grammar layer
 ;; Author: Bruno Borges
 ;;
-;; TOSD files are TOML 1.0 documents. This ABNF defines the schema vocabulary
+;; TOML Schema files are TOML 1.0 documents. This ABNF defines the schema vocabulary
 ;; and document shape layered on top of TOML; TOML 1.0 remains authoritative for
 ;; base key, table, array, inline-table, string, number, boolean, and date/time
 ;; syntax.
 ;;
-;; The TOSD vocabulary defined below is independent of TOML version: the same
+;; The TOML Schema vocabulary defined below is independent of TOML version: the same
 ;; schema keys and built-in type names apply when targeting TOML 1.1 documents,
 ;; provided the underlying TOML parser supports TOML 1.1. See
 ;; REFERENCE_IMPLEMENTATIONS.md ("TOML version profile") for the current
@@ -74,7 +74,7 @@ tabletype           = DQUOTE %x74.61.62.6c.65 DQUOTE                            
 collectiontype      = DQUOTE %x63.6f.6c.6c.65.63.74.69.6f.6e DQUOTE                   ; "collection"
 tablecollectiontype = DQUOTE %x74.61.62.6c.65.2d.63.6f.6c.6c.65.63.74.69.6f.6e DQUOTE ; "table-collection"
 
-;; TOML 1.0 grammar terminals used by TOSD.
+;; TOML 1.0 grammar terminals used by TOML Schema.
 
 semver-string                     = <TOML string containing a Semantic Versioning 2.0.0 value>
 toml-table-header-toml-schema      = <TOML 1.0 table header for [toml-schema]>

@@ -1,6 +1,6 @@
-//! Schema model, loader, and validator for TOSD documents.
+//! Schema model, loader, and validator for TOML Schema documents.
 //!
-//! The implementation mirrors the Go and Java reference implementations: a TOSD
+//! The implementation mirrors the Go and Java reference implementations: a TOML Schema
 //! file is parsed as a TOML document, top-level `[types]` and `[elements]`
 //! tables are decoded into [`Definition`] values, and a [`Schema`] can validate
 //! a parsed TOML document against those definitions.
@@ -14,7 +14,7 @@ use regex::Regex;
 use toml::value::{Datetime, Offset};
 use toml::{Table, Value};
 
-/// Built-in TOSD schema types.
+/// Built-in TOML Schema types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SchemaType {
     Any,
@@ -32,7 +32,7 @@ pub enum SchemaType {
 }
 
 impl SchemaType {
-    /// Returns the TOSD spelling for this type (e.g. `"offset-date-time"`).
+    /// Returns the TOML Schema spelling for this type (e.g. `"offset-date-time"`).
     pub fn schema_name(&self) -> &'static str {
         match self {
             SchemaType::Any => "any",
@@ -88,7 +88,7 @@ impl fmt::Display for SchemaType {
     }
 }
 
-/// The set of TOSD schema properties recognised by this implementation. The
+/// The set of TOML Schema properties recognised by this implementation. The
 /// keys are checked against the ABNF grammar in tests.
 pub const DEFINITION_KEYS: &[&str] = &[
     "type",
@@ -112,13 +112,13 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "children",
 ];
 
-pub const CURRENT_TOSD_VERSION: &str = "1.0.0";
+pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0";
 
 fn is_definition_key(key: &str) -> bool {
     DEFINITION_KEYS.contains(&key)
 }
 
-/// A single TOSD definition (either a reusable `[types.*]` entry or an
+/// A single TOML Schema definition (either a reusable `[types.*]` entry or an
 /// `[elements.*]` entry).
 #[derive(Debug, Clone, Default)]
 pub struct Definition {
@@ -159,7 +159,7 @@ impl ValidationResult {
     }
 }
 
-/// A loaded TOSD schema.
+/// A loaded TOML Schema document.
 #[derive(Debug, Clone)]
 pub struct Schema {
     source: PathBuf,
@@ -168,7 +168,7 @@ pub struct Schema {
 }
 
 impl Schema {
-    /// Loads a TOSD schema from a filesystem path.
+    /// Loads a TOML Schema document from a filesystem path.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let path = path.as_ref();
         let parsed = parse_toml_file(path)
@@ -176,7 +176,7 @@ impl Schema {
         Self::from_table(path.to_path_buf(), parsed)
     }
 
-    /// Builds a schema from an already-parsed TOSD root table.
+    /// Builds a schema from an already-parsed TOML Schema root table.
     pub fn from_table(source: PathBuf, table: Table) -> Result<Self, String> {
         if !matches!(table.get("toml-schema"), Some(Value::Table(_))) {
             return Err("schema must contain a [toml-schema] table".to_string());
@@ -230,10 +230,10 @@ impl Schema {
             return Err("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax".to_string());
         };
         if captures.get(1).map(|major| major.as_str()) != Some("1") {
-            return Err(format!("unsupported TOSD major version: {version}"));
+            return Err(format!("unsupported TOML Schema major version: {version}"));
         }
         if captures.get(2).map(|minor| minor.as_str()) != Some("0") {
-            return Err(format!("unsupported TOSD minor version: {version}"));
+            return Err(format!("unsupported TOML Schema minor version: {version}"));
         }
         Ok(())
     }
@@ -267,7 +267,7 @@ impl Schema {
     }
 }
 
-/// Loads a TOSD schema referenced by a TOML document via
+/// Loads a TOML Schema document referenced by a TOML document via
 /// `[toml-schema].location` and returns the schema together with the parsed
 /// document.
 pub fn schema_from_document<P: AsRef<Path>>(
