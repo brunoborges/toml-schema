@@ -158,23 +158,23 @@ final class TomlSchemaValidator {
                 validateValue(itemPath, item, itemDefinition);
             }
         }
+    }
 
-        private void validateTupleArray(String path, TomlArray array, SchemaDefinition definition) {
-            if (array.size() != definition.items().size()) {
-                add(path, "expected array length " + definition.items().size() + " but found " + array.size());
+    private void validateTupleArray(String path, TomlArray array, SchemaDefinition definition) {
+        if (array.size() != definition.items().size()) {
+            add(path, "expected array length " + definition.items().size() + " but found " + array.size());
+        }
+        int upperBound = Math.min(array.size(), definition.items().size());
+        for (int i = 0; i < upperBound; i++) {
+            String itemPath = path + "[" + i + "]";
+            SchemaDefinition itemDefinition;
+            try {
+                itemDefinition = resolveReference(definition.items().get(i), new HashSet<>());
+            } catch (SchemaException e) {
+                add(itemPath, e.getMessage());
+                continue;
             }
-            int upperBound = Math.min(array.size(), definition.items().size());
-            for (int i = 0; i < upperBound; i++) {
-                String itemPath = path + "[" + i + "]";
-                SchemaDefinition itemDefinition;
-                try {
-                    itemDefinition = resolveReference(definition.items().get(i), new HashSet<>());
-                } catch (SchemaException e) {
-                    add(itemPath, e.getMessage());
-                    continue;
-                }
-                validateValue(itemPath, array.get(i), itemDefinition);
-            }
+            validateValue(itemPath, array.get(i), itemDefinition);
         }
     }
 
