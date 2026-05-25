@@ -1,0 +1,65 @@
+name: Copilot Setup Steps
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: reference-implementations/java/pom.xml
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: reference-implementations/go/go.mod
+          cache-dependency-path: reference-implementations/go/go.sum
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            reference-implementations/rust/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('reference-implementations/rust/Cargo.lock') }}
+
+      - name: Show tool versions
+        run: |
+          java -version
+          mvn -version
+          go version
+          rustc --version
+          cargo --version
+
+      - name: Warm Java dependencies
+        run: mvn -B -f reference-implementations/java/pom.xml dependency:go-offline
+
+      - name: Warm Go dependencies
+        run: go -C reference-implementations/go mod download
+
+      - name: Warm Rust dependencies
+        run: cargo fetch --locked --manifest-path reference-implementations/rust/Cargo.toml

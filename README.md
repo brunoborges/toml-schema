@@ -66,13 +66,7 @@ reference-implementations/rust  Rust reference implementation and CLI
 
 ## Reference implementations
 
-The Java 25 reference implementation is available as a library and CLI under `reference-implementations/java`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document.
-
-The Go reference implementation is available as a CLI under `reference-implementations/go`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document.
-
-The Rust reference implementation is available as a library and CLI under `reference-implementations/rust`. It validates TOML documents, reads `[toml-schema].location`, and can extract a starter schema from a sample TOML document.
-
-See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for build, test, validation, extraction, and future implementation details.
+Java, Go, and Rust reference implementations live under `reference-implementations/`. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation status, build/test commands, CLI usage, schema extraction, and conformance expectations.
 
 ## Schema reference from TOML
 
