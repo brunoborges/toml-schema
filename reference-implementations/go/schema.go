@@ -31,7 +31,7 @@ const (
 )
 
 var definitionKeys = map[string]bool{
-	"type": true, "typeof": true, "typeref": true, "arraytype": true, "itemtype": true,
+	"type": true, "typeof": true, "typeref": true, "arraytype": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "optional": true, "default": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true, "minoccurs": true, "maxoccurs": true,
 	"oneof": true, "anyof": true, "children": true,
@@ -49,6 +49,7 @@ type Definition struct {
 	reference     string
 	arrayType     SchemaType
 	itemReference string
+	items         []string
 	optional      bool
 	allowedValues []any
 	pattern       *regexp.Regexp
@@ -201,6 +202,10 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	items, err := getStringArrayValues(table, "items")
+	if err != nil {
+		return Definition{}, err
+	}
 	optional, err := getBool(table, "optional")
 	if err != nil {
 		return Definition{}, err
@@ -290,12 +295,27 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if typeName != TypeArray && itemReference != "" {
 		return Definition{}, fmt.Errorf("%s can only define itemtype when type is array", name)
 	}
+	if typeName != TypeArray && len(items) > 0 {
+		return Definition{}, fmt.Errorf("%s can only define items when type is array", name)
+	}
+	if len(items) > 0 {
+		if arrayType != "" {
+			return Definition{}, fmt.Errorf("%s cannot define both items and arraytype", name)
+		}
+		if itemReference != "" {
+			return Definition{}, fmt.Errorf("%s cannot define both items and itemtype", name)
+		}
+		if minLength != nil || maxLength != nil || minOccurs != nil || maxOccurs != nil {
+			return Definition{}, fmt.Errorf("%s cannot define minlength, maxlength, minoccurs, or maxoccurs together with items", name)
+		}
+	}
 	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), table["min"], table["max"]); err != nil {
 		return Definition{}, err
 	}
 	return Definition{
 		name: name, typeName: typeName, reference: normalizeReference(firstNonEmpty(reference, legacyReference)),
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
+		items: normalizeReferences(items),
 		allowedValues: allowedValues, pattern: pattern, min: table["min"], max: table["max"],
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
 		children: children,
@@ -460,6 +480,10 @@ func (v *validator) validateCollection(path string, table map[string]any, defini
 
 func (v *validator) validateArray(path string, array []any, definition Definition) {
 	v.validateLength(path, len(array), definition)
+	if len(definition.items) > 0 {
+		v.validateTupleArray(path, array, definition)
+		return
+	}
 	arrayType := definition.arrayType
 	if arrayType == "" {
 		arrayType = TypeAny
@@ -492,6 +516,25 @@ func (v *validator) validateArray(path string, array []any, definition Definitio
 		} else {
 			v.validateValue(itemPath, item, *itemDefinition)
 		}
+	}
+}
+
+func (v *validator) validateTupleArray(path string, array []any, definition Definition) {
+	if len(array) != len(definition.items) {
+		v.add(path, fmt.Sprintf("expected array length %d but found %d", len(definition.items), len(array)))
+	}
+	upperBound := len(array)
+	if len(definition.items) < upperBound {
+		upperBound = len(definition.items)
+	}
+	for i := range upperBound {
+		itemPath := fmt.Sprintf("%s[%d]", path, i)
+		itemDefinition, err := v.resolveReference(definition.items[i], map[string]bool{})
+		if err != nil {
+			v.add(itemPath, err.Error())
+			continue
+		}
+		v.validateValue(itemPath, array[i], itemDefinition)
 	}
 }
 
@@ -586,6 +629,7 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 		name: definition.name, typeName: typeName, reference: reference,
 		arrayType:     firstSchemaType(definition.arrayType, referenced.arrayType),
 		itemReference: firstNonEmpty(definition.itemReference, referenced.itemReference),
+		items:         firstStringSlice(definition.items, referenced.items),
 		optional:      definition.optional || referenced.optional,
 		allowedValues: firstAnySlice(definition.allowedValues, referenced.allowedValues),
 		pattern:       firstPattern(definition.pattern, referenced.pattern),

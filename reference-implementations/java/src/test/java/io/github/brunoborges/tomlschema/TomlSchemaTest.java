@@ -190,6 +190,106 @@ class TomlSchemaTest {
     }
 
     @Test
+    void validatesTupleArraysByPosition() throws IOException {
+        Path schema = write("tuple-array.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [types.coordinate]
+                type = "float"
+
+                [types.label]
+                type = "string"
+
+                [types.scalar]
+                oneof = [ "types.coordinate", "types.integerCoordinate" ]
+
+                [types.integerCoordinate]
+                type = "integer"
+
+                [types.coordinateLabel]
+                type = "array"
+                items = [ "types.coordinate", "types.label" ]
+
+                [elements.value]
+                type = "array"
+                items = [ "types.coordinateLabel", "types.scalar" ]
+                """);
+        Path document = write("tuple-array.toml", """
+                value = [ [ 1.5, "Hello" ], 2 ]
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void rejectsInvalidTupleArrays() throws IOException {
+        Path schema = write("tuple-array-invalid.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [types.coordinate]
+                type = "float"
+
+                [types.label]
+                type = "string"
+
+                [elements.value]
+                type = "array"
+                items = [ "types.coordinate", "types.label" ]
+                """);
+        Path wrongOrder = write("tuple-array-wrong-order.toml", """
+                value = [ "Hello", 1.5 ]
+                """);
+        Path tooShort = write("tuple-array-short.toml", """
+                value = [ 1.5 ]
+                """);
+        Path tooLong = write("tuple-array-long.toml", """
+                value = [ 1.5, "Hello", true ]
+                """);
+
+        ValidationResult wrongOrderResult = TomlSchema.load(schema).validate(wrongOrder);
+        assertFalse(wrongOrderResult.isValid());
+        assertTrue(wrongOrderResult.errors().stream().anyMatch(error -> error.path().equals("$.value[0]")));
+        assertTrue(wrongOrderResult.errors().stream().anyMatch(error -> error.path().equals("$.value[1]")));
+
+        ValidationResult tooShortResult = TomlSchema.load(schema).validate(tooShort);
+        assertFalse(tooShortResult.isValid());
+        assertTrue(tooShortResult.errors().stream().anyMatch(error -> error.path().equals("$.value") && error.message().contains("expected array length 2")));
+
+        ValidationResult tooLongResult = TomlSchema.load(schema).validate(tooLong);
+        assertFalse(tooLongResult.isValid());
+        assertTrue(tooLongResult.errors().stream().anyMatch(error -> error.path().equals("$.value") && error.message().contains("expected array length 2")));
+    }
+
+    @Test
+    void rejectsTupleArraySchemaWithConflictingProperties() throws IOException {
+        Path withArrayType = write("tuple-arraytype-conflict.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.value]
+                type = "array"
+                items = [ "types.coordinate", "types.label" ]
+                arraytype = "string"
+                """);
+        Path withLength = write("tuple-length-conflict.tosd", """
+                [toml-schema]
+                version = "1"
+
+                [elements.value]
+                type = "array"
+                items = [ "types.coordinate", "types.label" ]
+                minlength = 2
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(withArrayType));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(withLength));
+    }
+
+    @Test
     void supportsQuotedDottedAndEmptyTomlKeysWithChildrenTable() throws IOException {
         Path schema = write("special-keys.tosd", """
                 [toml-schema]

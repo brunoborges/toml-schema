@@ -68,6 +68,8 @@ reference-implementations/rust  Rust reference implementation and CLI
 
 Java, Go, and Rust reference implementations live under `reference-implementations/`. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation status, build/test commands, CLI usage, schema extraction, and conformance expectations.
 
+For array tuple/positional validation (`items`), see [SPEC.md: Tuple / Positional Array Validation](SPEC.md#tuple--positional-array-validation---items).
+
 ## Schema reference from TOML
 
 A TOML document can point to a schema with reserved metadata:

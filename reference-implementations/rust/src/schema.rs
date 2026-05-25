@@ -96,6 +96,7 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "typeref",
     "arraytype",
     "itemtype",
+    "items",
     "allowedvalues",
     "pattern",
     "optional",
@@ -124,6 +125,7 @@ pub struct Definition {
     reference: Option<String>,
     array_type: Option<SchemaType>,
     item_reference: Option<String>,
+    items: Vec<String>,
     optional: bool,
     allowed_values: Vec<Value>,
     pattern: Option<Regex>,
@@ -323,6 +325,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     }
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
+    let items = get_string_array_values(name, table, "items")?;
     let optional = get_bool(name, table, "optional")?.unwrap_or(false);
     let pattern = get_pattern(name, table)?;
     let min_length = get_unsigned_integer(name, table, "minlength")?;
@@ -384,6 +387,28 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             "{name} can only define itemtype when type is array"
         ));
     }
+    if type_name != Some(SchemaType::Array) && !items.is_empty() {
+        return Err(format!(
+            "{name} can only define items when type is array"
+        ));
+    }
+    if !items.is_empty() {
+        if array_type.is_some() {
+            return Err(format!("{name} cannot define both items and arraytype"));
+        }
+        if item_reference.is_some() {
+            return Err(format!("{name} cannot define both items and itemtype"));
+        }
+        if min_length.is_some()
+            || max_length.is_some()
+            || min_occurs.is_some()
+            || max_occurs.is_some()
+        {
+            return Err(format!(
+                "{name} cannot define minlength, maxlength, minoccurs, or maxoccurs together with items"
+            ));
+        }
+    }
     let min = table.get("min").cloned();
     let max = table.get("max").cloned();
     validate_range_constraints(
@@ -401,6 +426,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         reference,
         array_type,
         item_reference: item_reference.map(normalize_reference),
+        items: normalize_references(items),
         optional,
         allowed_values,
         pattern,
@@ -627,6 +653,10 @@ impl<'schema> Validator<'schema> {
 
     fn validate_array(&mut self, path: &str, array: &[Value], definition: &Definition) {
         self.validate_length(path, array.len(), definition);
+        if !definition.items.is_empty() {
+            self.validate_tuple_array(path, array, definition);
+            return;
+        }
         let array_type = definition.array_type.unwrap_or(SchemaType::Any);
         let item_definition = match definition.item_reference.as_deref() {
             Some(reference) => match self.resolve_reference(reference, &mut HashSet::new()) {
@@ -660,6 +690,31 @@ impl<'schema> Validator<'schema> {
                     self.validate_range(&item_path, item, definition);
                 }
             }
+        }
+    }
+
+    fn validate_tuple_array(&mut self, path: &str, array: &[Value], definition: &Definition) {
+        if array.len() != definition.items.len() {
+            self.add(
+                path,
+                &format!(
+                    "expected array length {} but found {}",
+                    definition.items.len(),
+                    array.len()
+                ),
+            );
+        }
+        let upper_bound = array.len().min(definition.items.len());
+        for index in 0..upper_bound {
+            let item_path = format!("{path}[{index}]");
+            let referenced = match self.resolve_reference(&definition.items[index], &mut HashSet::new()) {
+                Ok(referenced) => referenced,
+                Err(error) => {
+                    self.add(&item_path, &error);
+                    continue;
+                }
+            };
+            self.validate_value(&item_path, &array[index], &referenced);
         }
     }
 
@@ -784,6 +839,11 @@ impl<'schema> Validator<'schema> {
                 .item_reference
                 .clone()
                 .or(referenced.item_reference.clone()),
+            items: if definition.items.is_empty() {
+                referenced.items.clone()
+            } else {
+                definition.items.clone()
+            },
             optional: definition.optional || referenced.optional,
             allowed_values: if definition.allowed_values.is_empty() {
                 referenced.allowed_values.clone()

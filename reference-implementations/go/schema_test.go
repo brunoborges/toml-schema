@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -140,6 +141,117 @@ entries = [
 
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
+	}
+}
+
+func TestValidatesTupleArraysByPosition(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1"
+
+[types.coordinate]
+type = "float"
+
+[types.label]
+type = "string"
+
+[types.coordinateLabel]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+
+[elements.value]
+type = "array"
+items = [ "types.coordinateLabel", "types.coordinate" ]
+`)
+	documentPath := write(t, dir, "document.toml", `
+value = [ [ 1.5, "Hello" ], 2.0 ]
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := schema.ValidateFile(documentPath)
+
+	if !result.Valid() {
+		t.Fatalf("expected valid document, got %#v", result.Errors)
+	}
+}
+
+func TestRejectsInvalidTupleArrays(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1"
+
+[types.coordinate]
+type = "float"
+
+[types.label]
+type = "string"
+
+[elements.value]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+`)
+	wrongOrderPath := write(t, dir, "wrong-order.toml", `
+value = [ "Hello", 1.5 ]
+`)
+	tooShortPath := write(t, dir, "too-short.toml", `
+value = [ 1.5 ]
+`)
+	tooLongPath := write(t, dir, "too-long.toml", `
+value = [ 1.5, "Hello", true ]
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrongOrder := schema.ValidateFile(wrongOrderPath)
+	if wrongOrder.Valid() || !hasPath(wrongOrder, "$.value[0]") || !hasPath(wrongOrder, "$.value[1]") {
+		t.Fatalf("expected positional tuple errors, got %#v", wrongOrder.Errors)
+	}
+
+	tooShort := schema.ValidateFile(tooShortPath)
+	if tooShort.Valid() || !hasPath(tooShort, "$.value") {
+		t.Fatalf("expected tuple length error, got %#v", tooShort.Errors)
+	}
+
+	tooLong := schema.ValidateFile(tooLongPath)
+	if tooLong.Valid() || !hasPath(tooLong, "$.value") {
+		t.Fatalf("expected tuple length error, got %#v", tooLong.Errors)
+	}
+}
+
+func TestRejectsTupleSchemaWithConflictingProperties(t *testing.T) {
+	dir := t.TempDir()
+	conflicts := []string{
+		`
+[toml-schema]
+version = "1"
+
+[elements.value]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+arraytype = "string"
+`,
+		`
+[toml-schema]
+version = "1"
+
+[elements.value]
+type = "array"
+items = [ "types.coordinate", "types.label" ]
+minlength = 2
+`,
+	}
+	for index, schemaContent := range conflicts {
+		_, err := LoadSchema(write(t, dir, fmt.Sprintf("schema-%d.tosd", index), schemaContent))
+		if err == nil {
+			t.Fatalf("expected schema conflict error for case %d", index)
+		}
 	}
 }
 
