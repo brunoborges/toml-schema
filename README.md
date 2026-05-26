@@ -51,26 +51,9 @@ type = "table"
     arraytype = "integer"
 ```
 
-## Repository layout
-
-```text
-SPEC.md                         Human-readable TOML Schema specification
-REFERENCE_IMPLEMENTATIONS.md    Reference implementation status and usage
-toml-schema.abnf                TOML Schema-layer ABNF grammar
-toml-schema.tosd                Self-schema for TOML Schema documents
-config.tosd / config.toml       Example schema and TOML document
-reference-implementations/java  Java reference implementation and CLI
-reference-implementations/go    Go library and CLI reference implementation
-reference-implementations/rust  Rust reference implementation and CLI
-```
-
 ## Reference implementations
 
 Java, Go, and Rust reference implementations live under `reference-implementations/`. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation status, build/test commands, CLI usage, schema extraction, and conformance expectations.
-
-For array tuple/positional validation (`items`), see [SPEC.md: Tuple / Positional Array Validation](SPEC.md#tuple-positional-array-validation---items).
-
-Type references such as `typeof`, `itemtype`, `items`, `oneof`, and `anyof` can point directly at reserved built-in type names (`"string"`, `"boolean"`, `"integer"`, etc.) or at reusable `[types]` definitions.
 
 ## Schema reference from TOML
 
