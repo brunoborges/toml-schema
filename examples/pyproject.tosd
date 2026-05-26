@@ -26,9 +26,13 @@ type = "table"
     [types.buildSystem.requires]
     typeof = "types.dependencyArray"
 
-    [types.buildSystem.children]
-    "build-backend" = { type = "string", optional = true }
-    "backend-path" = { typeof = "types.stringArray", optional = true }
+    [types.buildSystem."build-backend"]
+    type = "string"
+    optional = true
+
+    [types.buildSystem."backend-path"]
+    typeof = "types.stringArray"
+    optional = true
 
 [types.readmeTable]
 type = "table"
@@ -41,8 +45,8 @@ type = "table"
     type = "string"
     optional = true
 
-    [types.readmeTable.children]
-    "content-type" = { type = "string" }
+    [types.readmeTable."content-type"]
+    type = "string"
 
 [types.readme]
 oneof = [ "string", "types.readmeTable" ]
@@ -177,22 +181,47 @@ type = "table"
     typeof = "types.stringMap"
     optional = true
 
-    [types.project.children]
-    "requires-python" = { type = "string", optional = true }
-    "license-files" = { typeof = "types.stringArray", optional = true }
-    "gui-scripts" = { typeof = "types.stringMap", optional = true }
-    "entry-points" = { typeof = "types.entryPoints", optional = true }
-    dependencies = { typeof = "types.dependencyArray", optional = true }
-    "optional-dependencies" = { typeof = "types.optionalDependencies", optional = true }
-    "import-names" = { typeof = "types.importNames", optional = true }
-    "import-namespaces" = { typeof = "types.importNamespaces", optional = true }
-    dynamic = { typeof = "types.dynamicMetadata", optional = true }
+    [types.project."requires-python"]
+    type = "string"
+    optional = true
+
+    [types.project."license-files"]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.project."gui-scripts"]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.project."entry-points"]
+    typeof = "types.entryPoints"
+    optional = true
+
+    [types.project.dependencies]
+    typeof = "types.dependencyArray"
+    optional = true
+
+    [types.project."optional-dependencies"]
+    typeof = "types.optionalDependencies"
+    optional = true
+
+    [types.project."import-names"]
+    typeof = "types.importNames"
+    optional = true
+
+    [types.project."import-namespaces"]
+    typeof = "types.importNamespaces"
+    optional = true
+
+    [types.project.dynamic]
+    typeof = "types.dynamicMetadata"
+    optional = true
 
 [types.dependencyGroupInclude]
 type = "table"
 
-    [types.dependencyGroupInclude.children]
-    "include-group" = { type = "string" }
+    [types.dependencyGroupInclude."include-group"]
+    type = "string"
 
 [types.dependencyGroupItem]
 oneof = [ "string", "types.dependencyGroupInclude" ]
@@ -217,6 +246,10 @@ type = "collection"
 typeof = "types.openTable"
 optional = true
 
-[elements.children]
-"build-system" = { typeof = "types.buildSystem", optional = true }
-"dependency-groups" = { typeof = "types.dependencyGroups", optional = true }
+[elements."build-system"]
+typeof = "types.buildSystem"
+optional = true
+
+[elements."dependency-groups"]
+typeof = "types.dependencyGroups"
+optional = true
