@@ -5,89 +5,10 @@ version = "1.0.0"
 # Types
 [types]
 
+    # Schema definitions are open tables here because the reference
+    # implementations enforce schema property types at load time.
     [types.schemaDef]
-    type = "collection"
-    typeof = "types.schemaDef"
-
-        [types.schemaDef.children.type]
-        type = "string"
-        allowedvalues = [ "array", "table", "collection", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
-        optional = true
-
-        [types.schemaDef.children.typeof]
-        type = "string"
-        optional = true
-        # Type reference: built-in type name or [types] definition name.
-
-        [types.schemaDef.children.arraytype]
-        type = "string"
-        allowedvalues = [ "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time", "array", "table" ]
-        optional = true
-
-        [types.schemaDef.children.itemtype]
-        type = "string"
-        optional = true
-        # Type reference: built-in type name or [types] definition name.
-
-        [types.schemaDef.children.items]
-        type = "array"
-        arraytype = "string"
-        optional = true
-        # Each item is a type reference.
-
-        [types.schemaDef.children.allowedvalues]
-        type = "array"
-        arraytype = "any"
-        optional = true
-
-        [types.schemaDef.children.pattern]
-        type = "string"
-        optional = true
-
-        [types.schemaDef.children.optional]
-        type = "boolean"
-        optional = true
-
-        [types.schemaDef.children.default]
-        type = "any"
-        optional = true
-
-        [types.schemaDef.children.min]
-        type = "any"
-        optional = true
-
-        [types.schemaDef.children.max]
-        type = "any"
-        optional = true
-
-        [types.schemaDef.children.minlength]
-        type = "integer"
-        optional = true
-        min = 0
-        # For strings, this counts Unicode scalar values after TOML parsing.
-
-        [types.schemaDef.children.maxlength]
-        type = "integer"
-        optional = true
-        min = 1
-        # For strings, this counts Unicode scalar values after TOML parsing.
-
-        [types.schemaDef.children.oneof]
-        type = "array"
-        arraytype = "string"
-        optional = true
-        # Each item is a type reference.
-
-        [types.schemaDef.children.anyof]
-        type = "array"
-        arraytype = "string"
-        optional = true
-        # Each item is a type reference.
-
-        [types.schemaDef.children.children]
-        type = "collection"
-        typeof = "types.schemaDef"
-        optional = true
+    type = "table"
 
 # Elements
 [elements]

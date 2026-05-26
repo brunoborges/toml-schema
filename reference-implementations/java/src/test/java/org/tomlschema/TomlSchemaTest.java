@@ -336,25 +336,32 @@ class TomlSchemaTest {
     }
 
     @Test
-    void supportsQuotedDottedAndEmptyTomlKeysWithChildrenTable() throws IOException {
+    void supportsQuotedDottedEmptyAndSchemaKeywordTomlKeys() throws IOException {
         Path schema = write("special-keys.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
-                [elements.site]
-                type = "table"
-
-                    [elements.site.children]
-                    "google.com" = { type = "boolean" }
+                [elements.""]
+                type = "string"
 
                 [elements.children]
-                "" = { type = "string" }
+                type = "string"
+
+                [elements.site."google.com"]
+                type = "boolean"
+
+                [elements.plugin.type]
+                type = "string"
                 """);
         Path document = write("special-keys.toml", """
                 "" = "blank"
+                children = "literal"
 
                 [site]
                 "google.com" = true
+
+                [plugin]
+                type = "npm"
                 """);
 
         ValidationResult result = TomlSchema.load(schema).validate(document);
@@ -368,11 +375,8 @@ class TomlSchemaTest {
                 [toml-schema]
                 version = "1.0.0"
 
-                [elements.site]
-                type = "table"
-
-                    [elements.site.children]
-                    "google.com" = { type = "boolean" }
+                [elements.site."google.com"]
+                type = "boolean"
                 """);
         Path document = write("special-key-error.toml", """
                 [site]

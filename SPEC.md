@@ -250,9 +250,13 @@ minlength = <integer>
 maxlength = <integer>
 ```
 
-### Keys That Need Escaping
+### Quoted and Special Keys
 
-Schema child definitions usually use nested TOML tables, but TOML keys can be quoted, empty, contain dots, or collide with built-in schema property names such as `type`, `typeof`, and `optional`. Use a `children` table to define those keys unambiguously.
+Schema child definitions use TOML tables. When a target TOML key is empty or contains characters that TOML requires to be quoted, such as a literal dot, quote that key in the schema table path.
+
+Target keys may have the same names as TOML Schema properties, such as `type`, `typeof`, `optional`, or `pattern`. When those names are used as child table path segments, they define target document keys rather than schema properties.
+
+A schema definition with nested child definitions and no explicit `type`, `typeof`, `oneof`, or `anyof` is treated as `type = "table"`. This lets schemas describe target keys that would otherwise collide with schema properties.
 
 Example TOML document:
 
@@ -261,19 +265,22 @@ Example TOML document:
 
 [site]
 "google.com" = true
+
+[plugin]
+type = "npm"
 ```
 
 Schema:
 
 ```toml
-[elements.children]
-"" = { type = "string" }
+[elements.""]
+type = "string"
 
-[elements.site]
-type = "table"
+[elements.site."google.com"]
+type = "boolean"
 
-    [elements.site.children]
-    "google.com" = { type = "boolean" }
+[elements.plugin.type]
+type = "string"
 ```
 
 ### Simple Types - `<simple-type>`
@@ -346,6 +353,8 @@ For simplicity, there is no definition of `inline table` since these are just ta
 #### Tables
 
 A `table` may have a set of properties, or none at all. If a table has a definition of properties, then the parser must validate the input and the input must match exactly the rules of the table and its children.
+
+If a schema definition has nested child definitions but does not declare `type`, `typeof`, `oneof`, or `anyof`, parsers MUST treat it as if it declared `type = "table"`.
 
 If a property of type `table` has no defined property and/or structure, the parser must not validate its input. This is useful for representing custom JSON data payloads.
 

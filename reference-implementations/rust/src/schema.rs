@@ -105,7 +105,6 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "maxlength",
     "oneof",
     "anyof",
-    "children",
 ];
 
 pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0";
@@ -223,7 +222,9 @@ impl Schema {
         )
         .expect("valid SemVer regex");
         let Some(captures) = semver.captures(version) else {
-            return Err("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax".to_string());
+            return Err(
+                "[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax".to_string(),
+            );
         };
         if captures.get(1).map(|major| major.as_str()) != Some("1") {
             return Err(format!("unsupported TOML Schema major version: {version}"));
@@ -266,9 +267,7 @@ impl Schema {
 /// Loads a TOML Schema document referenced by a TOML document via
 /// `[toml-schema].location` and returns the schema together with the parsed
 /// document.
-pub fn schema_from_document<P: AsRef<Path>>(
-    document_path: P,
-) -> Result<(Schema, Table), String> {
+pub fn schema_from_document<P: AsRef<Path>>(document_path: P) -> Result<(Schema, Table), String> {
     let document_path = document_path.as_ref();
     let document = parse_toml_file(document_path)?;
     let metadata = document
@@ -288,10 +287,9 @@ pub fn schema_from_document<P: AsRef<Path>>(
 }
 
 fn parse_toml_file(path: &Path) -> Result<Table, String> {
-    let content = fs::read_to_string(path)
-        .map_err(|error| format!("{}: {}", path.display(), error))?;
-    toml::from_str::<Table>(&content)
-        .map_err(|error| format!("{}: {}", path.display(), error))
+    let content =
+        fs::read_to_string(path).map_err(|error| format!("{}: {}", path.display(), error))?;
+    toml::from_str::<Table>(&content).map_err(|error| format!("{}: {}", path.display(), error))
 }
 
 fn parse_definitions(
@@ -310,23 +308,8 @@ fn parse_definitions(
         if prefix == "types" && SchemaType::parse(key).is_some() {
             return Err(format!("[types.{key}] uses a reserved built-in type name"));
         }
-        let value_map = value.as_table();
-        if key == "children"
-            && value_map
-                .map(|child_table| !has_definition_marker(child_table))
-                .unwrap_or(false)
-        {
-            for (child_key, child_value) in value_map.unwrap().iter() {
-                let child_map = child_value.as_table().ok_or_else(|| {
-                    format!("[{prefix}.children] entry must be a table: {child_key}")
-                })?;
-                let definition =
-                    parse_definition(&format!("{prefix}.{child_key}"), child_map)?;
-                definitions.insert(child_key.clone(), definition);
-            }
-            continue;
-        }
-        let value_map = value_map
+        let value_map = value
+            .as_table()
             .ok_or_else(|| format!("[{prefix}] entry must be a table: {key}"))?;
         let definition = parse_definition(&format!("{prefix}.{key}"), value_map)?;
         definitions.insert(key.clone(), definition);
@@ -335,7 +318,7 @@ fn parse_definitions(
 }
 
 fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
-    let type_name = get_schema_type(name, table, "type")?;
+    let mut type_name = get_schema_type(name, table, "type")?;
     let reference = get_string(name, table, "typeof")?;
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
@@ -351,23 +334,8 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         return Err(format!("{name} cannot define both oneof and anyof"));
     }
     let mut children: BTreeMap<String, Definition> = BTreeMap::new();
-    if let Some(Value::Table(explicit_children)) = table.get("children") {
-        for (key, value) in explicit_children.iter() {
-            let child_table = value.as_table().ok_or_else(|| {
-                format!("{name}.children.{key} must be a table")
-            })?;
-            let child = parse_definition(&format!("{name}.{key}"), child_table)?;
-            children.insert(key.clone(), child);
-        }
-    }
     for (key, value) in table.iter() {
         if let Some(child_table) = value.as_table() {
-            if is_definition_key(key) {
-                if key != "children" {
-                    return Err(format!("{name}.{key} must not be a table"));
-                }
-                continue;
-            }
             if children.contains_key(key) {
                 return Err(format!("{name} defines child {key} more than once"));
             }
@@ -377,14 +345,13 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             return Err(format!("{name} contains unsupported property: {key}"));
         }
     }
-    if type_name.is_none()
-        && reference.is_none()
-        && one_of.is_empty()
-        && any_of.is_empty()
-    {
-        return Err(format!(
-            "{name} must define type, typeof, oneof, or anyof"
-        ));
+    if type_name.is_none() && reference.is_none() && one_of.is_empty() && any_of.is_empty() {
+        if children.is_empty() {
+            return Err(format!(
+                "{name} must define type, typeof, oneof, anyof, or child definitions"
+            ));
+        }
+        type_name = Some(SchemaType::Table);
     }
     if type_name != Some(SchemaType::Array) && array_type.is_some() {
         return Err(format!(
@@ -397,9 +364,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         ));
     }
     if type_name != Some(SchemaType::Array) && !items.is_empty() {
-        return Err(format!(
-            "{name} can only define items when type is array"
-        ));
+        return Err(format!("{name} can only define items when type is array"));
     }
     if !items.is_empty() {
         if array_type.is_some() {
@@ -414,8 +379,8 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             ));
         }
     }
-    let min = table.get("min").cloned();
-    let max = table.get("max").cloned();
+    let min = property_value(table, "min").cloned();
+    let max = property_value(table, "max").cloned();
     validate_range_constraints(
         name,
         type_name,
@@ -655,12 +620,7 @@ impl<'schema> Validator<'schema> {
         }
     }
 
-    fn validate_table_value(
-        &mut self,
-        path: &str,
-        table: &Table,
-        definition: &Definition,
-    ) {
+    fn validate_table_value(&mut self, path: &str, table: &Table, definition: &Definition) {
         if definition.children.is_empty() {
             return;
         }
@@ -672,12 +632,7 @@ impl<'schema> Validator<'schema> {
         }
     }
 
-    fn validate_collection(
-        &mut self,
-        path: &str,
-        table: &Table,
-        definition: &Definition,
-    ) {
+    fn validate_collection(&mut self, path: &str, table: &Table, definition: &Definition) {
         let mut dynamic_entries = 0usize;
         for (key, value) in table.iter() {
             let child_path = append_path(path, key);
@@ -744,9 +699,7 @@ impl<'schema> Validator<'schema> {
                 continue;
             }
             match &item_definition {
-                Some(item_definition) => {
-                    self.validate_value(&item_path, item, item_definition)
-                }
+                Some(item_definition) => self.validate_value(&item_path, item, item_definition),
                 None => {
                     self.validate_allowed_values(&item_path, item, definition);
                     self.validate_range(&item_path, item, definition);
@@ -769,13 +722,14 @@ impl<'schema> Validator<'schema> {
         let upper_bound = array.len().min(definition.items.len());
         for index in 0..upper_bound {
             let item_path = format!("{path}[{index}]");
-            let referenced = match self.resolve_reference(&definition.items[index], &mut HashSet::new()) {
-                Ok(referenced) => referenced,
-                Err(error) => {
-                    self.add(&item_path, &error);
-                    continue;
-                }
-            };
+            let referenced =
+                match self.resolve_reference(&definition.items[index], &mut HashSet::new()) {
+                    Ok(referenced) => referenced,
+                    Err(error) => {
+                        self.add(&item_path, &error);
+                        continue;
+                    }
+                };
             self.validate_value(&item_path, &array[index], &referenced);
         }
     }
@@ -793,12 +747,7 @@ impl<'schema> Validator<'schema> {
         }
     }
 
-    fn validate_common_constraints(
-        &mut self,
-        path: &str,
-        value: &Value,
-        definition: &Definition,
-    ) {
+    fn validate_common_constraints(&mut self, path: &str, value: &Value, definition: &Definition) {
         if let Value::Array(array) = value {
             self.validate_length(path, array.len(), definition);
             return;
@@ -818,12 +767,7 @@ impl<'schema> Validator<'schema> {
         }
     }
 
-    fn validate_allowed_values(
-        &mut self,
-        path: &str,
-        value: &Value,
-        definition: &Definition,
-    ) {
+    fn validate_allowed_values(&mut self, path: &str, value: &Value, definition: &Definition) {
         if definition.allowed_values.is_empty() {
             return;
         }
@@ -871,8 +815,7 @@ impl<'schema> Validator<'schema> {
         definition: &Definition,
         seen: &mut HashSet<String>,
     ) -> Result<Definition, String> {
-        if definition.reference.is_none() || definition.type_name == Some(SchemaType::Collection)
-        {
+        if definition.reference.is_none() || definition.type_name == Some(SchemaType::Collection) {
             return Ok(definition.clone());
         }
         let reference = definition.reference.as_deref().unwrap();
@@ -912,10 +855,7 @@ impl<'schema> Validator<'schema> {
             } else {
                 definition.allowed_values.clone()
             },
-            pattern: definition
-                .pattern
-                .clone()
-                .or(referenced.pattern.clone()),
+            pattern: definition.pattern.clone().or(referenced.pattern.clone()),
             min: definition.min.clone().or(referenced.min.clone()),
             max: definition.max.clone().or(referenced.max.clone()),
             min_length: definition.min_length.or(referenced.min_length),
@@ -1110,9 +1050,7 @@ fn values_equal(left: &Value, right: &Value) -> bool {
     match (left, right) {
         (Value::String(left), Value::String(right)) => left == right,
         (Value::Boolean(left), Value::Boolean(right)) => left == right,
-        (Value::Datetime(left), Value::Datetime(right)) => {
-            left.to_string() == right.to_string()
-        }
+        (Value::Datetime(left), Value::Datetime(right)) => left.to_string() == right.to_string(),
         (Value::Array(left), Value::Array(right)) => {
             left.len() == right.len()
                 && left
@@ -1149,9 +1087,9 @@ fn append_path(path: &str, key: &str) -> String {
 /// quoted with TOML-style escaping.
 pub fn encode_path_key(key: &str) -> String {
     if !key.is_empty()
-        && key
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+        && key.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
     {
         return key.to_string();
     }
@@ -1176,11 +1114,6 @@ pub fn encode_path_key(key: &str) -> String {
     encoded
 }
 
-fn has_definition_marker(table: &Table) -> bool {
-    table.contains_key("type")
-        || table.contains_key("typeof")
-}
-
 fn normalize_reference(reference: String) -> String {
     reference
         .strip_prefix("types.")
@@ -1196,11 +1129,7 @@ fn is_nan(value: Option<&Value>) -> bool {
     matches!(value, Some(Value::Float(float)) if float.is_nan())
 }
 
-fn get_schema_type(
-    name: &str,
-    table: &Table,
-    key: &str,
-) -> Result<Option<SchemaType>, String> {
+fn get_schema_type(name: &str, table: &Table, key: &str) -> Result<Option<SchemaType>, String> {
     let Some(value) = get_string(name, table, key)? else {
         return Ok(None);
     };
@@ -1209,8 +1138,15 @@ fn get_schema_type(
         .ok_or_else(|| format!("{name} has unsupported schema type: {value}"))
 }
 
-fn get_string(name: &str, table: &Table, key: &str) -> Result<Option<String>, String> {
+fn property_value<'a>(table: &'a Table, key: &str) -> Option<&'a Value> {
     match table.get(key) {
+        Some(Value::Table(_)) => None,
+        value => value,
+    }
+}
+
+fn get_string(name: &str, table: &Table, key: &str) -> Result<Option<String>, String> {
+    match property_value(table, key) {
         None => Ok(None),
         Some(Value::String(string)) => Ok(Some(string.clone())),
         Some(_) => Err(format!("{name}.{key} must be a string")),
@@ -1218,19 +1154,15 @@ fn get_string(name: &str, table: &Table, key: &str) -> Result<Option<String>, St
 }
 
 fn get_bool(name: &str, table: &Table, key: &str) -> Result<Option<bool>, String> {
-    match table.get(key) {
+    match property_value(table, key) {
         None => Ok(None),
         Some(Value::Boolean(value)) => Ok(Some(*value)),
         Some(_) => Err(format!("{name}.{key} must be a boolean")),
     }
 }
 
-fn get_unsigned_integer(
-    name: &str,
-    table: &Table,
-    key: &str,
-) -> Result<Option<i64>, String> {
-    match table.get(key) {
+fn get_unsigned_integer(name: &str, table: &Table, key: &str) -> Result<Option<i64>, String> {
+    match property_value(table, key) {
         None => Ok(None),
         Some(Value::Integer(value)) => {
             if *value < 0 {
@@ -1251,23 +1183,15 @@ fn get_pattern(name: &str, table: &Table) -> Result<Option<Regex>, String> {
         .map_err(|error| format!("{name} has invalid pattern: {error}"))
 }
 
-fn get_array_values(
-    name: &str,
-    table: &Table,
-    key: &str,
-) -> Result<Vec<Value>, String> {
-    match table.get(key) {
+fn get_array_values(name: &str, table: &Table, key: &str) -> Result<Vec<Value>, String> {
+    match property_value(table, key) {
         None => Ok(Vec::new()),
         Some(Value::Array(array)) => Ok(array.clone()),
         Some(_) => Err(format!("{name}.{key} must be an array")),
     }
 }
 
-fn get_string_array_values(
-    name: &str,
-    table: &Table,
-    key: &str,
-) -> Result<Vec<String>, String> {
+fn get_string_array_values(name: &str, table: &Table, key: &str) -> Result<Vec<String>, String> {
     let values = get_array_values(name, table, key)?;
     let mut result = Vec::with_capacity(values.len());
     for value in values {

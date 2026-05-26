@@ -19,13 +19,11 @@ types-table       = toml-table-header-types *schema-definition
 elements-table    = toml-table-header-elements 1*schema-definition
 metadata-table    = toml-table-header-toml-schema-meta *toml-keyval
 
-schema-definition = schema-definition-table *definition-property [ children-table ]
-children-table    = schema-children-table *children-entry
-children-entry    = toml-key keyval-sep toml-inline-table
+schema-definition = schema-definition-table *definition-property *schema-definition
 
 schema-key = type / typeof / arraytype / itemtype / items / oneof / anyof
            / allowedvalues / pattern / optional / default / min / max
-           / minlength / maxlength / children
+           / minlength / maxlength
 
 definition-property = type / typeof / arraytype / itemtype / items / oneof / anyof
                     / allowedvalues / pattern / optional / default / min / max
@@ -47,7 +45,6 @@ min           = "min" keyval-sep range-boundary
 max           = "max" keyval-sep range-boundary
 minlength     = "minlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
 maxlength     = "maxlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
-children      = "children"
 
 built-in-type = anytype / stringtype / integertype / floattype / booleantype
               / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
@@ -83,13 +80,11 @@ toml-table-header-types            = <TOML 1.0 table header for [types]>
 toml-table-header-elements         = <TOML 1.0 table header for [elements]>
 toml-table-header-toml-schema-meta = <TOML 1.0 table header under [toml-schema.meta]>
 schema-definition-table            = <TOML 1.0 table header under [types] or [elements]>
-schema-children-table              = <TOML 1.0 table header named children under a schema definition>
 toml-keyval                        = <TOML 1.0 key/value pair>
 toml-key                           = <TOML 1.0 key>
 toml-value                         = <TOML 1.0 value>
 toml-string                        = <TOML 1.0 string>
 toml-array                         = <TOML 1.0 array>
-toml-inline-table                  = <TOML 1.0 inline table>
 toml-boolean                       = <TOML 1.0 boolean>
 toml-integer                       = <TOML 1.0 integer>
 toml-float                         = <TOML 1.0 float>
