@@ -1,7 +1,6 @@
-package main
+package tomlschema
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -416,7 +415,7 @@ type = "table"
 	}
 }
 
-func TestCLILocatesSchemaFromDocumentMetadata(t *testing.T) {
+func TestLocatesSchemaFromDocumentMetadata(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "schema.tosd", `
 [toml-schema]
@@ -432,20 +431,19 @@ title = "Example"
 version = "1.0.0"
 location = "schema.tosd"
 `)
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 
-	exitCode := run([]string{"validate", documentPath}, &out, &errOut)
+	schema, document, err := SchemaFromDocument(documentPath)
 
-	if exitCode != 0 {
-		t.Fatalf("expected exit code 0, got %d: %s", exitCode, errOut.String())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "is valid") {
-		t.Fatalf("expected valid output, got %q", out.String())
+	result := schema.Validate(document)
+	if !result.Valid() {
+		t.Fatalf("expected valid document, got %#v", result.Errors)
 	}
 }
 
-func TestCLIExtractsSchemaFromTomlDocument(t *testing.T) {
+func TestExtractsSchemaFromTomlDocument(t *testing.T) {
 	dir := t.TempDir()
 	documentPath := write(t, dir, "extract-source.toml", `
 title = "Example"
@@ -463,16 +461,9 @@ version = "1.0.0"
 location = "ignored.tosd"
 `)
 	extractedSchema := filepath.Join(dir, "extract-output.tosd")
-	var out bytes.Buffer
-	var errOut bytes.Buffer
 
-	exitCode := run([]string{"extract", documentPath, extractedSchema}, &out, &errOut)
-
-	if exitCode != 0 {
-		t.Fatalf("expected exit code 0, got %d: %s", exitCode, errOut.String())
-	}
-	if !strings.Contains(out.String(), "Extracted schema to") {
-		t.Fatalf("expected extract output, got %q", out.String())
+	if err := ExtractSchemaFile(documentPath, extractedSchema); err != nil {
+		t.Fatal(err)
 	}
 
 	schemaBytes, err := os.ReadFile(extractedSchema)

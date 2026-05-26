@@ -7,7 +7,7 @@ This document tracks TOML Schema reference implementations and the expected vali
 | Language | Location | Status | Notes |
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 25 library and CLI using Tomlj for TOML 1.0 parsing. |
-| Go | [`reference-implementations/go`](reference-implementations/go) | Active reference implementation | Go CLI using go-toml for TOML 1.0 parsing. |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Active reference implementation | Go library and CLI using go-toml for TOML 1.0 parsing. |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Active reference implementation | Rust library and CLI using the `toml` crate for TOML 1.0 parsing. |
 | Other languages | `reference-implementations/<language>` | Not started | Future implementations should follow the same conformance expectations below. |
 
@@ -75,7 +75,7 @@ The Java test suite reads `toml-schema.abnf` as a conformance guard and checks t
 
 ## Go
 
-The Go reference implementation uses [go-toml](https://github.com/pelletier/go-toml) to parse TOML and validates the parsed data model against a `.tosd` schema. It can validate TOML documents from an executable CLI, and it can extract a starter schema from a sample TOML document.
+The Go reference implementation uses [go-toml](https://github.com/pelletier/go-toml) to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
 
 Run the Go test suite:
 
@@ -86,31 +86,50 @@ go -C reference-implementations/go test ./...
 Validate with an explicit schema:
 
 ```shell
-go -C reference-implementations/go run . validate ../../config.tosd ../../config.toml
+go -C reference-implementations/go run ./cmd/toml-schema validate ../../config.tosd ../../config.toml
 ```
 
 Validate using `[toml-schema].location` from the TOML document:
 
 ```shell
-go -C reference-implementations/go run . validate ../../config.toml
+go -C reference-implementations/go run ./cmd/toml-schema validate ../../config.toml
 ```
 
 Validate the example schema against the TOML Schema self-schema:
 
 ```shell
-go -C reference-implementations/go run . validate ../../toml-schema.tosd ../../config.tosd
+go -C reference-implementations/go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../config.tosd
 ```
 
 Validate the TOML Schema self-schema against itself:
 
 ```shell
-go -C reference-implementations/go run . validate ../../toml-schema.tosd ../../toml-schema.tosd
+go -C reference-implementations/go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../toml-schema.tosd
 ```
 
 Extract a schema from a sample TOML document:
 
 ```shell
-go -C reference-implementations/go run . extract ../../config.toml /tmp/config.generated.tosd
+go -C reference-implementations/go run ./cmd/toml-schema extract ../../config.toml /tmp/config.generated.tosd
+```
+
+Use the library API:
+
+```go
+package main
+
+import tomlschema "github.com/brunoborges/toml-schema/reference-implementations/go"
+
+func main() {
+	schema, err := tomlschema.LoadSchema("config.tosd")
+	if err != nil {
+		panic(err)
+	}
+	result := schema.ValidateFile("config.toml")
+	if !result.Valid() {
+		panic(result.Errors)
+	}
+}
 ```
 
 The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`) that reads `toml-schema.abnf` and asserts that the implementation's supported schema keys and built-in type names match the grammar.

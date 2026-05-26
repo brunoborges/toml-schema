@@ -1,4 +1,4 @@
-package main
+package tomlschema
 
 import (
 	"fmt"
@@ -148,6 +148,10 @@ func LoadSchema(path string) (*Schema, error) {
 		return nil, err
 	}
 	return &Schema{source: path, types: types, elements: elements}, nil
+}
+
+func LoadDocument(path string) (map[string]any, error) {
+	return parseTOMLFile(path)
 }
 
 func validateSchemaVersion(value any) error {

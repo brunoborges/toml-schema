@@ -60,7 +60,7 @@ toml-schema.abnf                TOML Schema-layer ABNF grammar
 toml-schema.tosd                Self-schema for TOML Schema documents
 config.tosd / config.toml       Example schema and TOML document
 reference-implementations/java  Java reference implementation and CLI
-reference-implementations/go    Go reference implementation and CLI
+reference-implementations/go    Go library and CLI reference implementation
 reference-implementations/rust  Rust reference implementation and CLI
 ```
 

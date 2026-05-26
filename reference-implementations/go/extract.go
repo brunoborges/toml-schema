@@ -1,8 +1,7 @@
-package main
+package tomlschema
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"sort"
@@ -14,21 +13,15 @@ import (
 
 var bareTomlKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
-func extract(documentPath, schemaPath string, out, errOut io.Writer) int {
+func ExtractSchemaFile(documentPath, schemaPath string) error {
 	document, err := parseTOMLFile(documentPath)
 	if err != nil {
-		fmt.Fprintln(errOut, err)
-		return 1
+		return err
 	}
-	if err := os.WriteFile(schemaPath, []byte(generateSchema(document)), 0o644); err != nil {
-		fmt.Fprintln(errOut, err)
-		return 2
-	}
-	fmt.Fprintf(out, "Extracted schema to %s\n", schemaPath)
-	return 0
+	return os.WriteFile(schemaPath, []byte(GenerateSchema(document)), 0o644)
 }
 
-func generateSchema(document map[string]any) string {
+func GenerateSchema(document map[string]any) string {
 	var schema strings.Builder
 	schema.WriteString("[toml-schema]\n")
 	fmt.Fprintf(&schema, "version = %q\n\n", currentTomlSchemaVersion)

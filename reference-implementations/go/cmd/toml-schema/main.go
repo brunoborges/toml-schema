@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	tomlschema "github.com/brunoborges/toml-schema/reference-implementations/go"
 )
 
 func main() {
@@ -40,7 +42,7 @@ func run(args []string, out, errOut io.Writer) int {
 }
 
 func validateWithEmbeddedSchema(documentPath string, out, errOut io.Writer) int {
-	schema, document, err := SchemaFromDocument(documentPath)
+	schema, document, err := tomlschema.SchemaFromDocument(documentPath)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
@@ -49,7 +51,7 @@ func validateWithEmbeddedSchema(documentPath string, out, errOut io.Writer) int 
 }
 
 func validate(schemaPath, documentPath string, out, errOut io.Writer) int {
-	schema, err := LoadSchema(schemaPath)
+	schema, err := tomlschema.LoadSchema(schemaPath)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
@@ -57,7 +59,16 @@ func validate(schemaPath, documentPath string, out, errOut io.Writer) int {
 	return report(schema.ValidateFile(documentPath), documentPath, out, errOut)
 }
 
-func report(result ValidationResult, documentPath string, out, errOut io.Writer) int {
+func extract(documentPath, schemaPath string, out, errOut io.Writer) int {
+	if err := tomlschema.ExtractSchemaFile(documentPath, schemaPath); err != nil {
+		fmt.Fprintln(errOut, err)
+		return 2
+	}
+	fmt.Fprintf(out, "Extracted schema to %s\n", schemaPath)
+	return 0
+}
+
+func report(result tomlschema.ValidationResult, documentPath string, out, errOut io.Writer) int {
 	if result.Valid() {
 		fmt.Fprintf(out, "%s is valid\n", documentPath)
 		return 0
