@@ -33,7 +33,7 @@ const (
 var definitionKeys = map[string]bool{
 	"type": true, "typeof": true, "arraytype": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "optional": true, "default": true, "min": true,
-	"max": true, "minlength": true, "maxlength": true, "minoccurs": true, "maxoccurs": true,
+	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true, "children": true,
 }
 
@@ -277,20 +277,6 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
-	minOccurs, err := getIntegerPointer(table, "minoccurs")
-	if err != nil {
-		return Definition{}, err
-	}
-	maxOccurs, err := getIntegerPointer(table, "maxoccurs")
-	if err != nil {
-		return Definition{}, err
-	}
-	if minLength == nil {
-		minLength = minOccurs
-	}
-	if maxLength == nil {
-		maxLength = maxOccurs
-	}
 	allowedValues, err := getArrayValues(table, "allowedvalues")
 	if err != nil {
 		return Definition{}, err
@@ -360,8 +346,8 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		if itemReference != "" {
 			return Definition{}, fmt.Errorf("%s cannot define both items and itemtype", name)
 		}
-		if minLength != nil || maxLength != nil || minOccurs != nil || maxOccurs != nil {
-			return Definition{}, fmt.Errorf("%s cannot define minlength, maxlength, minoccurs, or maxoccurs together with items", name)
+		if minLength != nil || maxLength != nil {
+			return Definition{}, fmt.Errorf("%s cannot define minlength or maxlength together with items", name)
 		}
 	}
 	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), table["min"], table["max"]); err != nil {

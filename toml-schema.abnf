@@ -25,11 +25,11 @@ children-entry    = toml-key keyval-sep toml-inline-table
 
 schema-key = type / typeof / arraytype / itemtype / items / oneof / anyof
            / allowedvalues / pattern / optional / default / min / max
-           / minlength / maxlength / minoccurs / maxoccurs / children
+           / minlength / maxlength / children
 
 definition-property = type / typeof / arraytype / itemtype / items / oneof / anyof
                     / allowedvalues / pattern / optional / default / min / max
-                    / minlength / maxlength / minoccurs / maxoccurs
+                    / minlength / maxlength
 
 version       = "version" keyval-sep semver-string
 type          = "type" keyval-sep built-in-type
@@ -47,8 +47,6 @@ min           = "min" keyval-sep toml-value
 max           = "max" keyval-sep toml-value
 minlength     = "minlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
 maxlength     = "maxlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
-minoccurs     = "minoccurs" keyval-sep toml-integer    ; legacy alias for minlength
-maxoccurs     = "maxoccurs" keyval-sep toml-integer    ; legacy alias for maxlength
 children      = "children"
 
 built-in-type = anytype / stringtype / integertype / floattype / booleantype

@@ -143,6 +143,31 @@ class TomlSchemaTest {
     }
 
     @Test
+    void rejectsOccurrenceAliases() throws IOException {
+        Path minOccurs = write("minoccurs-alias.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.values]
+                type = "array"
+                arraytype = "string"
+                minoccurs = 1
+                """);
+        Path maxOccurs = write("maxoccurs-alias.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.values]
+                type = "array"
+                arraytype = "string"
+                maxoccurs = 2
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(minOccurs));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(maxOccurs));
+    }
+
+    @Test
     void validatesArrayOfTablesWithItemSchema() throws IOException {
         Path schema = write("products.tosd", """
                 [toml-schema]

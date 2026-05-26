@@ -353,6 +353,31 @@ typeof = "types.item"
 }
 
 #[test]
+fn rejects_occurrence_aliases() {
+    let directory = tempfile_dir("occurrence-aliases");
+    for alias in ["minoccurs", "maxoccurs"] {
+        let schema_path = write_file(
+            &directory,
+            &format!("{alias}.tosd"),
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.values]
+type = "array"
+arraytype = "string"
+{alias} = 1
+"#
+            ),
+        );
+
+        let error = Schema::load(&schema_path).expect_err("expected occurrence alias rejection");
+        assert!(error.contains("unsupported property"));
+    }
+}
+
+#[test]
 fn validates_tuple_arrays_by_position() {
     let directory = tempfile_dir("tuple-arrays");
     let schema_path = write_file(

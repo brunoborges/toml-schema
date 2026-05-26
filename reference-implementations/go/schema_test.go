@@ -253,6 +253,25 @@ typeof = "types.item"
 	}
 }
 
+func TestRejectsOccurrenceAliases(t *testing.T) {
+	dir := t.TempDir()
+	aliases := []string{"minoccurs", "maxoccurs"}
+	for _, alias := range aliases {
+		schemaPath := write(t, dir, alias+".tosd", fmt.Sprintf(`
+[toml-schema]
+version = "1.0.0"
+
+[elements.values]
+type = "array"
+arraytype = "string"
+%s = 1
+`, alias))
+		if _, err := LoadSchema(schemaPath); err == nil {
+			t.Fatalf("expected %s alias to be rejected", alias)
+		}
+	}
+}
+
 func TestValidatesTupleArraysByPosition(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `

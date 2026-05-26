@@ -440,7 +440,7 @@ Semantics:
  - `items` is ordered, and each index validates against the corresponding referenced type.
  - When `items` is present, the array must have exactly the same number of items.
  - `items` is mutually exclusive with `arraytype` and `itemtype`.
- - `items` is also mutually exclusive with `minlength` and `maxlength` (and aliases `minoccurs` / `maxoccurs`).
+ - `items` is also mutually exclusive with `minlength` and `maxlength`.
 
 #### Collection of Elements for Dynamic Keys
 

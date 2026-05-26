@@ -21,7 +21,7 @@ final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
             "type", "typeof", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
-            "optional", "default", "min", "max", "minlength", "maxlength", "minoccurs", "maxoccurs",
+            "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof", "children"
     );
 
@@ -107,14 +107,6 @@ final class SchemaLoader {
         Pattern pattern = getPattern(name, table);
         Integer minLength = getInteger(table, "minlength");
         Integer maxLength = getInteger(table, "maxlength");
-        Integer minOccurs = getInteger(table, "minoccurs");
-        Integer maxOccurs = getInteger(table, "maxoccurs");
-        if (minLength == null) {
-            minLength = minOccurs;
-        }
-        if (maxLength == null) {
-            maxLength = maxOccurs;
-        }
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
         List<String> oneOf = getStringArrayValues(table, "oneof");
         List<String> anyOf = getStringArrayValues(table, "anyof");
@@ -169,8 +161,8 @@ final class SchemaLoader {
             if (itemReference != null) {
                 throw new SchemaException(name + " cannot define both items and itemtype");
             }
-            if (minLength != null || maxLength != null || minOccurs != null || maxOccurs != null) {
-                throw new SchemaException(name + " cannot define minlength, maxlength, minoccurs, or maxoccurs together with items");
+            if (minLength != null || maxLength != null) {
+                throw new SchemaException(name + " cannot define minlength or maxlength together with items");
             }
         }
         validateRangeConstraints(name, type, arrayType, itemReference, table.get("min"), table.get("max"));

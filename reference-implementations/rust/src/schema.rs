@@ -103,8 +103,6 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "max",
     "minlength",
     "maxlength",
-    "minoccurs",
-    "maxoccurs",
     "oneof",
     "anyof",
     "children",
@@ -346,10 +344,6 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let pattern = get_pattern(name, table)?;
     let min_length = get_unsigned_integer(name, table, "minlength")?;
     let max_length = get_unsigned_integer(name, table, "maxlength")?;
-    let min_occurs = get_unsigned_integer(name, table, "minoccurs")?;
-    let max_occurs = get_unsigned_integer(name, table, "maxoccurs")?;
-    let min_length = min_length.or(min_occurs);
-    let max_length = max_length.or(max_occurs);
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
     let one_of = get_string_array_values(name, table, "oneof")?;
     let any_of = get_string_array_values(name, table, "anyof")?;
@@ -414,13 +408,9 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         if item_reference.is_some() {
             return Err(format!("{name} cannot define both items and itemtype"));
         }
-        if min_length.is_some()
-            || max_length.is_some()
-            || min_occurs.is_some()
-            || max_occurs.is_some()
-        {
+        if min_length.is_some() || max_length.is_some() {
             return Err(format!(
-                "{name} cannot define minlength, maxlength, minoccurs, or maxoccurs together with items"
+                "{name} cannot define minlength or maxlength together with items"
             ));
         }
     }
