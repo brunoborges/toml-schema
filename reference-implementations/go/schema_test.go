@@ -171,6 +171,107 @@ entries = [
 	}
 }
 
+func TestSupportsBuiltInTypeReferences(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+typeof = "string"
+
+[elements.flags]
+type = "array"
+itemtype = "boolean"
+
+[elements.tuple]
+type = "array"
+items = [ "string", "integer" ]
+
+[elements.identity]
+oneof = [ "string", "integer" ]
+
+[elements.flex]
+anyof = [ "string", "integer" ]
+`)
+	documentPath := write(t, dir, "document.toml", `
+name = "Alice"
+flags = [ true, false ]
+tuple = [ "port", 8080 ]
+identity = 42
+flex = "abc"
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := schema.ValidateFile(documentPath)
+
+	if !result.Valid() {
+		t.Fatalf("expected valid document, got %#v", result.Errors)
+	}
+}
+
+func TestRejectsTypesNamedAfterBuiltIns(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.string]
+type = "integer"
+
+[elements.value]
+type = "string"
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected reserved built-in type name to be rejected")
+	}
+}
+
+func TestRejectsTableCollectionAlias(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.item]
+type = "table"
+
+    [types.item.name]
+    type = "string"
+
+[elements.items]
+type = "table-collection"
+typeof = "types.item"
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected table-collection alias to be rejected")
+	}
+}
+
+func TestRejectsOccurrenceAliases(t *testing.T) {
+	dir := t.TempDir()
+	aliases := []string{"minoccurs", "maxoccurs"}
+	for _, alias := range aliases {
+		schemaPath := write(t, dir, alias+".tosd", fmt.Sprintf(`
+[toml-schema]
+version = "1.0.0"
+
+[elements.values]
+type = "array"
+arraytype = "string"
+%s = 1
+`, alias))
+		if _, err := LoadSchema(schemaPath); err == nil {
+			t.Fatalf("expected %s alias to be rejected", alias)
+		}
+	}
+}
+
 func TestValidatesTupleArraysByPosition(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `

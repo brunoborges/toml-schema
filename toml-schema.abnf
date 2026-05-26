@@ -23,23 +23,22 @@ schema-definition = schema-definition-table *definition-property [ children-tabl
 children-table    = schema-children-table *children-entry
 children-entry    = toml-key keyval-sep toml-inline-table
 
-schema-key = type / typeof / typeref / arraytype / itemtype / items / oneof / anyof
+schema-key = type / typeof / arraytype / itemtype / items / oneof / anyof
            / allowedvalues / pattern / optional / default / min / max
-           / minlength / maxlength / minoccurs / maxoccurs / children
+           / minlength / maxlength / children
 
-definition-property = type / typeof / typeref / arraytype / itemtype / items / oneof / anyof
+definition-property = type / typeof / arraytype / itemtype / items / oneof / anyof
                     / allowedvalues / pattern / optional / default / min / max
-                    / minlength / maxlength / minoccurs / maxoccurs
+                    / minlength / maxlength
 
 version       = "version" keyval-sep semver-string
 type          = "type" keyval-sep built-in-type
-typeof        = "typeof" keyval-sep toml-string
-typeref       = "typeref" keyval-sep toml-string       ; legacy alias for typeof
+typeof        = "typeof" keyval-sep type-reference
 arraytype     = "arraytype" keyval-sep array-built-in-type
-itemtype      = "itemtype" keyval-sep toml-string
-items         = "items" keyval-sep toml-array         ; ordered type references for positional array validation
-oneof         = "oneof" keyval-sep toml-array
-anyof         = "anyof" keyval-sep toml-array
+itemtype      = "itemtype" keyval-sep type-reference
+items         = "items" keyval-sep type-reference-array ; ordered type references for positional array validation
+oneof         = "oneof" keyval-sep type-reference-array
+anyof         = "anyof" keyval-sep type-reference-array
 allowedvalues = "allowedvalues" keyval-sep toml-array
 pattern       = "pattern" keyval-sep toml-string
 optional      = "optional" keyval-sep toml-boolean
@@ -48,17 +47,18 @@ min           = "min" keyval-sep toml-value
 max           = "max" keyval-sep toml-value
 minlength     = "minlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
 maxlength     = "maxlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
-minoccurs     = "minoccurs" keyval-sep toml-integer    ; legacy alias for minlength
-maxoccurs     = "maxoccurs" keyval-sep toml-integer    ; legacy alias for maxlength
 children      = "children"
 
 built-in-type = anytype / stringtype / integertype / floattype / booleantype
               / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
-              / arraytype-name / tabletype / collectiontype / tablecollectiontype
+              / arraytype-name / tabletype / collectiontype
 
 array-built-in-type = anytype / stringtype / integertype / floattype / booleantype
                     / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
                     / arraytype-name / tabletype
+
+type-reference       = built-in-type / toml-string
+type-reference-array = toml-array ; semantically intended to contain only type-reference values; element types are not constrained by this ABNF
 
 anytype             = DQUOTE %x61.6e.79 DQUOTE                                      ; "any"
 stringtype          = DQUOTE %x73.74.72.69.6e.67 DQUOTE                             ; "string"
@@ -72,7 +72,6 @@ localtimetype       = DQUOTE %x6c.6f.63.61.6c.2d.74.69.6d.65 DQUOTE             
 arraytype-name      = DQUOTE %x61.72.72.61.79 DQUOTE                                  ; "array"
 tabletype           = DQUOTE %x74.61.62.6c.65 DQUOTE                                  ; "table"
 collectiontype      = DQUOTE %x63.6f.6c.6c.65.63.74.69.6f.6e DQUOTE                   ; "collection"
-tablecollectiontype = DQUOTE %x74.61.62.6c.65.2d.63.6f.6c.6c.65.63.74.69.6f.6e DQUOTE ; "table-collection"
 
 ;; TOML 1.0 grammar terminals used by TOML Schema.
 

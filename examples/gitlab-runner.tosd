@@ -3,30 +3,15 @@
 [toml-schema]
 version = "1.0.0"
 
-[types.anyValue]
-type = "any"
-
-[types.booleanValue]
-type = "boolean"
-
-[types.integerValue]
-type = "integer"
-
-[types.floatValue]
-type = "float"
-
-[types.stringValue]
-type = "string"
-
 [types.numberValue]
-oneof = [ "types.integerValue", "types.floatValue" ]
+oneof = [ "integer", "float" ]
 
 [types.durationValue]
 type = "string"
 pattern = '^(?:[0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h))+$'
 
 [types.durationOrInteger]
-oneof = [ "types.durationValue", "types.integerValue" ]
+oneof = [ "types.durationValue", "integer" ]
 
 [types.stringArray]
 type = "array"
@@ -38,17 +23,17 @@ arraytype = "integer"
 
 [types.stringMap]
 type = "collection"
-typeof = "types.stringValue"
+typeof = "string"
 
 [types.anyMap]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
 [types.stringOrStringArray]
-oneof = [ "types.stringValue", "types.stringArray" ]
+oneof = [ "string", "types.stringArray" ]
 
 [types.stringOrInteger]
-oneof = [ "types.stringValue", "types.integerValue" ]
+oneof = [ "string", "integer" ]
 
 [types.logLevel]
 type = "string"
@@ -203,7 +188,7 @@ itemtype = "types.dockerService"
 
 [types.docker]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.docker.host]
     type = "string"
@@ -447,7 +432,7 @@ typeof = "types.anyValue"
 
 [types.kubernetes]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.kubernetes.host]
     type = "string"
@@ -661,7 +646,7 @@ itemtype = "types.machineAutoscaling"
 
 [types.runnerMachine]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.runnerMachine.MaxGrowthRate]
     type = "integer"
@@ -728,7 +713,7 @@ typeof = "types.anyValue"
 
 [types.autoscalerConnectorConfig]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.autoscalerConnectorConfig.username]
     type = "string"
@@ -822,7 +807,7 @@ itemtype = "types.autoscalerPolicy"
 
 [types.vmIsolation]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.vmIsolation.enabled]
     type = "boolean"
@@ -846,7 +831,7 @@ typeof = "types.anyValue"
 
 [types.autoscaler]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.autoscaler.capacity_per_instance]
     type = "integer"
@@ -1097,7 +1082,7 @@ type = "table"
 
 [types.runner]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.runner.name]
     type = "string"

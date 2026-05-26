@@ -81,7 +81,7 @@ fn schema_loader_definition_keys_match_abnf_schema_keys() {
 #[test]
 fn schema_types_match_abnf_built_in_types() {
     let abnf = read_abnf();
-    let mut implementation_types: BTreeSet<String> = [
+    let implementation_types: BTreeSet<String> = [
         SchemaType::Any,
         SchemaType::String,
         SchemaType::Integer,
@@ -98,8 +98,5 @@ fn schema_types_match_abnf_built_in_types() {
     .iter()
     .map(|schema_type| schema_type.schema_name().to_string())
     .collect();
-    // The collection type accepts "table-collection" as a legacy alias in the
-    // ABNF, matching the Java reference implementation's assertion.
-    implementation_types.insert("table-collection".to_string());
     assert_eq!(implementation_types, built_in_type_tokens(&abnf));
 }

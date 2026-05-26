@@ -20,8 +20,8 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "typeof", "typeref", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
-            "optional", "default", "min", "max", "minlength", "maxlength", "minoccurs", "maxoccurs",
+            "type", "typeof", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
+            "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof", "children"
     );
 
@@ -74,6 +74,9 @@ final class SchemaLoader {
         }
         Map<String, SchemaDefinition> definitions = new LinkedHashMap<>();
         for (String key : table.keySet()) {
+            if (prefix.equals("types") && SchemaType.fromSchemaNameOptional(key).isPresent()) {
+                throw new SchemaException("[types." + key + "] uses a reserved built-in type name");
+            }
             Object value = table.get(List.of(key));
             if (key.equals("children") && value instanceof TomlTable childrenTable && !hasDefinitionMarker(childrenTable)) {
                 for (String childKey : childrenTable.keySet()) {
@@ -96,11 +99,7 @@ final class SchemaLoader {
     private SchemaDefinition parseDefinition(String name, TomlTable table) {
         SchemaType type = getSchemaType(table, "type");
         String reference = getString(table, "typeof");
-        String legacyReference = getString(table, "typeref");
-        if (reference != null && legacyReference != null && !reference.equals(legacyReference)) {
-            throw new SchemaException(name + " cannot define both typeof and typeref with different values");
-        }
-        String normalizedReference = normalizeReference(reference != null ? reference : legacyReference);
+        String normalizedReference = normalizeReference(reference);
         SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
@@ -108,14 +107,6 @@ final class SchemaLoader {
         Pattern pattern = getPattern(name, table);
         Integer minLength = getInteger(table, "minlength");
         Integer maxLength = getInteger(table, "maxlength");
-        Integer minOccurs = getInteger(table, "minoccurs");
-        Integer maxOccurs = getInteger(table, "maxoccurs");
-        if (minLength == null) {
-            minLength = minOccurs;
-        }
-        if (maxLength == null) {
-            maxLength = maxOccurs;
-        }
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
         List<String> oneOf = getStringArrayValues(table, "oneof");
         List<String> anyOf = getStringArrayValues(table, "anyof");
@@ -152,7 +143,7 @@ final class SchemaLoader {
             }
         }
         if (type == null && normalizedReference == null && oneOf.isEmpty() && anyOf.isEmpty()) {
-            throw new SchemaException(name + " must define type, typeof, typeref, oneof, or anyof");
+            throw new SchemaException(name + " must define type, typeof, oneof, or anyof");
         }
         if (type != SchemaType.ARRAY && arrayType != null) {
             throw new SchemaException(name + " can only define arraytype when type is array");
@@ -170,8 +161,8 @@ final class SchemaLoader {
             if (itemReference != null) {
                 throw new SchemaException(name + " cannot define both items and itemtype");
             }
-            if (minLength != null || maxLength != null || minOccurs != null || maxOccurs != null) {
-                throw new SchemaException(name + " cannot define minlength, maxlength, minoccurs, or maxoccurs together with items");
+            if (minLength != null || maxLength != null) {
+                throw new SchemaException(name + " cannot define minlength or maxlength together with items");
             }
         }
         validateRangeConstraints(name, type, arrayType, itemReference, table.get("min"), table.get("max"));
@@ -202,8 +193,7 @@ final class SchemaLoader {
 
     private boolean hasDefinitionMarker(TomlTable table) {
         return table.contains(List.of("type"))
-                || table.contains(List.of("typeof"))
-                || table.contains(List.of("typeref"));
+                || table.contains(List.of("typeof"));
     }
 
     private String getString(TomlTable table, String key) {

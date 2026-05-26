@@ -113,6 +113,8 @@ Extract a schema from a sample TOML document:
 go -C reference-implementations/go run . extract ../../config.toml /tmp/config.generated.tosd
 ```
 
+The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`) that reads `toml-schema.abnf` and asserts that the implementation's supported schema keys and built-in type names match the grammar.
+
 ## Rust
 
 The Rust reference implementation uses the [`toml`](https://crates.io/crates/toml) crate to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.

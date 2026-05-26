@@ -195,19 +195,26 @@ The `elements` table defines the overall structure and properties of the TOML do
 
 ## Types table - `[types]`
 
-The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A `type` is referenced in an `element` by the property `typeof`.
+The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A type is referenced in an element or another type with a type reference.
+
+Type references are strings accepted by `typeof`, `itemtype`, `items`, `oneof`, and `anyof`. A type reference may be either:
+
+- a built-in type name such as `"string"`, `"boolean"`, or `"integer"`;
+- a named reusable definition from `[types]`, written either as `"types.<typename>"` or `"<typename>"`.
+
+Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`.
 
 ```toml
 [types]
 
 [types.<typename>]
 type = "<simple-type> | array | table | collection"
-typeof = "<full-name-of-a-defined-type>"
+typeof = "<type-reference>"
 arraytype = "<simple-type> | array | table"
-itemtype = "<full-name-of-a-defined-type>"
-items = [ "<full-name-of-a-defined-type>", ... ]
-oneof = [ "<full-name-of-a-defined-type>", ... ]
-anyof = [ "<full-name-of-a-defined-type>", ... ]
+itemtype = "<type-reference>"
+items = [ "<type-reference>", ... ]
+oneof = [ "<type-reference>", ... ]
+anyof = [ "<type-reference>", ... ]
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
 optional = true|false
@@ -319,7 +326,7 @@ If a property of type `table` has no defined property and/or structure, the pars
 Arrays can be defined by mixing the following properties:
 
  - `arraytype`: the built-in type of each value in the array (e.g. string, array, or table).
- - `itemtype`: a reusable `[types]` definition used to validate each item in the array.
+ - `itemtype`: a type reference used to validate each item in the array.
  - `items`: ordered type references for tuple-style positional validation with fixed arity.
  - `minlength`: the minimum length of the array (e.g. no less than 2 elements).
  - `maxlength`: the maximum length of the array (e.g. no more than 2 elements).
@@ -433,7 +440,7 @@ Semantics:
  - `items` is ordered, and each index validates against the corresponding referenced type.
  - When `items` is present, the array must have exactly the same number of items.
  - `items` is mutually exclusive with `arraytype` and `itemtype`.
- - `items` is also mutually exclusive with `minlength` and `maxlength` (and aliases `minoccurs` / `maxoccurs`).
+ - `items` is also mutually exclusive with `minlength` and `maxlength`.
 
 #### Collection of Elements for Dynamic Keys
 
@@ -514,7 +521,7 @@ A `collection` may be represented as subtables of a common table in a TOML docum
 
 ### Type Reference
 
-A type may be referenced to inherit the defined rules existent in given type. Both `type` and `element` may reference a `type`.
+A type reference applies the referenced built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references.
 
 ```toml
 [types]
@@ -526,6 +533,9 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
     [types.serverType.name]
     typeof = "types.nameType"
 
+    [types.serverType.enabled]
+    typeof = "boolean"
+
 [elements]
 
     [elements.datacenter]
@@ -534,6 +544,10 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
         [elements.datacenter.name]
         typeof="types.nameType"
 
+        [elements.datacenter.tags]
+        type = "array"
+        itemtype = "string"
+
         [elements.datacenter.servers]
         type = "collection"
         typeof = "types.serverType"
@@ -541,12 +555,12 @@ A type may be referenced to inherit the defined rules existent in given type. Bo
 
 ### Alternative Types - `oneof` and `anyof`
 
-Use `oneof` or `anyof` when a value may validate against alternative reusable type definitions.
+Use `oneof` or `anyof` when a value may validate against alternative type references.
 
 - `oneof`: exactly one referenced type must validate.
 - `anyof`: at least one referenced type must validate.
 
-These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array items.
+These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array items. Alternatives may reference built-in type names directly or named definitions when a branch needs constraints.
 
 ```toml
 [types.stringId]
@@ -559,23 +573,23 @@ min = 1
 
 [elements.id]
 anyof = [ "types.stringId", "types.integerId" ]
+
+[elements.simpleId]
+oneof = [ "string", "integer" ]
 ```
 
-Built-in type names are not valid entries in `oneof` or `anyof`; alternatives must
-reference named definitions. Keeping alternatives as definitions gives every branch
-a place for constraints such as `pattern`, `min`, `allowedvalues`, `arraytype`, or
-child fields. For simple unions, define a small reusable wrapper for each built-in
-type that participates in the union.
+Use a named reusable definition whenever an alternative needs constraints such as `pattern`, `min`, `allowedvalues`, `arraytype`, or child fields.
 
 ```toml
-[types.stringValue]
+[types.dependencyVersion]
 type = "string"
+pattern = "^\\d+\\.\\d+\\.\\d+$"
 
 [types.inlineDependency]
 type = "table"
 
 [types.dependency]
-oneof = [ "types.stringValue", "types.inlineDependency" ]
+oneof = [ "types.dependencyVersion", "types.inlineDependency" ]
 ```
 
 ### Optionality - `optional`

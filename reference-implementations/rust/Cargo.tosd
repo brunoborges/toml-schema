@@ -3,15 +3,6 @@
 [toml-schema]
 version = "1.0.0"
 
-[types.stringValue]
-type = "string"
-
-[types.booleanValue]
-type = "boolean"
-
-[types.integerValue]
-type = "integer"
-
 [types.stringArray]
 type = "array"
 arraytype = "string"
@@ -23,22 +14,22 @@ type = "table"
     type = "boolean"
 
 [types.stringOrWorkspace]
-oneof = [ "types.stringValue", "types.workspaceInherited" ]
+oneof = [ "string", "types.workspaceInherited" ]
 
 [types.stringArrayOrWorkspace]
 oneof = [ "types.stringArray", "types.workspaceInherited" ]
 
 [types.booleanOrWorkspace]
-oneof = [ "types.booleanValue", "types.workspaceInherited" ]
+oneof = [ "boolean", "types.workspaceInherited" ]
 
 [types.stringOrBoolean]
-oneof = [ "types.stringValue", "types.booleanValue" ]
+oneof = [ "string", "boolean" ]
 
 [types.stringOrBooleanOrWorkspace]
-oneof = [ "types.stringValue", "types.booleanValue", "types.workspaceInherited" ]
+oneof = [ "string", "boolean", "types.workspaceInherited" ]
 
 [types.publish]
-oneof = [ "types.booleanValue", "types.stringArray", "types.workspaceInherited" ]
+oneof = [ "boolean", "types.stringArray", "types.workspaceInherited" ]
 
 [types.packageBase]
 type = "table"
@@ -211,7 +202,7 @@ type = "table"
     optional = true
 
 [types.dependency]
-oneof = [ "types.stringValue", "types.dependencyTable" ]
+oneof = [ "string", "types.dependencyTable" ]
 
 [types.dependencyTable]
 type = "table"
@@ -288,7 +279,7 @@ type = "table"
     optional = true
 
 [types.lintValue]
-oneof = [ "types.stringValue", "types.lintTable" ]
+oneof = [ "string", "types.lintTable" ]
 
 [types.lintTable]
 type = "table"
@@ -313,16 +304,16 @@ typeof = "types.lintGroup"
     optional = true
 
 [types.profileOptLevel]
-oneof = [ "types.integerValue", "types.stringValue" ]
+oneof = [ "integer", "string" ]
 
 [types.profileDebug]
-oneof = [ "types.booleanValue", "types.integerValue", "types.stringValue" ]
+oneof = [ "boolean", "integer", "string" ]
 
 [types.profileStrip]
-oneof = [ "types.booleanValue", "types.stringValue" ]
+oneof = [ "boolean", "string" ]
 
 [types.profileLto]
-oneof = [ "types.booleanValue", "types.stringValue" ]
+oneof = [ "boolean", "string" ]
 
 [types.profileSettings]
 type = "table"

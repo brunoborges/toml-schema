@@ -3,23 +3,8 @@
 [toml-schema]
 version = "1.0.0"
 
-[types.anyValue]
-type = "any"
-
-[types.booleanValue]
-type = "boolean"
-
-[types.integerValue]
-type = "integer"
-
-[types.floatValue]
-type = "float"
-
-[types.stringValue]
-type = "string"
-
 [types.numberValue]
-oneof = [ "types.integerValue", "types.floatValue" ]
+oneof = [ "integer", "float" ]
 
 [types.stringArray]
 type = "array"
@@ -32,17 +17,17 @@ itemtype = "types.numberValue"
 
 [types.stringMap]
 type = "collection"
-typeof = "types.stringValue"
+typeof = "string"
 
 [types.anyMap]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
 [types.stringOrStringArray]
-oneof = [ "types.stringValue", "types.stringArray" ]
+oneof = [ "string", "types.stringArray" ]
 
 [types.booleanOrStringArray]
-oneof = [ "types.booleanValue", "types.stringArray" ]
+oneof = [ "boolean", "types.stringArray" ]
 
 [types.numberOrNumberArray]
 oneof = [ "types.numberValue", "types.numberArray" ]
@@ -74,7 +59,7 @@ type = "table"
     optional = true
 
 [types.route]
-oneof = [ "types.stringValue", "types.routeTable" ]
+oneof = [ "string", "types.routeTable" ]
 
 [types.routes]
 type = "array"
@@ -751,7 +736,7 @@ itemtype = "types.secretsStoreSecret"
 
 [types.workerSettings]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.workerSettings.account_id]
     type = "string"

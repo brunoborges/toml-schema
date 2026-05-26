@@ -31,15 +31,46 @@ const (
 )
 
 var definitionKeys = map[string]bool{
-	"type": true, "typeof": true, "typeref": true, "arraytype": true, "itemtype": true, "items": true,
+	"type": true, "typeof": true, "arraytype": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "optional": true, "default": true, "min": true,
-	"max": true, "minlength": true, "maxlength": true, "minoccurs": true, "maxoccurs": true,
+	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true, "children": true,
 }
 
 const currentTomlSchemaVersion = "1.0.0"
 
 var semverPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
+
+func parseSchemaType(value string) (SchemaType, bool) {
+	switch value {
+	case "any":
+		return TypeAny, true
+	case "string":
+		return TypeString, true
+	case "integer":
+		return TypeInteger, true
+	case "float":
+		return TypeFloat, true
+	case "boolean":
+		return TypeBoolean, true
+	case "offset-date-time":
+		return TypeOffsetDateTime, true
+	case "local-date-time":
+		return TypeLocalDateTime, true
+	case "local-date":
+		return TypeLocalDate, true
+	case "local-time":
+		return TypeLocalTime, true
+	case "array":
+		return TypeArray, true
+	case "table":
+		return TypeTable, true
+	case "collection":
+		return TypeCollection, true
+	default:
+		return "", false
+	}
+}
 
 type Schema struct {
 	source   string
@@ -177,6 +208,11 @@ func parseDefinitions(prefix string, table map[string]any, required bool) (map[s
 	}
 	definitions := map[string]Definition{}
 	for key, value := range table {
+		if prefix == "types" {
+			if _, ok := parseSchemaType(key); ok {
+				return nil, fmt.Errorf("[types.%s] uses a reserved built-in type name", key)
+			}
+		}
 		valueMap, ok := asMap(value)
 		if key == "children" && ok && !hasDefinitionMarker(valueMap) {
 			for childKey, childValue := range valueMap {
@@ -213,13 +249,6 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
-	legacyReference, err := getString(table, "typeref")
-	if err != nil {
-		return Definition{}, err
-	}
-	if reference != "" && legacyReference != "" && reference != legacyReference {
-		return Definition{}, fmt.Errorf("%s cannot define both typeof and typeref with different values", name)
-	}
 	arrayType, err := getSchemaType(table, "arraytype")
 	if err != nil {
 		return Definition{}, err
@@ -247,20 +276,6 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	maxLength, err := getIntegerPointer(table, "maxlength")
 	if err != nil {
 		return Definition{}, err
-	}
-	minOccurs, err := getIntegerPointer(table, "minoccurs")
-	if err != nil {
-		return Definition{}, err
-	}
-	maxOccurs, err := getIntegerPointer(table, "maxoccurs")
-	if err != nil {
-		return Definition{}, err
-	}
-	if minLength == nil {
-		minLength = minOccurs
-	}
-	if maxLength == nil {
-		maxLength = maxOccurs
 	}
 	allowedValues, err := getArrayValues(table, "allowedvalues")
 	if err != nil {
@@ -312,8 +327,8 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 			return Definition{}, fmt.Errorf("%s contains unsupported property: %s", name, key)
 		}
 	}
-	if typeName == "" && reference == "" && legacyReference == "" && len(oneOf) == 0 && len(anyOf) == 0 {
-		return Definition{}, fmt.Errorf("%s must define type, typeof, typeref, oneof, or anyof", name)
+	if typeName == "" && reference == "" && len(oneOf) == 0 && len(anyOf) == 0 {
+		return Definition{}, fmt.Errorf("%s must define type, typeof, oneof, or anyof", name)
 	}
 	if typeName != TypeArray && arrayType != "" {
 		return Definition{}, fmt.Errorf("%s can only define arraytype when type is array", name)
@@ -331,17 +346,17 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		if itemReference != "" {
 			return Definition{}, fmt.Errorf("%s cannot define both items and itemtype", name)
 		}
-		if minLength != nil || maxLength != nil || minOccurs != nil || maxOccurs != nil {
-			return Definition{}, fmt.Errorf("%s cannot define minlength, maxlength, minoccurs, or maxoccurs together with items", name)
+		if minLength != nil || maxLength != nil {
+			return Definition{}, fmt.Errorf("%s cannot define minlength or maxlength together with items", name)
 		}
 	}
 	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), table["min"], table["max"]); err != nil {
 		return Definition{}, err
 	}
 	return Definition{
-		name: name, typeName: typeName, reference: normalizeReference(firstNonEmpty(reference, legacyReference)),
+		name: name, typeName: typeName, reference: normalizeReference(reference),
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
-		items: normalizeReferences(items),
+		items:         normalizeReferences(items),
 		allowedValues: allowedValues, pattern: pattern, min: table["min"], max: table["max"],
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
 		children: children,
@@ -669,6 +684,9 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 
 func (v *validator) resolveReference(reference string, seenReferences map[string]bool) (Definition, error) {
 	normalized := normalizeReference(reference)
+	if builtInType, ok := parseSchemaType(normalized); ok {
+		return Definition{name: normalized, typeName: builtInType}, nil
+	}
 	if seenReferences[normalized] {
 		return Definition{}, fmt.Errorf("cyclic type reference: %s", normalized)
 	}
@@ -711,34 +729,10 @@ func getSchemaType(table map[string]any, key string) (SchemaType, error) {
 	if err != nil || value == "" {
 		return "", err
 	}
-	switch value {
-	case "any":
-		return TypeAny, nil
-	case "string":
-		return TypeString, nil
-	case "integer":
-		return TypeInteger, nil
-	case "float":
-		return TypeFloat, nil
-	case "boolean":
-		return TypeBoolean, nil
-	case "offset-date-time":
-		return TypeOffsetDateTime, nil
-	case "local-date-time":
-		return TypeLocalDateTime, nil
-	case "local-date":
-		return TypeLocalDate, nil
-	case "local-time":
-		return TypeLocalTime, nil
-	case "array":
-		return TypeArray, nil
-	case "table":
-		return TypeTable, nil
-	case "collection", "table-collection":
-		return TypeCollection, nil
-	default:
-		return "", fmt.Errorf("unsupported schema type: %s", value)
+	if schemaType, ok := parseSchemaType(value); ok {
+		return schemaType, nil
 	}
+	return "", fmt.Errorf("unsupported schema type: %s", value)
 }
 
 func getString(table map[string]any, key string) (string, error) {
@@ -961,8 +955,7 @@ func matchesEntireString(pattern *regexp.Regexp, value string) bool {
 func hasDefinitionMarker(table map[string]any) bool {
 	_, hasType := table["type"]
 	_, hasTypeOf := table["typeof"]
-	_, hasTypeRef := table["typeref"]
-	return hasType || hasTypeOf || hasTypeRef
+	return hasType || hasTypeOf
 }
 
 func asMap(value any) (map[string]any, bool) {

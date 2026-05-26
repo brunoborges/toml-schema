@@ -123,8 +123,8 @@ class TomlSchemaTest {
     }
 
     @Test
-    void supportsLegacyReferenceAndCollectionAliases() throws IOException {
-        Path schema = write("legacy.tosd", """
+    void rejectsTableCollectionAlias() throws IOException {
+        Path schema = write("table-collection-alias.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
@@ -136,16 +136,35 @@ class TomlSchemaTest {
 
                 [elements.items]
                 type = "table-collection"
-                typeref = "types.item"
-                """);
-        Path document = write("legacy.toml", """
-                [items.one]
-                name = "alpha"
+                typeof = "types.item"
                 """);
 
-        ValidationResult result = TomlSchema.load(schema).validate(document);
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
 
-        assertTrue(result.isValid(), () -> result.errors().toString());
+    @Test
+    void rejectsOccurrenceAliases() throws IOException {
+        Path minOccurs = write("minoccurs-alias.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.values]
+                type = "array"
+                arraytype = "string"
+                minoccurs = 1
+                """);
+        Path maxOccurs = write("maxoccurs-alias.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.values]
+                type = "array"
+                arraytype = "string"
+                maxoccurs = 2
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(minOccurs));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(maxOccurs));
     }
 
     @Test
@@ -414,6 +433,58 @@ class TomlSchemaTest {
         ValidationResult result = TomlSchema.load(schema).validate(document);
 
         assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void supportsBuiltInTypeReferences() throws IOException {
+        Path schema = write("built-in-references.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.name]
+                typeof = "string"
+
+                [elements.flags]
+                type = "array"
+                itemtype = "boolean"
+
+                [elements.tuple]
+                type = "array"
+                items = [ "string", "integer" ]
+
+                [elements.identity]
+                oneof = [ "string", "integer" ]
+
+                [elements.flex]
+                anyof = [ "string", "integer" ]
+                """);
+        Path document = write("built-in-references.toml", """
+                name = "Alice"
+                flags = [ true, false ]
+                tuple = [ "port", 8080 ]
+                identity = 42
+                flex = "abc"
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void rejectsTypesNamedAfterBuiltIns() throws IOException {
+        Path schema = write("reserved-built-in.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.string]
+                type = "integer"
+
+                [elements.value]
+                type = "string"
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
     }
 
     @Test

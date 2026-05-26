@@ -1,5 +1,7 @@
 package io.github.brunoborges.tomlschema;
 
+import java.util.Optional;
+
 enum SchemaType {
     ANY("any"),
     STRING("string"),
@@ -25,20 +27,25 @@ enum SchemaType {
     }
 
     static SchemaType fromSchemaName(String value) {
+        return fromSchemaNameOptional(value)
+                .orElseThrow(() -> new SchemaException("Unsupported schema type: " + value));
+    }
+
+    static Optional<SchemaType> fromSchemaNameOptional(String value) {
         return switch (value) {
-            case "any" -> ANY;
-            case "string" -> STRING;
-            case "integer" -> INTEGER;
-            case "float" -> FLOAT;
-            case "boolean" -> BOOLEAN;
-            case "offset-date-time" -> OFFSET_DATE_TIME;
-            case "local-date-time" -> LOCAL_DATE_TIME;
-            case "local-date" -> LOCAL_DATE;
-            case "local-time" -> LOCAL_TIME;
-            case "array" -> ARRAY;
-            case "table" -> TABLE;
-            case "collection", "table-collection" -> COLLECTION;
-            default -> throw new SchemaException("Unsupported schema type: " + value);
+            case "any" -> Optional.of(ANY);
+            case "string" -> Optional.of(STRING);
+            case "integer" -> Optional.of(INTEGER);
+            case "float" -> Optional.of(FLOAT);
+            case "boolean" -> Optional.of(BOOLEAN);
+            case "offset-date-time" -> Optional.of(OFFSET_DATE_TIME);
+            case "local-date-time" -> Optional.of(LOCAL_DATE_TIME);
+            case "local-date" -> Optional.of(LOCAL_DATE);
+            case "local-time" -> Optional.of(LOCAL_TIME);
+            case "array" -> Optional.of(ARRAY);
+            case "table" -> Optional.of(TABLE);
+            case "collection" -> Optional.of(COLLECTION);
+            default -> Optional.empty();
         };
     }
 }

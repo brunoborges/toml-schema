@@ -63,8 +63,7 @@ impl SchemaType {
             "local-time" => SchemaType::LocalTime,
             "array" => SchemaType::Array,
             "table" => SchemaType::Table,
-            // "table-collection" is an accepted legacy alias for "collection".
-            "collection" | "table-collection" => SchemaType::Collection,
+            "collection" => SchemaType::Collection,
             _ => return None,
         })
     }
@@ -93,7 +92,6 @@ impl fmt::Display for SchemaType {
 pub const DEFINITION_KEYS: &[&str] = &[
     "type",
     "typeof",
-    "typeref",
     "arraytype",
     "itemtype",
     "items",
@@ -105,8 +103,6 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "max",
     "minlength",
     "maxlength",
-    "minoccurs",
-    "maxoccurs",
     "oneof",
     "anyof",
     "children",
@@ -311,6 +307,9 @@ fn parse_definitions(
     };
     let mut definitions = BTreeMap::new();
     for (key, value) in table.iter() {
+        if prefix == "types" && SchemaType::parse(key).is_some() {
+            return Err(format!("[types.{key}] uses a reserved built-in type name"));
+        }
         let value_map = value.as_table();
         if key == "children"
             && value_map
@@ -338,14 +337,6 @@ fn parse_definitions(
 fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let type_name = get_schema_type(name, table, "type")?;
     let reference = get_string(name, table, "typeof")?;
-    let legacy_reference = get_string(name, table, "typeref")?;
-    if let (Some(reference), Some(legacy_reference)) = (&reference, &legacy_reference) {
-        if reference != legacy_reference {
-            return Err(format!(
-                "{name} cannot define both typeof and typeref with different values"
-            ));
-        }
-    }
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
     let items = get_string_array_values(name, table, "items")?;
@@ -353,10 +344,6 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let pattern = get_pattern(name, table)?;
     let min_length = get_unsigned_integer(name, table, "minlength")?;
     let max_length = get_unsigned_integer(name, table, "maxlength")?;
-    let min_occurs = get_unsigned_integer(name, table, "minoccurs")?;
-    let max_occurs = get_unsigned_integer(name, table, "maxoccurs")?;
-    let min_length = min_length.or(min_occurs);
-    let max_length = max_length.or(max_occurs);
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
     let one_of = get_string_array_values(name, table, "oneof")?;
     let any_of = get_string_array_values(name, table, "anyof")?;
@@ -390,14 +377,13 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             return Err(format!("{name} contains unsupported property: {key}"));
         }
     }
-    let has_typeref_or_typeof = reference.is_some() || legacy_reference.is_some();
     if type_name.is_none()
-        && !has_typeref_or_typeof
+        && reference.is_none()
         && one_of.is_empty()
         && any_of.is_empty()
     {
         return Err(format!(
-            "{name} must define type, typeof, typeref, oneof, or anyof"
+            "{name} must define type, typeof, oneof, or anyof"
         ));
     }
     if type_name != Some(SchemaType::Array) && array_type.is_some() {
@@ -422,13 +408,9 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         if item_reference.is_some() {
             return Err(format!("{name} cannot define both items and itemtype"));
         }
-        if min_length.is_some()
-            || max_length.is_some()
-            || min_occurs.is_some()
-            || max_occurs.is_some()
-        {
+        if min_length.is_some() || max_length.is_some() {
             return Err(format!(
-                "{name} cannot define minlength, maxlength, minoccurs, or maxoccurs together with items"
+                "{name} cannot define minlength or maxlength together with items"
             ));
         }
     }
@@ -442,7 +424,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         min.as_ref(),
         max.as_ref(),
     )?;
-    let reference = reference.or(legacy_reference).map(normalize_reference);
+    let reference = reference.map(normalize_reference);
     Ok(Definition {
         name: name.to_string(),
         type_name,
@@ -901,6 +883,13 @@ impl<'schema> Validator<'schema> {
         seen: &mut HashSet<String>,
     ) -> Result<Definition, String> {
         let normalized = normalize_reference(reference.to_string());
+        if let Some(type_name) = SchemaType::parse(&normalized) {
+            return Ok(Definition {
+                name: normalized,
+                type_name: Some(type_name),
+                ..Definition::default()
+            });
+        }
         if !seen.insert(normalized.clone()) {
             return Err(format!("cyclic type reference: {normalized}"));
         }
@@ -1133,7 +1122,6 @@ pub fn encode_path_key(key: &str) -> String {
 fn has_definition_marker(table: &Table) -> bool {
     table.contains_key("type")
         || table.contains_key("typeof")
-        || table.contains_key("typeref")
 }
 
 fn normalize_reference(reference: String) -> String {

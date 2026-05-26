@@ -256,6 +256,128 @@ entries = [
 }
 
 #[test]
+fn supports_built_in_type_references() {
+    let directory = tempfile_dir("built-in-references");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+typeof = "string"
+
+[elements.flags]
+type = "array"
+itemtype = "boolean"
+
+[elements.tuple]
+type = "array"
+items = [ "string", "integer" ]
+
+[elements.identity]
+oneof = [ "string", "integer" ]
+
+[elements.flex]
+anyof = [ "string", "integer" ]
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+name = "Alice"
+flags = [ true, false ]
+tuple = [ "port", 8080 ]
+identity = 42
+flex = "abc"
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load schema");
+    let result = schema.validate_file(&document_path);
+    assert!(
+        result.valid(),
+        "expected valid document, got {:#?}",
+        result.errors
+    );
+}
+
+#[test]
+fn rejects_types_named_after_built_ins() {
+    let directory = tempfile_dir("reserved-built-in");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.string]
+type = "integer"
+
+[elements.value]
+type = "string"
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("expected reserved built-in name");
+    assert!(error.contains("reserved built-in type name"));
+}
+
+#[test]
+fn rejects_table_collection_alias() {
+    let directory = tempfile_dir("table-collection-alias");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.item]
+type = "table"
+
+    [types.item.name]
+    type = "string"
+
+[elements.items]
+type = "table-collection"
+typeof = "types.item"
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("expected table-collection alias rejection");
+    assert!(error.contains("unsupported schema type"));
+}
+
+#[test]
+fn rejects_occurrence_aliases() {
+    let directory = tempfile_dir("occurrence-aliases");
+    for alias in ["minoccurs", "maxoccurs"] {
+        let schema_path = write_file(
+            &directory,
+            &format!("{alias}.tosd"),
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.values]
+type = "array"
+arraytype = "string"
+{alias} = 1
+"#
+            ),
+        );
+
+        let error = Schema::load(&schema_path).expect_err("expected occurrence alias rejection");
+        assert!(error.contains("unsupported property"));
+    }
+}
+
+#[test]
 fn validates_tuple_arrays_by_position() {
     let directory = tempfile_dir("tuple-arrays");
     let schema_path = write_file(
