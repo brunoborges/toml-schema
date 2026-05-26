@@ -23,18 +23,17 @@ schema-definition = schema-definition-table *definition-property [ children-tabl
 children-table    = schema-children-table *children-entry
 children-entry    = toml-key keyval-sep toml-inline-table
 
-schema-key = type / typeof / typeref / arraytype / itemtype / items / oneof / anyof
+schema-key = type / typeof / arraytype / itemtype / items / oneof / anyof
            / allowedvalues / pattern / optional / default / min / max
            / minlength / maxlength / minoccurs / maxoccurs / children
 
-definition-property = type / typeof / typeref / arraytype / itemtype / items / oneof / anyof
+definition-property = type / typeof / arraytype / itemtype / items / oneof / anyof
                     / allowedvalues / pattern / optional / default / min / max
                     / minlength / maxlength / minoccurs / maxoccurs
 
 version       = "version" keyval-sep semver-string
 type          = "type" keyval-sep built-in-type
 typeof        = "typeof" keyval-sep type-reference
-typeref       = "typeref" keyval-sep type-reference    ; legacy alias for typeof
 arraytype     = "arraytype" keyval-sep array-built-in-type
 itemtype      = "itemtype" keyval-sep type-reference
 items         = "items" keyval-sep type-reference-array ; ordered type references for positional array validation

@@ -21,7 +21,7 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - `toml-schema.tosd` is a TOML schema for schema documents themselves. It models allowed schema metadata, reusable type definitions, and top-level elements.
 - `config.tosd` and `config.toml` are the worked example pair: `config.toml` declares `[toml-schema] location = "config.tosd"`, and `config.tosd` describes the allowed document shape.
 - `reference-implementations/java/src/main/java/io/github/brunoborges/tomlschema` contains the Java reference implementation: schema loading/modeling, validation, result/error records, and `TomlSchemaCli`.
-- `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, legacy aliases, validation errors, and CLI schema-location lookup.
+- `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, validation errors, and CLI schema-location lookup.
 - `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/AbnfConformanceTest.java` reads `toml-schema.abnf` and checks Java schema properties and built-in type names against it.
 
 ## Key conventions
@@ -30,7 +30,7 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - Use full SemVer strings for `[toml-schema].version`; the current TOML Schema version is `1.0.0`, and shorthand values like `"1"` or `"1.0"` are invalid.
 - Custom metadata belongs under `[toml-schema.meta]`; do not add arbitrary keys or subtables directly under `[toml-schema]`.
 - Reusable definitions live under `[types.<name>]` and are referenced from `[elements]` or nested type definitions rather than duplicating structures.
-- Prefer canonical `typeof` and `collection` in schema examples. The Java implementation still accepts legacy aliases `typeref` and `table-collection` for compatibility.
+- Use canonical `typeof` in schema examples. The Java implementation still accepts `table-collection` as a legacy alias for `collection`.
 - Use `itemtype = "types.<name>"` on `type = "array"` definitions when array items need structural validation, including TOML arrays of tables (`[[name]]`) and arrays of inline tables.
 - Use `oneof` for exactly-one alternative type validation and `anyof` for at-least-one validation; both reference reusable `[types]` definitions and can apply to fields or array item types.
 - `min`/`max` are inclusive and only valid for numeric/date-time types, or arrays with comparable `arraytype`; NaN is not a valid boundary.

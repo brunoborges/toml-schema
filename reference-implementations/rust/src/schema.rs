@@ -93,7 +93,6 @@ impl fmt::Display for SchemaType {
 pub const DEFINITION_KEYS: &[&str] = &[
     "type",
     "typeof",
-    "typeref",
     "arraytype",
     "itemtype",
     "items",
@@ -341,14 +340,6 @@ fn parse_definitions(
 fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let type_name = get_schema_type(name, table, "type")?;
     let reference = get_string(name, table, "typeof")?;
-    let legacy_reference = get_string(name, table, "typeref")?;
-    if let (Some(reference), Some(legacy_reference)) = (&reference, &legacy_reference) {
-        if reference != legacy_reference {
-            return Err(format!(
-                "{name} cannot define both typeof and typeref with different values"
-            ));
-        }
-    }
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
     let items = get_string_array_values(name, table, "items")?;
@@ -393,14 +384,13 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             return Err(format!("{name} contains unsupported property: {key}"));
         }
     }
-    let has_typeref_or_typeof = reference.is_some() || legacy_reference.is_some();
     if type_name.is_none()
-        && !has_typeref_or_typeof
+        && reference.is_none()
         && one_of.is_empty()
         && any_of.is_empty()
     {
         return Err(format!(
-            "{name} must define type, typeof, typeref, oneof, or anyof"
+            "{name} must define type, typeof, oneof, or anyof"
         ));
     }
     if type_name != Some(SchemaType::Array) && array_type.is_some() {
@@ -445,7 +435,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         min.as_ref(),
         max.as_ref(),
     )?;
-    let reference = reference.or(legacy_reference).map(normalize_reference);
+    let reference = reference.map(normalize_reference);
     Ok(Definition {
         name: name.to_string(),
         type_name,
@@ -1143,7 +1133,6 @@ pub fn encode_path_key(key: &str) -> String {
 fn has_definition_marker(table: &Table) -> bool {
     table.contains_key("type")
         || table.contains_key("typeof")
-        || table.contains_key("typeref")
 }
 
 fn normalize_reference(reference: String) -> String {

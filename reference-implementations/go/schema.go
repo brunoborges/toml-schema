@@ -31,7 +31,7 @@ const (
 )
 
 var definitionKeys = map[string]bool{
-	"type": true, "typeof": true, "typeref": true, "arraytype": true, "itemtype": true, "items": true,
+	"type": true, "typeof": true, "arraytype": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "optional": true, "default": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true, "minoccurs": true, "maxoccurs": true,
 	"oneof": true, "anyof": true, "children": true,
@@ -249,13 +249,6 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
-	legacyReference, err := getString(table, "typeref")
-	if err != nil {
-		return Definition{}, err
-	}
-	if reference != "" && legacyReference != "" && reference != legacyReference {
-		return Definition{}, fmt.Errorf("%s cannot define both typeof and typeref with different values", name)
-	}
 	arrayType, err := getSchemaType(table, "arraytype")
 	if err != nil {
 		return Definition{}, err
@@ -348,8 +341,8 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 			return Definition{}, fmt.Errorf("%s contains unsupported property: %s", name, key)
 		}
 	}
-	if typeName == "" && reference == "" && legacyReference == "" && len(oneOf) == 0 && len(anyOf) == 0 {
-		return Definition{}, fmt.Errorf("%s must define type, typeof, typeref, oneof, or anyof", name)
+	if typeName == "" && reference == "" && len(oneOf) == 0 && len(anyOf) == 0 {
+		return Definition{}, fmt.Errorf("%s must define type, typeof, oneof, or anyof", name)
 	}
 	if typeName != TypeArray && arrayType != "" {
 		return Definition{}, fmt.Errorf("%s can only define arraytype when type is array", name)
@@ -375,7 +368,7 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		return Definition{}, err
 	}
 	return Definition{
-		name: name, typeName: typeName, reference: normalizeReference(firstNonEmpty(reference, legacyReference)),
+		name: name, typeName: typeName, reference: normalizeReference(reference),
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
 		items:         normalizeReferences(items),
 		allowedValues: allowedValues, pattern: pattern, min: table["min"], max: table["max"],
@@ -976,8 +969,7 @@ func matchesEntireString(pattern *regexp.Regexp, value string) bool {
 func hasDefinitionMarker(table map[string]any) bool {
 	_, hasType := table["type"]
 	_, hasTypeOf := table["typeof"]
-	_, hasTypeRef := table["typeref"]
-	return hasType || hasTypeOf || hasTypeRef
+	return hasType || hasTypeOf
 }
 
 func asMap(value any) (map[string]any, bool) {

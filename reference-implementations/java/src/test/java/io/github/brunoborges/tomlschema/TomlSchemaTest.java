@@ -123,7 +123,7 @@ class TomlSchemaTest {
     }
 
     @Test
-    void supportsLegacyReferenceAndCollectionAliases() throws IOException {
+    void supportsLegacyCollectionAlias() throws IOException {
         Path schema = write("legacy.tosd", """
                 [toml-schema]
                 version = "1.0.0"
@@ -136,7 +136,7 @@ class TomlSchemaTest {
 
                 [elements.items]
                 type = "table-collection"
-                typeref = "types.item"
+                typeof = "types.item"
                 """);
         Path document = write("legacy.toml", """
                 [items.one]

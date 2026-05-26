@@ -20,7 +20,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "typeof", "typeref", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
+            "type", "typeof", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
             "optional", "default", "min", "max", "minlength", "maxlength", "minoccurs", "maxoccurs",
             "oneof", "anyof", "children"
     );
@@ -99,11 +99,7 @@ final class SchemaLoader {
     private SchemaDefinition parseDefinition(String name, TomlTable table) {
         SchemaType type = getSchemaType(table, "type");
         String reference = getString(table, "typeof");
-        String legacyReference = getString(table, "typeref");
-        if (reference != null && legacyReference != null && !reference.equals(legacyReference)) {
-            throw new SchemaException(name + " cannot define both typeof and typeref with different values");
-        }
-        String normalizedReference = normalizeReference(reference != null ? reference : legacyReference);
+        String normalizedReference = normalizeReference(reference);
         SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
@@ -155,7 +151,7 @@ final class SchemaLoader {
             }
         }
         if (type == null && normalizedReference == null && oneOf.isEmpty() && anyOf.isEmpty()) {
-            throw new SchemaException(name + " must define type, typeof, typeref, oneof, or anyof");
+            throw new SchemaException(name + " must define type, typeof, oneof, or anyof");
         }
         if (type != SchemaType.ARRAY && arrayType != null) {
             throw new SchemaException(name + " can only define arraytype when type is array");
@@ -205,8 +201,7 @@ final class SchemaLoader {
 
     private boolean hasDefinitionMarker(TomlTable table) {
         return table.contains(List.of("type"))
-                || table.contains(List.of("typeof"))
-                || table.contains(List.of("typeref"));
+                || table.contains(List.of("typeof"));
     }
 
     private String getString(TomlTable table, String key) {

@@ -19,11 +19,6 @@ version = "1.0.0"
         optional = true
         # Type reference: built-in type name or [types] definition name.
 
-        [types.schemaDef.children.typeref]
-        type = "string"
-        optional = true
-        # Legacy alias for typeof.
-
         [types.schemaDef.children.arraytype]
         type = "string"
         allowedvalues = [ "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time", "array", "table" ]
