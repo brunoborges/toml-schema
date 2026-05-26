@@ -1,4 +1,4 @@
-package io.github.brunoborges.tomlschema;
+package org.tomlschema;
 
 import org.tomlj.TomlArray;
 import org.tomlj.TomlTable;

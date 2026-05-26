@@ -1,4 +1,4 @@
-package io.github.brunoborges.tomlschema;
+package org.tomlschema;
 
 public record ValidationError(String path, String message) {
     @Override

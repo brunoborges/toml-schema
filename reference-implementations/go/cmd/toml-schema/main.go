@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	tomlschema "github.com/brunoborges/toml-schema/reference-implementations/go"
+	tomlschema "tomlschema.org/go"
 )
 
 func main() {

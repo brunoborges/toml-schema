@@ -1,4 +1,4 @@
-package io.github.brunoborges.tomlschema;
+package org.tomlschema;
 
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
