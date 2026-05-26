@@ -202,7 +202,7 @@ Type references are strings accepted by `typeof`, `itemtype`, `items`, `oneof`, 
 - a built-in type name such as `"string"`, `"boolean"`, or `"integer"`;
 - a named reusable definition from `[types]`, written either as `"types.<typename>"` or `"<typename>"`.
 
-Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`. The legacy alias `table-collection` is also reserved when accepted by a parser.
+Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`.
 
 ```toml
 [types]

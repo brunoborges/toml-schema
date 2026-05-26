@@ -231,6 +231,28 @@ type = "string"
 	}
 }
 
+func TestRejectsTableCollectionAlias(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.item]
+type = "table"
+
+    [types.item.name]
+    type = "string"
+
+[elements.items]
+type = "table-collection"
+typeof = "types.item"
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected table-collection alias to be rejected")
+	}
+}
+
 func TestValidatesTupleArraysByPosition(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `

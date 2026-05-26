@@ -327,6 +327,32 @@ type = "string"
 }
 
 #[test]
+fn rejects_table_collection_alias() {
+    let directory = tempfile_dir("table-collection-alias");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.item]
+type = "table"
+
+    [types.item.name]
+    type = "string"
+
+[elements.items]
+type = "table-collection"
+typeof = "types.item"
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("expected table-collection alias rejection");
+    assert!(error.contains("unsupported schema type"));
+}
+
+#[test]
 fn validates_tuple_arrays_by_position() {
     let directory = tempfile_dir("tuple-arrays");
     let schema_path = write_file(

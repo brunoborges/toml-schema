@@ -65,7 +65,7 @@ func parseSchemaType(value string) (SchemaType, bool) {
 		return TypeArray, true
 	case "table":
 		return TypeTable, true
-	case "collection", "table-collection":
+	case "collection":
 		return TypeCollection, true
 	default:
 		return "", false

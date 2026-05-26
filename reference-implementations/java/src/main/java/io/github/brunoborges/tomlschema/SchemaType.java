@@ -44,7 +44,7 @@ enum SchemaType {
             case "local-time" -> Optional.of(LOCAL_TIME);
             case "array" -> Optional.of(ARRAY);
             case "table" -> Optional.of(TABLE);
-            case "collection", "table-collection" -> Optional.of(COLLECTION);
+            case "collection" -> Optional.of(COLLECTION);
             default -> Optional.empty();
         };
     }

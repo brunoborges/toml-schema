@@ -31,8 +31,6 @@ class AbnfConformanceTest {
         Set<String> implementationTypes = Arrays.stream(SchemaType.values())
                 .map(SchemaType::schemaName)
                 .collect(Collectors.toSet());
-        implementationTypes.add("table-collection");
-
         assertEquals(implementationTypes, builtInTypeTokens(abnf));
     }
 

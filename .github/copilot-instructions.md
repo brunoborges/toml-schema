@@ -30,7 +30,7 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - Use full SemVer strings for `[toml-schema].version`; the current TOML Schema version is `1.0.0`, and shorthand values like `"1"` or `"1.0"` are invalid.
 - Custom metadata belongs under `[toml-schema.meta]`; do not add arbitrary keys or subtables directly under `[toml-schema]`.
 - Reusable definitions live under `[types.<name>]` and are referenced from `[elements]` or nested type definitions rather than duplicating structures.
-- Use canonical `typeof` in schema examples. The Java implementation still accepts `table-collection` as a legacy alias for `collection`.
+- Use canonical `typeof` and `collection` in schema examples.
 - Use `itemtype = "types.<name>"` on `type = "array"` definitions when array items need structural validation, including TOML arrays of tables (`[[name]]`) and arrays of inline tables.
 - Use `oneof` for exactly-one alternative type validation and `anyof` for at-least-one validation; both reference reusable `[types]` definitions and can apply to fields or array item types.
 - `min`/`max` are inclusive and only valid for numeric/date-time types, or arrays with comparable `arraytype`; NaN is not a valid boundary.

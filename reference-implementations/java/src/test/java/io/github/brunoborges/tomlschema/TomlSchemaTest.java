@@ -123,8 +123,8 @@ class TomlSchemaTest {
     }
 
     @Test
-    void supportsLegacyCollectionAlias() throws IOException {
-        Path schema = write("legacy.tosd", """
+    void rejectsTableCollectionAlias() throws IOException {
+        Path schema = write("table-collection-alias.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
@@ -138,14 +138,8 @@ class TomlSchemaTest {
                 type = "table-collection"
                 typeof = "types.item"
                 """);
-        Path document = write("legacy.toml", """
-                [items.one]
-                name = "alpha"
-                """);
 
-        ValidationResult result = TomlSchema.load(schema).validate(document);
-
-        assertTrue(result.isValid(), () -> result.errors().toString());
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
     }
 
     @Test

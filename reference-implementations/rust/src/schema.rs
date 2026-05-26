@@ -63,8 +63,7 @@ impl SchemaType {
             "local-time" => SchemaType::LocalTime,
             "array" => SchemaType::Array,
             "table" => SchemaType::Table,
-            // "table-collection" is an accepted legacy alias for "collection".
-            "collection" | "table-collection" => SchemaType::Collection,
+            "collection" => SchemaType::Collection,
             _ => return None,
         })
     }

@@ -11,7 +11,7 @@ version = "1.0.0"
 
         [types.schemaDef.children.type]
         type = "string"
-        allowedvalues = [ "array", "table", "collection", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time", "table-collection" ]
+        allowedvalues = [ "array", "table", "collection", "any", "string", "integer", "float", "boolean", "offset-date-time", "local-date-time", "local-date", "local-time" ]
         optional = true
 
         [types.schemaDef.children.typeof]
