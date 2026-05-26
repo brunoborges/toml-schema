@@ -371,6 +371,12 @@ func validateRangeConstraints(name string, typeName, arrayType SchemaType, itemR
 	if min == nil && max == nil {
 		return nil
 	}
+	if err := validateRangeBoundary(name, "min", min); err != nil {
+		return err
+	}
+	if err := validateRangeBoundary(name, "max", max); err != nil {
+		return err
+	}
 	if isNaN(min) {
 		return fmt.Errorf("%s cannot use NaN as min", name)
 	}
@@ -389,14 +395,73 @@ func validateRangeConstraints(name string, typeName, arrayType SchemaType, itemR
 			itemType = TypeAny
 		}
 		if !isRangeComparable(itemType) {
-			return fmt.Errorf("%s can only define min or max for arrays with numeric or date/time arraytype", name)
+			return fmt.Errorf("%s can only define min or max for arrays with integer, float, or temporal arraytype", name)
+		}
+		if err := validateBoundaryMatchesType(name, "min", min, itemType); err != nil {
+			return err
+		}
+		if err := validateBoundaryMatchesType(name, "max", max, itemType); err != nil {
+			return err
 		}
 		return nil
 	}
 	if typeName != "" && !isRangeComparable(typeName) {
 		return fmt.Errorf("%s can only define min or max for integer, float, date/time, or compatible array types", name)
 	}
+	if typeName != "" {
+		if err := validateBoundaryMatchesType(name, "min", min, typeName); err != nil {
+			return err
+		}
+		if err := validateBoundaryMatchesType(name, "max", max, typeName); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func validateRangeBoundary(name, key string, value any) error {
+	if value == nil || isRangeBoundary(value) {
+		return nil
+	}
+	return fmt.Errorf("%s %s must be an integer, float, or temporal value", name, key)
+}
+
+func isRangeBoundary(value any) bool {
+	switch value.(type) {
+	case int64, float64, time.Time, toml.LocalDateTime, toml.LocalDate, toml.LocalTime:
+		return true
+	default:
+		return false
+	}
+}
+
+func validateBoundaryMatchesType(name, key string, value any, typeName SchemaType) error {
+	if value == nil || boundaryMatchesType(value, typeName) {
+		return nil
+	}
+	return fmt.Errorf("%s %s must be comparable with %s", name, key, typeName)
+}
+
+func boundaryMatchesType(value any, typeName SchemaType) bool {
+	switch typeName {
+	case TypeInteger, TypeFloat:
+		_, ok := numeric(value)
+		return ok
+	case TypeOffsetDateTime:
+		_, ok := value.(time.Time)
+		return ok
+	case TypeLocalDateTime:
+		_, ok := value.(toml.LocalDateTime)
+		return ok
+	case TypeLocalDate:
+		_, ok := value.(toml.LocalDate)
+		return ok
+	case TypeLocalTime:
+		_, ok := value.(toml.LocalTime)
+		return ok
+	default:
+		return false
+	}
 }
 
 type validator struct {

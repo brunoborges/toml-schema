@@ -139,7 +139,7 @@ A TOML Schema file has the following structure:
 
  - `[toml-schema]`: table with information and metadata of the schema.
    - **Required**
- - `[types]`: table with definition of types to be reused in elements`.
+ - `[types]`: table with definitions of types to be reused in elements.
    - _Optional_
  - `[elements]`: table with the overall structure of the TOML document, its tables, properties, and conditions.
    - **Required**
@@ -191,7 +191,33 @@ A parser that supports TOML Schema version `MAJOR.MINOR.PATCH` MUST accept schem
 
 ## Elements table - `[elements]`
 
-The `elements` table defines the overall structure and properties of the TOML document. Elements follow the same structure and rules of Types, specified below, except that elements cannot reference other elements. To reuse conditions and structures, `[types]` must be defined and referenced back from the `[elements]` table.
+The `[elements]` table is the root schema for the TOML document being validated. Schema authors use it to describe the application data that may appear at the top level of the TOML document.
+
+Each direct child of `[elements]` defines one top-level TOML key. Nested children define the structure below that key, such as fields inside a table or item definitions inside arrays and collections.
+
+For example, this schema:
+
+```toml
+[elements.title]
+type = "string"
+
+[elements.database]
+type = "table"
+
+    [elements.database.enabled]
+    type = "boolean"
+```
+
+validates a TOML document shaped like this:
+
+```toml
+title = "Example"
+
+[database]
+enabled = true
+```
+
+Use `[elements]` for document-specific keys. Use `[types]` for reusable definitions that can be referenced from `[elements]` or from other reusable types. Elements follow the same structure and validation rules as types, except that elements cannot reference other elements. To reuse conditions and structures, define them under `[types]` and reference them from `[elements]`.
 
 ## Types table - `[types]`
 
@@ -218,8 +244,8 @@ anyof = [ "<type-reference>", ... ]
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
 optional = true|false
-min = <any>
-max = <any>
+min = <integer | float | offset-date-time | local-date-time | local-date | local-time>
+max = <integer | float | offset-date-time | local-date-time | local-date | local-time>
 minlength = <integer>
 maxlength = <integer>
 ```
@@ -282,9 +308,11 @@ These properties define inclusive value ranges. They may only be used for:
  - `float`
  - `integer`
  - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
- - `array`, when `arraytype` is one of the numeric or date/time types above
+ - `array`, when `arraytype` is one of `integer`, `float`, or the temporal types above
 
 For arrays, `min` and `max` apply to each array item. They cannot be combined with `itemtype`; put range constraints in the referenced item type instead.
+
+A `min` or `max` boundary must be a TOML value that is comparable with the schema type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
 
 `nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries.
 

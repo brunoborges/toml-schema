@@ -159,6 +159,62 @@ port = 70000
 }
 
 #[test]
+fn rejects_malformed_boundary_schemas() {
+    let directory = tempfile_dir("malformed-boundaries");
+    let cases = [
+        (
+            "any-min",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.payload]
+type = "any"
+min = 1
+"#,
+        ),
+        (
+            "nan-min",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "float"
+min = nan
+"#,
+        ),
+        (
+            "string-min",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+min = "1"
+"#,
+        ),
+        (
+            "date-time-min",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "local-date"
+min = 2026-01-01T00:00:00Z
+"#,
+        ),
+    ];
+
+    for (name, content) in cases {
+        let schema_path = write_file(&directory, &format!("{name}.tosd"), content);
+        Schema::load(&schema_path).expect_err("expected malformed boundary schema");
+    }
+}
+
+#[test]
 fn pattern_must_match_entire_string() {
     let directory = tempfile_dir("pattern-entire-string");
     let schema_path = write_file(
