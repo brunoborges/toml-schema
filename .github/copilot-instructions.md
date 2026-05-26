@@ -17,12 +17,12 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - `SPEC.md` is the primary human-readable specification. It defines the TOML schema language, validation semantics, parser expectations, file extension, MIME types, and schema-reference metadata.
 - `README.md` is the project overview and quickstart. Keep it concise and link to `SPEC.md` for detailed language semantics and `REFERENCE_IMPLEMENTATIONS.md` for implementation usage.
 - `REFERENCE_IMPLEMENTATIONS.md` tracks reference implementation status, Java CLI/library usage, and cross-implementation conformance expectations.
-- `toml-schema.abnf` is the formal TOML Schema-layer grammar companion for schema vocabulary and document shape. The Java tests include an ABNF conformance guard to prevent vocabulary drift.
+- `toml-schema.abnf` is the formal TOML Schema-layer grammar companion for schema vocabulary and document shape. Reference implementation tests include ABNF conformance guards to prevent vocabulary drift.
 - `toml-schema.tosd` is a TOML schema for schema documents themselves. It models allowed schema metadata, reusable type definitions, and top-level elements.
 - `config.tosd` and `config.toml` are the worked example pair: `config.toml` declares `[toml-schema] location = "config.tosd"`, and `config.tosd` describes the allowed document shape.
 - `reference-implementations/java/src/main/java/io/github/brunoborges/tomlschema` contains the Java reference implementation: schema loading/modeling, validation, result/error records, and `TomlSchemaCli`.
 - `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, validation errors, and CLI schema-location lookup.
-- `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/AbnfConformanceTest.java` reads `toml-schema.abnf` and checks Java schema properties and built-in type names against it.
+- Java, Go, and Rust ABNF conformance tests read `toml-schema.abnf` and check implementation schema properties and built-in type names against it.
 
 ## Key conventions
 
