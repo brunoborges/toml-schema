@@ -21,6 +21,7 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - `toml-schema.tosd` is a TOML schema for schema documents themselves. It models allowed schema metadata, reusable type definitions, and top-level elements.
 - `config.tosd` and `config.toml` are the worked example pair: `config.toml` declares `[toml-schema] location = "config.tosd"`, and `config.tosd` describes the allowed document shape.
 - `reference-implementations/java/src/main/java/io/github/brunoborges/tomlschema` contains the Java reference implementation: schema loading/modeling, validation, result/error records, and `TomlSchemaCli`.
+- `reference-implementations/go` is an importable Go package, and its CLI entrypoint lives under `reference-implementations/go/cmd/toml-schema`.
 - `reference-implementations/java/src/test/java/io/github/brunoborges/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, validation errors, and CLI schema-location lookup.
 - Java, Go, and Rust ABNF conformance tests read `toml-schema.abnf` and check implementation schema properties and built-in type names against it.
 

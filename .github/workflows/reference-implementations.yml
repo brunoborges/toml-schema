@@ -68,27 +68,27 @@ jobs:
 
       - name: Validate checked-in example with explicit schema
         working-directory: reference-implementations/go
-        run: go run . validate ../../config.tosd ../../config.toml
+        run: go run ./cmd/toml-schema validate ../../config.tosd ../../config.toml
 
       - name: Validate checked-in example with schema reference
         working-directory: reference-implementations/go
-        run: go run . validate ../../config.toml
+        run: go run ./cmd/toml-schema validate ../../config.toml
 
       - name: Validate example schema against self-schema
         working-directory: reference-implementations/go
-        run: go run . validate ../../toml-schema.tosd ../../config.tosd
+        run: go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../config.tosd
 
       - name: Validate self-schema against itself
         working-directory: reference-implementations/go
-        run: go run . validate ../../toml-schema.tosd ../../toml-schema.tosd
+        run: go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../toml-schema.tosd
 
       - name: Extract schema from checked-in example
         working-directory: reference-implementations/go
-        run: go run . extract ../../config.toml /tmp/config.generated.tosd
+        run: go run ./cmd/toml-schema extract ../../config.toml /tmp/config.generated.tosd
 
       - name: Validate checked-in example with extracted schema
         working-directory: reference-implementations/go
-        run: go run . validate /tmp/config.generated.tosd ../../config.toml
+        run: go run ./cmd/toml-schema validate /tmp/config.generated.tosd ../../config.toml
 
   rust:
     name: Rust reference implementation
