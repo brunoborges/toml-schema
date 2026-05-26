@@ -8,6 +8,10 @@ import org.tomlj.TomlTable;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -275,6 +279,8 @@ final class SchemaLoader {
         if (min == null && max == null) {
             return;
         }
+        validateRangeBoundary(name, "min", min);
+        validateRangeBoundary(name, "max", max);
         rejectNaNBoundary(name, "min", min);
         rejectNaNBoundary(name, "max", max);
         if (type == SchemaType.ANY) {
@@ -286,13 +292,26 @@ final class SchemaLoader {
             }
             SchemaType itemType = arrayType == null ? SchemaType.ANY : arrayType;
             if (!isRangeComparable(itemType)) {
-                throw new SchemaException(name + " can only define min or max for arrays with numeric or date/time arraytype");
+                throw new SchemaException(name + " can only define min or max for arrays with integer, float, or temporal arraytype");
             }
+            validateBoundaryMatchesType(name, "min", min, itemType);
+            validateBoundaryMatchesType(name, "max", max, itemType);
             return;
         }
         if (type != null && !isRangeComparable(type)) {
             throw new SchemaException(name + " can only define min or max for integer, float, date/time, or compatible array types");
         }
+        if (type != null) {
+            validateBoundaryMatchesType(name, "min", min, type);
+            validateBoundaryMatchesType(name, "max", max, type);
+        }
+    }
+
+    private void validateRangeBoundary(String name, String key, Object value) {
+        if (value == null || isRangeBoundary(value)) {
+            return;
+        }
+        throw new SchemaException(name + " " + key + " must be an integer, float, or temporal value");
     }
 
     private void rejectNaNBoundary(String name, String key, Object value) {
@@ -301,9 +320,36 @@ final class SchemaLoader {
         }
     }
 
+    private boolean isRangeBoundary(Object value) {
+        return value instanceof Long
+                || value instanceof Double
+                || value instanceof OffsetDateTime
+                || value instanceof LocalDateTime
+                || value instanceof LocalDate
+                || value instanceof LocalTime;
+    }
+
     private boolean isRangeComparable(SchemaType type) {
         return switch (type) {
             case INTEGER, FLOAT, OFFSET_DATE_TIME, LOCAL_DATE_TIME, LOCAL_DATE, LOCAL_TIME -> true;
+            default -> false;
+        };
+    }
+
+    private void validateBoundaryMatchesType(String name, String key, Object value, SchemaType type) {
+        if (value == null || boundaryMatchesType(value, type)) {
+            return;
+        }
+        throw new SchemaException(name + " " + key + " must be comparable with " + type.schemaName());
+    }
+
+    private boolean boundaryMatchesType(Object value, SchemaType type) {
+        return switch (type) {
+            case INTEGER, FLOAT -> value instanceof Number;
+            case OFFSET_DATE_TIME -> value instanceof OffsetDateTime;
+            case LOCAL_DATE_TIME -> value instanceof LocalDateTime;
+            case LOCAL_DATE -> value instanceof LocalDate;
+            case LOCAL_TIME -> value instanceof LocalTime;
             default -> false;
         };
     }

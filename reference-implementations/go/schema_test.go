@@ -86,6 +86,52 @@ port = 70000
 	}
 }
 
+func TestRejectsMalformedBoundarySchemas(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]string{
+		"any-min": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.payload]
+type = "any"
+min = 1
+`,
+		"nan-min": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "float"
+min = nan
+`,
+		"string-min": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+min = "1"
+`,
+		"date-time-min": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "local-date"
+min = 2026-01-01T00:00:00Z
+`,
+	}
+
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := LoadSchema(write(t, dir, name+".tosd", content)); err == nil {
+				t.Fatal("expected malformed boundary schema to be rejected")
+			}
+		})
+	}
+}
+
 func TestPatternMustMatchEntireString(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `

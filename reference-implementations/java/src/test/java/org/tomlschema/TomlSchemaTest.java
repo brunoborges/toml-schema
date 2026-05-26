@@ -570,9 +570,27 @@ class TomlSchemaTest {
                 type = "float"
                 min = nan
                 """);
+        Path stringBoundarySchema = write("string-min.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "integer"
+                min = "1"
+                """);
+        Path mismatchedTemporalSchema = write("date-time-min.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "local-date"
+                min = 2026-01-01T00:00:00Z
+                """);
 
         assertThrows(SchemaException.class, () -> TomlSchema.load(anySchema));
         assertThrows(SchemaException.class, () -> TomlSchema.load(nanSchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(stringBoundarySchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(mismatchedTemporalSchema));
     }
 
     @Test

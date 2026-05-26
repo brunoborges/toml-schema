@@ -456,6 +456,8 @@ fn validate_range_constraints(
     if min.is_none() && max.is_none() {
         return Ok(());
     }
+    validate_range_boundary(name, "min", min)?;
+    validate_range_boundary(name, "max", max)?;
     if is_nan(min) {
         return Err(format!("{name} cannot use NaN as min"));
     }
@@ -474,9 +476,11 @@ fn validate_range_constraints(
         let item_type = array_type.unwrap_or(SchemaType::Any);
         if !item_type.is_range_comparable() {
             return Err(format!(
-                "{name} can only define min or max for arrays with numeric or date/time arraytype"
+                "{name} can only define min or max for arrays with integer, float, or temporal arraytype"
             ));
         }
+        validate_boundary_matches_type(name, "min", min, item_type)?;
+        validate_boundary_matches_type(name, "max", max, item_type)?;
         return Ok(());
     }
     if let Some(type_name) = type_name {
@@ -485,8 +489,61 @@ fn validate_range_constraints(
                 "{name} can only define min or max for integer, float, date/time, or compatible array types"
             ));
         }
+        validate_boundary_matches_type(name, "min", min, type_name)?;
+        validate_boundary_matches_type(name, "max", max, type_name)?;
     }
     Ok(())
+}
+
+fn validate_range_boundary(name: &str, key: &str, value: Option<&Value>) -> Result<(), String> {
+    if value.map_or(true, is_range_boundary) {
+        return Ok(());
+    }
+    Err(format!(
+        "{name} {key} must be an integer, float, or temporal value"
+    ))
+}
+
+fn is_range_boundary(value: &Value) -> bool {
+    matches!(value, Value::Integer(_) | Value::Float(_))
+        || matches!(value, Value::Datetime(datetime) if is_temporal_boundary(datetime))
+}
+
+fn is_temporal_boundary(datetime: &Datetime) -> bool {
+    matches!(
+        (
+            datetime.date.is_some(),
+            datetime.time.is_some(),
+            datetime.offset.is_some()
+        ),
+        (true, true, true) | (true, true, false) | (true, false, false) | (false, true, false)
+    )
+}
+
+fn validate_boundary_matches_type(
+    name: &str,
+    key: &str,
+    value: Option<&Value>,
+    type_name: SchemaType,
+) -> Result<(), String> {
+    if value.map_or(true, |value| boundary_matches_type(value, type_name)) {
+        return Ok(());
+    }
+    Err(format!(
+        "{name} {key} must be comparable with {}",
+        type_name.schema_name()
+    ))
+}
+
+fn boundary_matches_type(value: &Value, type_name: SchemaType) -> bool {
+    match type_name {
+        SchemaType::Integer | SchemaType::Float => numeric(value).is_some(),
+        SchemaType::OffsetDateTime
+        | SchemaType::LocalDateTime
+        | SchemaType::LocalDate
+        | SchemaType::LocalTime => value_matches_type(value, type_name),
+        _ => false,
+    }
 }
 
 struct Validator<'schema> {

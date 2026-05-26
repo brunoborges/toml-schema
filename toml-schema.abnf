@@ -43,8 +43,8 @@ allowedvalues = "allowedvalues" keyval-sep toml-array
 pattern       = "pattern" keyval-sep toml-string
 optional      = "optional" keyval-sep toml-boolean
 default       = "default" keyval-sep toml-value
-min           = "min" keyval-sep toml-value
-max           = "max" keyval-sep toml-value
+min           = "min" keyval-sep range-boundary
+max           = "max" keyval-sep range-boundary
 minlength     = "minlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
 maxlength     = "maxlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
 children      = "children"
@@ -59,6 +59,8 @@ array-built-in-type = anytype / stringtype / integertype / floattype / booleanty
 
 type-reference       = built-in-type / toml-string
 type-reference-array = toml-array ; semantically intended to contain only type-reference values; element types are not constrained by this ABNF
+range-boundary       = toml-integer / toml-float / toml-offset-date-time
+                     / toml-local-date-time / toml-local-date / toml-local-time
 
 anytype             = DQUOTE %x61.6e.79 DQUOTE                                      ; "any"
 stringtype          = DQUOTE %x73.74.72.69.6e.67 DQUOTE                             ; "string"
@@ -90,6 +92,11 @@ toml-array                         = <TOML 1.0 array>
 toml-inline-table                  = <TOML 1.0 inline table>
 toml-boolean                       = <TOML 1.0 boolean>
 toml-integer                       = <TOML 1.0 integer>
+toml-float                         = <TOML 1.0 float>
+toml-offset-date-time              = <TOML 1.0 offset date-time>
+toml-local-date-time               = <TOML 1.0 local date-time>
+toml-local-date                    = <TOML 1.0 local date>
+toml-local-time                    = <TOML 1.0 local time>
 
 keyval-sep = *WSP "=" *WSP
 
