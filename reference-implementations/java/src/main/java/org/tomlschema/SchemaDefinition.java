@@ -1,4 +1,4 @@
-package io.github.brunoborges.tomlschema;
+package org.tomlschema;
 
 import java.util.List;
 import java.util.Map;

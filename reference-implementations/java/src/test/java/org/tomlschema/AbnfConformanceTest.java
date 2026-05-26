@@ -1,4 +1,4 @@
-package io.github.brunoborges.tomlschema;
+package org.tomlschema;
 
 import org.junit.jupiter.api.Test;
 

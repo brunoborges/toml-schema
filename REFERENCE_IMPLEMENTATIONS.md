@@ -6,9 +6,9 @@ This document tracks TOML Schema reference implementations and the expected vali
 
 | Language | Location | Status | Notes |
 | --- | --- | --- | --- |
-| Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 25 library and CLI using Tomlj for TOML 1.0 parsing. |
-| Go | [`reference-implementations/go`](reference-implementations/go) | Active reference implementation | Go library and CLI using go-toml for TOML 1.0 parsing. |
-| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Active reference implementation | Rust library and CLI using the `toml` crate for TOML 1.0 parsing. |
+| Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 25 library and CLI using `org.tomlschema:toml-schema` and Tomlj for TOML 1.0 parsing. |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Active reference implementation | Go module `tomlschema.org/go` using go-toml for TOML 1.0 parsing. |
+| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Active reference implementation | Rust crate `toml-schema` with tomlschema.org package metadata, using the `toml` crate for TOML 1.0 parsing. |
 | Other languages | `reference-implementations/<language>` | Not started | Future implementations should follow the same conformance expectations below. |
 
 ## Java
@@ -66,6 +66,10 @@ java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar e
 Use the library API:
 
 ```java
+import java.nio.file.Path;
+import org.tomlschema.TomlSchema;
+import org.tomlschema.ValidationResult;
+
 ValidationResult result = TomlSchema
     .load(Path.of("config.tosd"))
     .validate(Path.of("config.toml"));
@@ -118,7 +122,7 @@ Use the library API:
 ```go
 package main
 
-import tomlschema "github.com/brunoborges/toml-schema/reference-implementations/go"
+import tomlschema "tomlschema.org/go"
 
 func main() {
 	schema, err := tomlschema.LoadSchema("config.tosd")

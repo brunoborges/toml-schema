@@ -3,6 +3,8 @@ name = "toml-schema"
 version = "0.1.0"
 edition = "2021"
 description = "Reference implementation of TOML Schema for Rust"
+homepage = "https://tomlschema.org"
+repository = "https://github.com/brunoborges/toml-schema"
 license = "MIT"
 publish = false
 

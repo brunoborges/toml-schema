@@ -1,4 +1,4 @@
-module github.com/brunoborges/toml-schema/reference-implementations/go
+module tomlschema.org/go
 
 go 1.22
 

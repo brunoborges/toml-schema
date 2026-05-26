@@ -1,4 +1,4 @@
-package io.github.brunoborges.tomlschema;
+package org.tomlschema;
 
 /**
  * Thrown when a TOML Schema document is malformed or cannot be loaded.
