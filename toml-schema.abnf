@@ -58,7 +58,7 @@ array-built-in-type = anytype / stringtype / integertype / floattype / booleanty
                     / arraytype-name / tabletype
 
 type-reference       = built-in-type / toml-string
-type-reference-array = toml-array ; each array value is a type-reference string
+type-reference-array = toml-array ; semantically intended to contain only type-reference values; element types are not constrained by this ABNF
 
 anytype             = DQUOTE %x61.6e.79 DQUOTE                                      ; "any"
 stringtype          = DQUOTE %x73.74.72.69.6e.67 DQUOTE                             ; "string"
