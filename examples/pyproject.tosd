@@ -1,0 +1,255 @@
+# Based on:
+# - https://packaging.python.org/en/latest/specifications/pyproject-toml/
+# - https://packaging.python.org/en/latest/specifications/dependency-groups/
+
+[toml-schema]
+version = "1.0.0"
+
+[types.stringArray]
+type = "array"
+arraytype = "string"
+
+[types.dependencyArray]
+type = "array"
+arraytype = "string"
+
+[types.stringMap]
+type = "collection"
+typeof = "string"
+
+[types.openTable]
+type = "table"
+
+[types.buildSystem]
+type = "table"
+
+    [types.buildSystem.requires]
+    typeof = "types.dependencyArray"
+
+    [types.buildSystem."build-backend"]
+    type = "string"
+    optional = true
+
+    [types.buildSystem."backend-path"]
+    typeof = "types.stringArray"
+    optional = true
+
+[types.readmeTable]
+type = "table"
+
+    [types.readmeTable.file]
+    type = "string"
+    optional = true
+
+    [types.readmeTable.text]
+    type = "string"
+    optional = true
+
+    [types.readmeTable."content-type"]
+    type = "string"
+
+[types.readme]
+oneof = [ "string", "types.readmeTable" ]
+
+[types.legacyLicenseTable]
+type = "table"
+
+    [types.legacyLicenseTable.file]
+    type = "string"
+    optional = true
+
+    [types.legacyLicenseTable.text]
+    type = "string"
+    optional = true
+
+[types.license]
+oneof = [ "string", "types.legacyLicenseTable" ]
+
+[types.person]
+type = "table"
+
+    [types.person.name]
+    type = "string"
+    optional = true
+
+    [types.person.email]
+    type = "string"
+    optional = true
+
+[types.people]
+type = "array"
+arraytype = "table"
+itemtype = "types.person"
+
+[types.projectName]
+type = "string"
+pattern = '^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$'
+
+[types.pythonImportName]
+type = "string"
+pattern = '^([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)*(\s*;\s*private)?$'
+
+[types.pythonImportNameOrEmpty]
+type = "string"
+pattern = '^$|^([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)*(\s*;\s*private)?$'
+
+[types.importNames]
+type = "array"
+arraytype = "any"
+itemtype = "types.pythonImportNameOrEmpty"
+
+[types.importNamespaces]
+type = "array"
+arraytype = "any"
+itemtype = "types.pythonImportName"
+
+[types.dynamicMetadata]
+type = "array"
+arraytype = "string"
+allowedvalues = [
+    "version",
+    "description",
+    "readme",
+    "requires-python",
+    "license",
+    "license-files",
+    "authors",
+    "maintainers",
+    "keywords",
+    "classifiers",
+    "urls",
+    "scripts",
+    "gui-scripts",
+    "entry-points",
+    "dependencies",
+    "optional-dependencies",
+    "import-names",
+    "import-namespaces",
+]
+
+[types.optionalDependencies]
+type = "collection"
+typeof = "types.dependencyArray"
+
+[types.entryPoints]
+type = "collection"
+typeof = "types.stringMap"
+
+[types.project]
+type = "table"
+
+    [types.project.name]
+    typeof = "types.projectName"
+
+    [types.project.version]
+    type = "string"
+    optional = true
+
+    [types.project.description]
+    type = "string"
+    optional = true
+
+    [types.project.readme]
+    typeof = "types.readme"
+    optional = true
+
+    [types.project.license]
+    typeof = "types.license"
+    optional = true
+
+    [types.project.authors]
+    typeof = "types.people"
+    optional = true
+
+    [types.project.maintainers]
+    typeof = "types.people"
+    optional = true
+
+    [types.project.keywords]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.project.classifiers]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.project.urls]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.project.scripts]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.project."requires-python"]
+    type = "string"
+    optional = true
+
+    [types.project."license-files"]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.project."gui-scripts"]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.project."entry-points"]
+    typeof = "types.entryPoints"
+    optional = true
+
+    [types.project.dependencies]
+    typeof = "types.dependencyArray"
+    optional = true
+
+    [types.project."optional-dependencies"]
+    typeof = "types.optionalDependencies"
+    optional = true
+
+    [types.project."import-names"]
+    typeof = "types.importNames"
+    optional = true
+
+    [types.project."import-namespaces"]
+    typeof = "types.importNamespaces"
+    optional = true
+
+    [types.project.dynamic]
+    typeof = "types.dynamicMetadata"
+    optional = true
+
+[types.dependencyGroupInclude]
+type = "table"
+
+    [types.dependencyGroupInclude."include-group"]
+    type = "string"
+
+[types.dependencyGroupItem]
+oneof = [ "string", "types.dependencyGroupInclude" ]
+
+[types.dependencyGroup]
+type = "array"
+arraytype = "any"
+itemtype = "types.dependencyGroupItem"
+
+[types.dependencyGroups]
+type = "collection"
+typeof = "types.dependencyGroup"
+
+[elements]
+
+[elements.project]
+typeof = "types.project"
+optional = true
+
+[elements.tool]
+type = "collection"
+typeof = "types.openTable"
+optional = true
+
+[elements."build-system"]
+typeof = "types.buildSystem"
+optional = true
+
+[elements."dependency-groups"]
+typeof = "types.dependencyGroups"
+optional = true

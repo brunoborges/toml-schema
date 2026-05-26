@@ -256,8 +256,9 @@ type = "table"
     type = "boolean"
     optional = true
 
-    [types.dependencyTable.children]
-    optional = { type = "boolean", optional = true }
+    [types.dependencyTable.optional]
+    type = "boolean"
+    optional = true
 
 [types.dependencyCollection]
 type = "collection"

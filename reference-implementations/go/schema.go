@@ -34,7 +34,7 @@ var definitionKeys = map[string]bool{
 	"type": true, "typeof": true, "arraytype": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "optional": true, "default": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true,
-	"oneof": true, "anyof": true, "children": true,
+	"oneof": true, "anyof": true,
 }
 
 const currentTomlSchemaVersion = "1.0.0"
@@ -218,20 +218,6 @@ func parseDefinitions(prefix string, table map[string]any, required bool) (map[s
 			}
 		}
 		valueMap, ok := asMap(value)
-		if key == "children" && ok && !hasDefinitionMarker(valueMap) {
-			for childKey, childValue := range valueMap {
-				childMap, ok := asMap(childValue)
-				if !ok {
-					return nil, fmt.Errorf("[%s.children] entry must be a table: %s", prefix, childKey)
-				}
-				definition, err := parseDefinition(prefix+"."+childKey, childMap)
-				if err != nil {
-					return nil, err
-				}
-				definitions[childKey] = definition
-			}
-			continue
-		}
 		if !ok {
 			return nil, fmt.Errorf("[%s] entry must be a table: %s", prefix, key)
 		}
@@ -297,28 +283,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		return Definition{}, fmt.Errorf("%s cannot define both oneof and anyof", name)
 	}
 	children := map[string]Definition{}
-	if explicitChildren, ok := asMap(table["children"]); ok {
-		for key, value := range explicitChildren {
-			childTable, ok := asMap(value)
-			if !ok {
-				return Definition{}, fmt.Errorf("%s.children.%s must be a table", name, key)
-			}
-			child, err := parseDefinition(name+"."+key, childTable)
-			if err != nil {
-				return Definition{}, err
-			}
-			children[key] = child
-		}
-	}
 	for key, value := range table {
 		childTable, ok := asMap(value)
 		if ok {
-			if definitionKeys[key] {
-				if key != "children" {
-					return Definition{}, fmt.Errorf("%s.%s must not be a table", name, key)
-				}
-				continue
-			}
 			if _, exists := children[key]; exists {
 				return Definition{}, fmt.Errorf("%s defines child %s more than once", name, key)
 			}
@@ -332,7 +299,10 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		}
 	}
 	if typeName == "" && reference == "" && len(oneOf) == 0 && len(anyOf) == 0 {
-		return Definition{}, fmt.Errorf("%s must define type, typeof, oneof, or anyof", name)
+		if len(children) == 0 {
+			return Definition{}, fmt.Errorf("%s must define type, typeof, oneof, anyof, or child definitions", name)
+		}
+		typeName = TypeTable
 	}
 	if typeName != TypeArray && arrayType != "" {
 		return Definition{}, fmt.Errorf("%s can only define arraytype when type is array", name)
@@ -354,14 +324,16 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 			return Definition{}, fmt.Errorf("%s cannot define minlength or maxlength together with items", name)
 		}
 	}
-	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), table["min"], table["max"]); err != nil {
+	min := propertyValue(table, "min")
+	max := propertyValue(table, "max")
+	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), min, max); err != nil {
 		return Definition{}, err
 	}
 	return Definition{
 		name: name, typeName: typeName, reference: normalizeReference(reference),
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
 		items:         normalizeReferences(items),
-		allowedValues: allowedValues, pattern: pattern, min: table["min"], max: table["max"],
+		allowedValues: allowedValues, pattern: pattern, min: min, max: max,
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
 		children: children,
 	}, nil
@@ -804,9 +776,17 @@ func getSchemaType(table map[string]any, key string) (SchemaType, error) {
 	return "", fmt.Errorf("unsupported schema type: %s", value)
 }
 
+func propertyValue(table map[string]any, key string) any {
+	value := table[key]
+	if _, ok := asMap(value); ok {
+		return nil
+	}
+	return value
+}
+
 func getString(table map[string]any, key string) (string, error) {
-	value, ok := table[key]
-	if !ok || value == nil {
+	value := propertyValue(table, key)
+	if value == nil {
 		return "", nil
 	}
 	stringValue, ok := value.(string)
@@ -817,8 +797,8 @@ func getString(table map[string]any, key string) (string, error) {
 }
 
 func getBool(table map[string]any, key string) (bool, error) {
-	value, ok := table[key]
-	if !ok || value == nil {
+	value := propertyValue(table, key)
+	if value == nil {
 		return false, nil
 	}
 	boolValue, ok := value.(bool)
@@ -829,8 +809,8 @@ func getBool(table map[string]any, key string) (bool, error) {
 }
 
 func getIntegerPointer(table map[string]any, key string) (*int, error) {
-	value, ok := table[key]
-	if !ok || value == nil {
+	value := propertyValue(table, key)
+	if value == nil {
 		return nil, nil
 	}
 	intValue, ok := value.(int64)
@@ -857,8 +837,8 @@ func getPattern(name string, table map[string]any) (*regexp.Regexp, error) {
 }
 
 func getArrayValues(table map[string]any, key string) ([]any, error) {
-	value, ok := table[key]
-	if !ok || value == nil {
+	value := propertyValue(table, key)
+	if value == nil {
 		return nil, nil
 	}
 	array, ok := value.([]any)
@@ -1019,12 +999,6 @@ func encodePathKey(key string) string {
 func matchesEntireString(pattern *regexp.Regexp, value string) bool {
 	match := pattern.FindStringIndex(value)
 	return match != nil && match[0] == 0 && match[1] == len(value)
-}
-
-func hasDefinitionMarker(table map[string]any) bool {
-	_, hasType := table["type"]
-	_, hasTypeOf := table["typeof"]
-	return hasType || hasTypeOf
 }
 
 func asMap(value any) (map[string]any, bool) {

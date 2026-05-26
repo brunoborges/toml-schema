@@ -33,7 +33,10 @@ fn has_path(result: &ValidationResult, path: &str) -> bool {
 }
 
 fn capture(args: &[&str]) -> (u8, String, String) {
-    let owned: Vec<String> = args.iter().map(|argument| (*argument).to_string()).collect();
+    let owned: Vec<String> = args
+        .iter()
+        .map(|argument| (*argument).to_string())
+        .collect();
     let mut out = Cursor::new(Vec::new());
     let mut err = Cursor::new(Vec::new());
     let exit_code = run(&owned, &mut out, &mut err);
@@ -564,8 +567,8 @@ minlength = 2
 }
 
 #[test]
-fn supports_quoted_dotted_and_empty_keys_with_children_table() {
-    let directory = tempfile_dir("children-keys");
+fn supports_quoted_dotted_empty_and_schema_keyword_keys() {
+    let directory = tempfile_dir("special-keys");
     let schema_path = write_file(
         &directory,
         "schema.tosd",
@@ -573,14 +576,17 @@ fn supports_quoted_dotted_and_empty_keys_with_children_table() {
 [toml-schema]
 version = "1.0.0"
 
-[elements.site]
-type = "table"
-
-    [elements.site.children]
-    "google.com" = { type = "boolean" }
+[elements.""]
+type = "string"
 
 [elements.children]
-"" = { type = "string" }
+type = "string"
+
+[elements.site."google.com"]
+type = "boolean"
+
+[elements.plugin.type]
+type = "string"
 "#,
     );
     let document_path = write_file(
@@ -588,9 +594,13 @@ type = "table"
         "document.toml",
         r#"
 "" = "blank"
+children = "literal"
 
 [site]
 "google.com" = true
+
+[plugin]
+type = "npm"
 "#,
     );
 
@@ -631,8 +641,14 @@ location = "schema.tosd"
 
     let (exit_code, stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
 
-    assert_eq!(exit_code, 0, "expected exit code 0, got {exit_code}: {stderr}");
-    assert!(stdout.contains("is valid"), "expected valid output, got {stdout:?}");
+    assert_eq!(
+        exit_code, 0,
+        "expected exit code 0, got {exit_code}: {stderr}"
+    );
+    assert!(
+        stdout.contains("is valid"),
+        "expected valid output, got {stdout:?}"
+    );
 }
 
 #[test]
@@ -664,7 +680,10 @@ location = "ignored.tosd"
         extracted_schema.to_str().unwrap(),
     ]);
 
-    assert_eq!(exit_code, 0, "expected exit code 0, got {exit_code}: {stderr}");
+    assert_eq!(
+        exit_code, 0,
+        "expected exit code 0, got {exit_code}: {stderr}"
+    );
     assert!(
         stdout.contains("Extracted schema to"),
         "expected extract output, got {stdout:?}"

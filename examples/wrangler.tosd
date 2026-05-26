@@ -43,8 +43,8 @@ pattern = '^[A-Za-z0-9][A-Za-z0-9-]{0,254}$'
 [types.routeTable]
 type = "table"
 
-    [types.routeTable.children]
-    pattern = { type = "string" }
+    [types.routeTable.pattern]
+    type = "string"
 
     [types.routeTable.custom_domain]
     type = "boolean"
@@ -158,8 +158,9 @@ type = "table"
 [types.moduleRule]
 type = "table"
 
-    [types.moduleRule.children]
-    type = { type = "string", allowedvalues = [ "CommonJS", "CompiledWasm", "Data", "ESModule", "Text" ] }
+    [types.moduleRule.type]
+    type = "string"
+    allowedvalues = [ "CommonJS", "CompiledWasm", "Data", "ESModule", "Text" ]
 
     [types.moduleRule.globs]
     type = "array"

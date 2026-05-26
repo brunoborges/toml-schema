@@ -428,26 +428,33 @@ minlength = 2
 	}
 }
 
-func TestSupportsQuotedDottedAndEmptyKeysWithChildrenTable(t *testing.T) {
+func TestSupportsQuotedDottedEmptyAndSchemaKeywordKeys(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
 version = "1.0.0"
 
-[elements.site]
-type = "table"
-
-    [elements.site.children]
-    "google.com" = { type = "boolean" }
+[elements.""]
+type = "string"
 
 [elements.children]
-"" = { type = "string" }
+type = "string"
+
+[elements.site."google.com"]
+type = "boolean"
+
+[elements.plugin.type]
+type = "string"
 `)
 	documentPath := write(t, dir, "document.toml", `
 "" = "blank"
+children = "literal"
 
 [site]
 "google.com" = true
+
+[plugin]
+type = "npm"
 `)
 
 	schema, err := LoadSchema(schemaPath)

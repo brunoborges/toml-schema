@@ -26,7 +26,7 @@ final class SchemaLoader {
     static final Set<String> DEFINITION_KEYS = Set.of(
             "type", "typeof", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
             "optional", "default", "min", "max", "minlength", "maxlength",
-            "oneof", "anyof", "children"
+            "oneof", "anyof"
     );
 
     TomlSchema load(Path schemaPath) {
@@ -81,18 +81,7 @@ final class SchemaLoader {
             if (prefix.equals("types") && SchemaType.fromSchemaNameOptional(key).isPresent()) {
                 throw new SchemaException("[types." + key + "] uses a reserved built-in type name");
             }
-            Object value = table.get(List.of(key));
-            if (key.equals("children") && value instanceof TomlTable childrenTable && !hasDefinitionMarker(childrenTable)) {
-                for (String childKey : childrenTable.keySet()) {
-                    Object childValue = childrenTable.get(List.of(childKey));
-                    if (!(childValue instanceof TomlTable childDefinitionTable)) {
-                        throw new SchemaException("[" + prefix + ".children] entry must be a table: " + childKey);
-                    }
-                    definitions.put(childKey, parseDefinition(prefix + "." + childKey, childDefinitionTable));
-                }
-                continue;
-            }
-            if (!(value instanceof TomlTable definitionTable)) {
+            if (!(table.get(List.of(key)) instanceof TomlTable definitionTable)) {
                 throw new SchemaException("[" + prefix + "] entry must be a table: " + key);
             }
             definitions.put(key, parseDefinition(prefix + "." + key, definitionTable));
@@ -119,25 +108,9 @@ final class SchemaLoader {
         }
 
         Map<String, SchemaDefinition> children = new LinkedHashMap<>();
-        TomlTable explicitChildren = table.getTable("children");
-        if (explicitChildren != null) {
-            for (String key : explicitChildren.keySet()) {
-                Object value = explicitChildren.get(List.of(key));
-                if (!(value instanceof TomlTable childTable)) {
-                    throw new SchemaException(name + ".children." + key + " must be a table");
-                }
-                children.put(key, parseDefinition(name + "." + key, childTable));
-            }
-        }
         for (String key : table.keySet()) {
             Object value = table.get(List.of(key));
             if (value instanceof TomlTable childTable) {
-                if (DEFINITION_KEYS.contains(key)) {
-                    if (!key.equals("children")) {
-                        throw new SchemaException(name + "." + key + " must not be a table");
-                    }
-                    continue;
-                }
                 if (children.containsKey(key)) {
                     throw new SchemaException(name + " defines child " + key + " more than once");
                 }
@@ -147,7 +120,10 @@ final class SchemaLoader {
             }
         }
         if (type == null && normalizedReference == null && oneOf.isEmpty() && anyOf.isEmpty()) {
-            throw new SchemaException(name + " must define type, typeof, oneof, or anyof");
+            if (children.isEmpty()) {
+                throw new SchemaException(name + " must define type, typeof, oneof, anyof, or child definitions");
+            }
+            type = SchemaType.TABLE;
         }
         if (type != SchemaType.ARRAY && arrayType != null) {
             throw new SchemaException(name + " can only define arraytype when type is array");
@@ -169,7 +145,9 @@ final class SchemaLoader {
                 throw new SchemaException(name + " cannot define minlength or maxlength together with items");
             }
         }
-        validateRangeConstraints(name, type, arrayType, itemReference, table.get("min"), table.get("max"));
+        Object min = getPropertyValue(table, "min");
+        Object max = getPropertyValue(table, "max");
+        validateRangeConstraints(name, type, arrayType, itemReference, min, max);
         return new SchemaDefinition(
                 name,
                 type,
@@ -180,8 +158,8 @@ final class SchemaLoader {
                 optional != null && optional,
                 allowedValues,
                 pattern,
-                table.get("min"),
-                table.get("max"),
+                min,
+                max,
                 minLength,
                 maxLength,
                 oneOf.stream().map(this::normalizeReference).toList(),
@@ -195,13 +173,13 @@ final class SchemaLoader {
         return value == null ? null : SchemaType.fromSchemaName(value);
     }
 
-    private boolean hasDefinitionMarker(TomlTable table) {
-        return table.contains(List.of("type"))
-                || table.contains(List.of("typeof"));
+    private Object getPropertyValue(TomlTable table, String key) {
+        Object value = table.get(key);
+        return value instanceof TomlTable ? null : value;
     }
 
     private String getString(TomlTable table, String key) {
-        Object value = table.get(key);
+        Object value = getPropertyValue(table, key);
         if (value == null) {
             return null;
         }
@@ -212,7 +190,7 @@ final class SchemaLoader {
     }
 
     private Boolean getBoolean(TomlTable table, String key) {
-        Object value = table.get(key);
+        Object value = getPropertyValue(table, key);
         if (value == null) {
             return null;
         }
@@ -223,7 +201,7 @@ final class SchemaLoader {
     }
 
     private Integer getInteger(TomlTable table, String key) {
-        Object value = table.get(key);
+        Object value = getPropertyValue(table, key);
         if (value == null) {
             return null;
         }
@@ -249,7 +227,7 @@ final class SchemaLoader {
     }
 
     private List<Object> getArrayValues(TomlTable table, String key) {
-        Object value = table.get(key);
+        Object value = getPropertyValue(table, key);
         if (value == null) {
             return List.of();
         }

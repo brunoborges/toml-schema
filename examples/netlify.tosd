@@ -289,8 +289,9 @@ type = "table"
     typeof = "types.stringOrStringArray"
     optional = true
 
-    [types.edgeFunction.children]
-    pattern = { type = "string", optional = true }
+    [types.edgeFunction.pattern]
+    type = "string"
+    optional = true
 
     [types.edgeFunction.excludedPattern]
     typeof = "types.stringOrStringArray"
@@ -386,9 +387,15 @@ type = "table"
 [types.template]
 type = "table"
 
-    [types.template.children]
-    "incoming-hooks" = { type = "array", arraytype = "string", optional = true }
-    "required-extensions" = { type = "array", arraytype = "string", optional = true }
+    [types.template."incoming-hooks"]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.template."required-extensions"]
+    type = "array"
+    arraytype = "string"
+    optional = true
 
     [types.template.environment]
     typeof = "types.environment"
