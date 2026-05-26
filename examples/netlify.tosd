@@ -3,29 +3,20 @@
 [toml-schema]
 version = "1.0.0"
 
-[types.anyValue]
-type = "any"
-
-[types.stringValue]
-type = "string"
-
-[types.booleanValue]
-type = "boolean"
-
 [types.stringArray]
 type = "array"
 arraytype = "string"
 
 [types.stringMap]
 type = "collection"
-typeof = "types.stringValue"
+typeof = "string"
 
 [types.anyMap]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
 [types.stringOrStringArray]
-oneof = [ "types.stringValue", "types.stringArray" ]
+oneof = [ "string", "types.stringArray" ]
 
 [types.httpMethod]
 type = "string"
@@ -166,7 +157,7 @@ type = "collection"
 typeof = "types.context"
 
 [types.redirectCondition]
-oneof = [ "types.stringValue", "types.stringArray" ]
+oneof = [ "string", "types.stringArray" ]
 
 [types.redirectConditions]
 type = "collection"
@@ -278,7 +269,7 @@ typeof = "types.functionConfig"
     optional = true
 
 [types.edgeHeaderCondition]
-oneof = [ "types.stringValue", "types.booleanValue" ]
+oneof = [ "string", "boolean" ]
 
 [types.edgeHeaderConditions]
 type = "collection"

@@ -3,21 +3,6 @@
 [toml-schema]
 version = "1.0.0"
 
-[types.anyValue]
-type = "any"
-
-[types.booleanValue]
-type = "boolean"
-
-[types.integerValue]
-type = "integer"
-
-[types.floatValue]
-type = "float"
-
-[types.stringValue]
-type = "string"
-
 [types.stringArray]
 type = "array"
 arraytype = "string"
@@ -27,18 +12,18 @@ type = "array"
 arraytype = "any"
 
 [types.numberValue]
-oneof = [ "types.integerValue", "types.floatValue" ]
+oneof = [ "integer", "float" ]
 
 [types.stringOrStringArray]
-oneof = [ "types.stringValue", "types.stringArray" ]
+oneof = [ "string", "types.stringArray" ]
 
 [types.anyMap]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
 [types.stringMap]
 type = "collection"
-typeof = "types.stringValue"
+typeof = "string"
 
 [types.buildStats]
 type = "table"
@@ -517,7 +502,7 @@ type = "table"
 
 [types.highlight]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.highlight.anchorLineNos]
     type = "boolean"
@@ -670,7 +655,7 @@ type = "table"
 
 [types.moduleImport]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.moduleImport.path]
     type = "string"
@@ -696,7 +681,7 @@ typeof = "types.anyValue"
 
 [types.moduleMount]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.moduleMount.source]
     type = "string"
@@ -777,7 +762,7 @@ type = "table"
 
 [types.permalinks]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
 [types.privacyDisqus]
 type = "table"
@@ -897,11 +882,11 @@ type = "table"
 
 [types.server]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
 [types.services]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
 [types.sitemap]
 type = "table"
@@ -925,11 +910,11 @@ type = "table"
 
 [types.taxonomies]
 type = "collection"
-typeof = "types.stringValue"
+typeof = "string"
 
 [types.language]
 type = "collection"
-typeof = "types.anyValue"
+typeof = "any"
 
     [types.language.baseURL]
     type = "string"

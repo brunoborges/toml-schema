@@ -70,6 +70,8 @@ Java, Go, and Rust reference implementations live under `reference-implementatio
 
 For array tuple/positional validation (`items`), see [SPEC.md: Tuple / Positional Array Validation](SPEC.md#tuple-positional-array-validation---items).
 
+Type references such as `typeof`, `itemtype`, `items`, `oneof`, and `anyof` can point directly at reserved built-in type names (`"string"`, `"boolean"`, `"integer"`, etc.) or at reusable `[types]` definitions.
+
 ## Schema reference from TOML
 
 A TOML document can point to a schema with reserved metadata:

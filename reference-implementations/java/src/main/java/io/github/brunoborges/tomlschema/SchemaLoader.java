@@ -74,6 +74,9 @@ final class SchemaLoader {
         }
         Map<String, SchemaDefinition> definitions = new LinkedHashMap<>();
         for (String key : table.keySet()) {
+            if (prefix.equals("types") && SchemaType.fromSchemaNameOptional(key).isPresent()) {
+                throw new SchemaException("[types." + key + "] uses a reserved built-in type name");
+            }
             Object value = table.get(List.of(key));
             if (key.equals("children") && value instanceof TomlTable childrenTable && !hasDefinitionMarker(childrenTable)) {
                 for (String childKey : childrenTable.keySet()) {

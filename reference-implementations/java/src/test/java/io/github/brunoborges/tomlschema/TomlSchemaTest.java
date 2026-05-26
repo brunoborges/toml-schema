@@ -417,6 +417,58 @@ class TomlSchemaTest {
     }
 
     @Test
+    void supportsBuiltInTypeReferences() throws IOException {
+        Path schema = write("built-in-references.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.name]
+                typeof = "string"
+
+                [elements.flags]
+                type = "array"
+                itemtype = "boolean"
+
+                [elements.tuple]
+                type = "array"
+                items = [ "string", "integer" ]
+
+                [elements.identity]
+                oneof = [ "string", "integer" ]
+
+                [elements.flex]
+                anyof = [ "string", "integer" ]
+                """);
+        Path document = write("built-in-references.toml", """
+                name = "Alice"
+                flags = [ true, false ]
+                tuple = [ "port", 8080 ]
+                identity = 42
+                flex = "abc"
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void rejectsTypesNamedAfterBuiltIns() throws IOException {
+        Path schema = write("reserved-built-in.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.string]
+                type = "integer"
+
+                [elements.value]
+                type = "string"
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
+
+    @Test
     void reportsUnionValidationFailures() throws IOException {
         Path schema = write("union-failure.tosd", """
                 [toml-schema]

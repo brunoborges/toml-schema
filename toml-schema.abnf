@@ -33,13 +33,13 @@ definition-property = type / typeof / typeref / arraytype / itemtype / items / o
 
 version       = "version" keyval-sep semver-string
 type          = "type" keyval-sep built-in-type
-typeof        = "typeof" keyval-sep toml-string
-typeref       = "typeref" keyval-sep toml-string       ; legacy alias for typeof
+typeof        = "typeof" keyval-sep type-reference
+typeref       = "typeref" keyval-sep type-reference    ; legacy alias for typeof
 arraytype     = "arraytype" keyval-sep array-built-in-type
-itemtype      = "itemtype" keyval-sep toml-string
-items         = "items" keyval-sep toml-array         ; ordered type references for positional array validation
-oneof         = "oneof" keyval-sep toml-array
-anyof         = "anyof" keyval-sep toml-array
+itemtype      = "itemtype" keyval-sep type-reference
+items         = "items" keyval-sep type-reference-array ; ordered type references for positional array validation
+oneof         = "oneof" keyval-sep type-reference-array
+anyof         = "anyof" keyval-sep type-reference-array
 allowedvalues = "allowedvalues" keyval-sep toml-array
 pattern       = "pattern" keyval-sep toml-string
 optional      = "optional" keyval-sep toml-boolean
@@ -59,6 +59,9 @@ built-in-type = anytype / stringtype / integertype / floattype / booleantype
 array-built-in-type = anytype / stringtype / integertype / floattype / booleantype
                     / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
                     / arraytype-name / tabletype
+
+type-reference       = built-in-type / toml-string
+type-reference-array = toml-array ; each array value is a type-reference string
 
 anytype             = DQUOTE %x61.6e.79 DQUOTE                                      ; "any"
 stringtype          = DQUOTE %x73.74.72.69.6e.67 DQUOTE                             ; "string"

@@ -293,14 +293,44 @@ final class TomlSchemaValidator {
     }
 
     private SchemaDefinition resolveReference(String reference, Set<String> seenReferences) {
-        if (!seenReferences.add(reference)) {
-            throw new SchemaException("Cyclic schema reference involving types." + reference);
+        String normalizedReference = normalizeReference(reference);
+        SchemaType builtInType = SchemaType.fromSchemaNameOptional(normalizedReference).orElse(null);
+        if (builtInType != null) {
+            return builtInReference(normalizedReference, builtInType);
         }
-        SchemaDefinition referenced = schema.types().get(reference);
+        if (!seenReferences.add(normalizedReference)) {
+            throw new SchemaException("Cyclic schema reference involving types." + normalizedReference);
+        }
+        SchemaDefinition referenced = schema.types().get(normalizedReference);
         if (referenced == null) {
-            throw new SchemaException("Unknown schema type reference: types." + reference);
+            throw new SchemaException("Unknown schema type reference: types." + normalizedReference);
         }
         return resolve(referenced, seenReferences);
+    }
+
+    private SchemaDefinition builtInReference(String reference, SchemaType type) {
+        return new SchemaDefinition(
+                reference,
+                type,
+                null,
+                null,
+                null,
+                List.of(),
+                false,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                List.of(),
+                List.of(),
+                Map.of()
+        );
+    }
+
+    private String normalizeReference(String reference) {
+        return reference.startsWith("types.") ? reference.substring("types.".length()) : reference;
     }
 
     private String typeName(Object value) {

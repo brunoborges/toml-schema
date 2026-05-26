@@ -17,10 +17,12 @@ version = "1.0.0"
         [types.schemaDef.children.typeof]
         type = "string"
         optional = true
+        # Type reference: built-in type name or [types] definition name.
 
         [types.schemaDef.children.typeref]
         type = "string"
         optional = true
+        # Legacy alias for typeof.
 
         [types.schemaDef.children.arraytype]
         type = "string"
@@ -30,11 +32,13 @@ version = "1.0.0"
         [types.schemaDef.children.itemtype]
         type = "string"
         optional = true
+        # Type reference: built-in type name or [types] definition name.
 
         [types.schemaDef.children.items]
         type = "array"
         arraytype = "string"
         optional = true
+        # Each item is a type reference.
 
         [types.schemaDef.children.allowedvalues]
         type = "array"
@@ -87,11 +91,13 @@ version = "1.0.0"
         type = "array"
         arraytype = "string"
         optional = true
+        # Each item is a type reference.
 
         [types.schemaDef.children.anyof]
         type = "array"
         arraytype = "string"
         optional = true
+        # Each item is a type reference.
 
         [types.schemaDef.children.children]
         type = "collection"

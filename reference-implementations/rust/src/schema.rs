@@ -311,6 +311,9 @@ fn parse_definitions(
     };
     let mut definitions = BTreeMap::new();
     for (key, value) in table.iter() {
+        if prefix == "types" && SchemaType::parse(key).is_some() {
+            return Err(format!("[types.{key}] uses a reserved built-in type name"));
+        }
         let value_map = value.as_table();
         if key == "children"
             && value_map
@@ -901,6 +904,13 @@ impl<'schema> Validator<'schema> {
         seen: &mut HashSet<String>,
     ) -> Result<Definition, String> {
         let normalized = normalize_reference(reference.to_string());
+        if let Some(type_name) = SchemaType::parse(&normalized) {
+            return Ok(Definition {
+                name: normalized,
+                type_name: Some(type_name),
+                ..Definition::default()
+            });
+        }
         if !seen.insert(normalized.clone()) {
             return Err(format!("cyclic type reference: {normalized}"));
         }
