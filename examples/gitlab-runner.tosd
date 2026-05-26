@@ -1,0 +1,1312 @@
+# Based on https://docs.gitlab.com/runner/configuration/advanced-configuration/
+
+[toml-schema]
+version = "1.0.0"
+
+[types.anyValue]
+type = "any"
+
+[types.booleanValue]
+type = "boolean"
+
+[types.integerValue]
+type = "integer"
+
+[types.floatValue]
+type = "float"
+
+[types.stringValue]
+type = "string"
+
+[types.numberValue]
+oneof = [ "types.integerValue", "types.floatValue" ]
+
+[types.durationValue]
+type = "string"
+pattern = '^(?:[0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h))+$'
+
+[types.durationOrInteger]
+oneof = [ "types.durationValue", "types.integerValue" ]
+
+[types.stringArray]
+type = "array"
+arraytype = "string"
+
+[types.integerArray]
+type = "array"
+arraytype = "integer"
+
+[types.stringMap]
+type = "collection"
+typeof = "types.stringValue"
+
+[types.anyMap]
+type = "collection"
+typeof = "types.anyValue"
+
+[types.stringOrStringArray]
+oneof = [ "types.stringValue", "types.stringArray" ]
+
+[types.stringOrInteger]
+oneof = [ "types.stringValue", "types.integerValue" ]
+
+[types.logLevel]
+type = "string"
+allowedvalues = [ "debug", "info", "warn", "error", "fatal", "panic" ]
+
+[types.logFormat]
+type = "string"
+allowedvalues = [ "runner", "text", "json" ]
+
+[types.executor]
+type = "string"
+allowedvalues = [ "shell", "docker", "docker-windows", "ssh", "parallels", "virtualbox", "docker+machine", "kubernetes", "docker-autoscaler", "instance", "custom" ]
+
+[types.shell]
+type = "string"
+allowedvalues = [ "bash", "sh", "cmd", "powershell", "pwsh" ]
+
+[types.machineShutdownDrain]
+type = "table"
+
+    [types.machineShutdownDrain.enabled]
+    type = "boolean"
+    optional = true
+
+    [types.machineShutdownDrain.concurrency]
+    type = "integer"
+    min = 1
+    optional = true
+
+    [types.machineShutdownDrain.max_retries]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.machineShutdownDrain.retry_backoff]
+    typeof = "types.durationValue"
+    optional = true
+
+[types.machineGlobal]
+type = "table"
+
+    [types.machineGlobal.shutdown_drain]
+    typeof = "types.machineShutdownDrain"
+    optional = true
+
+[types.sessionServer]
+type = "table"
+
+    [types.sessionServer.listen_address]
+    type = "string"
+    optional = true
+
+    [types.sessionServer.advertise_address]
+    type = "string"
+    optional = true
+
+    [types.sessionServer.session_timeout]
+    type = "integer"
+    min = 0
+    optional = true
+
+[types.runnerArtifact]
+type = "table"
+
+    [types.runnerArtifact.upload_timeout]
+    typeof = "types.durationValue"
+    optional = true
+
+    [types.runnerArtifact.response_header_timeout]
+    typeof = "types.durationValue"
+    optional = true
+
+[types.customBuildDir]
+type = "table"
+
+    [types.customBuildDir.enabled]
+    type = "boolean"
+    optional = true
+
+[types.refereeMetrics]
+type = "table"
+
+    [types.refereeMetrics.prometheus_address]
+    type = "string"
+    optional = true
+
+    [types.refereeMetrics.query_interval]
+    typeof = "types.durationValue"
+    optional = true
+
+    [types.refereeMetrics.metric_queries]
+    type = "array"
+    arraytype = "table"
+    itemtype = "types.anyMap"
+    optional = true
+
+[types.refereeArtifact]
+type = "table"
+
+    [types.refereeArtifact.name]
+    type = "string"
+    optional = true
+
+    [types.refereeArtifact.destination]
+    type = "string"
+    optional = true
+
+    [types.refereeArtifact.format]
+    type = "string"
+    optional = true
+
+[types.referees]
+type = "table"
+
+    [types.referees.metrics]
+    typeof = "types.refereeMetrics"
+    optional = true
+
+    [types.referees.artifact]
+    typeof = "types.refereeArtifact"
+    optional = true
+
+[types.dockerService]
+type = "table"
+
+    [types.dockerService.name]
+    type = "string"
+
+    [types.dockerService.alias]
+    type = "string"
+    optional = true
+
+    [types.dockerService.entrypoint]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.dockerService.command]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.dockerService.environment]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+[types.dockerServices]
+type = "array"
+arraytype = "table"
+itemtype = "types.dockerService"
+
+[types.docker]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.docker.host]
+    type = "string"
+    optional = true
+
+    [types.docker.hostname]
+    type = "string"
+    optional = true
+
+    [types.docker.tls_cert_path]
+    type = "string"
+    optional = true
+
+    [types.docker.tls_verify]
+    type = "boolean"
+    optional = true
+
+    [types.docker.image]
+    type = "string"
+    optional = true
+
+    [types.docker.allowed_images]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.allowed_privileged_images]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.allowed_pull_policies]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.allowed_services]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.allowed_privileged_services]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.services]
+    typeof = "types.dockerServices"
+    optional = true
+
+    [types.docker.services_limit]
+    type = "integer"
+    optional = true
+
+    [types.docker.privileged]
+    type = "boolean"
+    optional = true
+
+    [types.docker.services_privileged]
+    type = "boolean"
+    optional = true
+
+    [types.docker.disable_cache]
+    type = "boolean"
+    optional = true
+
+    [types.docker.disable_entrypoint_overwrite]
+    type = "boolean"
+    optional = true
+
+    [types.docker.disable_userns]
+    type = "boolean"
+    optional = true
+
+    [types.docker.oom_kill_disable]
+    type = "boolean"
+    optional = true
+
+    [types.docker.volume_keep]
+    type = "boolean"
+    optional = true
+
+    [types.docker.cache_dir]
+    type = "string"
+    optional = true
+
+    [types.docker.volumes]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.volumes_from]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.volume_driver]
+    type = "string"
+    optional = true
+
+    [types.docker.wait_for_services_timeout]
+    type = "integer"
+    optional = true
+
+    [types.docker.pull_policy]
+    typeof = "types.stringOrStringArray"
+    optional = true
+
+    [types.docker.runtime]
+    type = "string"
+    optional = true
+
+    [types.docker.network_mode]
+    type = "string"
+    optional = true
+
+    [types.docker.network_mtu]
+    type = "integer"
+    optional = true
+
+    [types.docker.user]
+    type = "string"
+    optional = true
+
+    [types.docker.memory]
+    type = "string"
+    optional = true
+
+    [types.docker.memory_swap]
+    type = "string"
+    optional = true
+
+    [types.docker.memory_reservation]
+    type = "string"
+    optional = true
+
+    [types.docker.cpus]
+    type = "string"
+    optional = true
+
+    [types.docker.cpu_shares]
+    type = "integer"
+    optional = true
+
+    [types.docker.cpuset_cpus]
+    type = "string"
+    optional = true
+
+    [types.docker.cpuset_mems]
+    type = "string"
+    optional = true
+
+    [types.docker.service_memory]
+    type = "string"
+    optional = true
+
+    [types.docker.service_memory_swap]
+    type = "string"
+    optional = true
+
+    [types.docker.service_memory_reservation]
+    type = "string"
+    optional = true
+
+    [types.docker.service_cpus]
+    type = "string"
+    optional = true
+
+    [types.docker.service_cpu_shares]
+    type = "integer"
+    optional = true
+
+    [types.docker.service_cpuset_cpus]
+    type = "string"
+    optional = true
+
+    [types.docker.service_gpus]
+    type = "string"
+    optional = true
+
+    [types.docker.dns]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.dns_search]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.extra_hosts]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.group_add]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.cap_add]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.cap_drop]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.devices]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.device_cgroup_rules]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.gpus]
+    type = "string"
+    optional = true
+
+    [types.docker.shm_size]
+    type = "integer"
+    optional = true
+
+    [types.docker.tmpfs]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.services_tmpfs]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.links]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.docker.container_labels]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.docker.log_options]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.docker.ulimit]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.docker.sysctls]
+    typeof = "types.stringMap"
+    optional = true
+
+[types.kubernetes]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.kubernetes.host]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.cert_file]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.key_file]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.ca_file]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.image]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.namespace]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.namespace_overwrite_allowed]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.privileged]
+    type = "boolean"
+    optional = true
+
+    [types.kubernetes.allow_privilege_escalation]
+    type = "boolean"
+    optional = true
+
+    [types.kubernetes.allowed_images]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.kubernetes.allowed_services]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.kubernetes.allowed_pull_policies]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.kubernetes.image_pull_secrets]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.kubernetes.pull_policy]
+    typeof = "types.stringOrStringArray"
+    optional = true
+
+    [types.kubernetes.node_selector]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.kubernetes.node_tolerations]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.kubernetes.pod_labels]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.kubernetes.pod_annotations]
+    typeof = "types.stringMap"
+    optional = true
+
+    [types.kubernetes.service_account]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.service_account_overwrite_allowed]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.helper_image]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.helper_image_flavor]
+    type = "string"
+    allowedvalues = [ "alpine", "alpine3.21", "alpine-latest", "ubi-fips", "ubuntu" ]
+    optional = true
+
+    [types.kubernetes.poll_timeout]
+    type = "integer"
+    optional = true
+
+    [types.kubernetes.logs_base_dir]
+    type = "string"
+    optional = true
+
+    [types.kubernetes.scripts_base_dir]
+    type = "string"
+    optional = true
+
+[types.ssh]
+type = "table"
+
+    [types.ssh.host]
+    type = "string"
+    optional = true
+
+    [types.ssh.port]
+    typeof = "types.stringOrInteger"
+    optional = true
+
+    [types.ssh.user]
+    type = "string"
+    optional = true
+
+    [types.ssh.password]
+    type = "string"
+    optional = true
+
+    [types.ssh.identity_file]
+    type = "string"
+    optional = true
+
+    [types.ssh.disable_strict_host_key_checking]
+    type = "boolean"
+    optional = true
+
+[types.parallels]
+type = "table"
+
+    [types.parallels.base_name]
+    type = "string"
+    optional = true
+
+    [types.parallels.template_name]
+    type = "string"
+    optional = true
+
+    [types.parallels.disable_snapshots]
+    type = "boolean"
+    optional = true
+
+    [types.parallels.allowed_images]
+    typeof = "types.stringArray"
+    optional = true
+
+[types.virtualbox]
+type = "table"
+
+    [types.virtualbox.base_name]
+    type = "string"
+    optional = true
+
+    [types.virtualbox.base_snapshot]
+    type = "string"
+    optional = true
+
+    [types.virtualbox.base_folder]
+    type = "string"
+    optional = true
+
+    [types.virtualbox.disable_snapshots]
+    type = "boolean"
+    optional = true
+
+    [types.virtualbox.allowed_images]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.virtualbox.start_type]
+    type = "string"
+    allowedvalues = [ "headless", "gui", "separate" ]
+    optional = true
+
+[types.machineAutoscaling]
+type = "table"
+
+    [types.machineAutoscaling.Periods]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.machineAutoscaling.IdleCount]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.machineAutoscaling.IdleScaleFactor]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.machineAutoscaling.IdleCountMin]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.machineAutoscaling.IdleTime]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.machineAutoscaling.Timezone]
+    type = "string"
+    optional = true
+
+[types.machineAutoscalings]
+type = "array"
+arraytype = "table"
+itemtype = "types.machineAutoscaling"
+
+[types.runnerMachine]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.runnerMachine.MaxGrowthRate]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runnerMachine.IdleCount]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runnerMachine.IdleScaleFactor]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.runnerMachine.IdleCountMin]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runnerMachine.IdleTime]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runnerMachine.MaxBuilds]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runnerMachine.MachineName]
+    type = "string"
+    optional = true
+
+    [types.runnerMachine.MachineDriver]
+    type = "string"
+    optional = true
+
+    [types.runnerMachine.MachineOptions]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.runnerMachine.autoscaling]
+    typeof = "types.machineAutoscalings"
+    optional = true
+
+    [types.runnerMachine.OffPeakPeriods]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.runnerMachine.OffPeakTimezone]
+    type = "string"
+    optional = true
+
+    [types.runnerMachine.OffPeakIdleCount]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runnerMachine.OffPeakIdleTime]
+    type = "integer"
+    min = 0
+    optional = true
+
+[types.autoscalerConnectorConfig]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.autoscalerConnectorConfig.username]
+    type = "string"
+    optional = true
+
+    [types.autoscalerConnectorConfig.password]
+    type = "string"
+    optional = true
+
+    [types.autoscalerConnectorConfig.key_path]
+    type = "string"
+    optional = true
+
+    [types.autoscalerConnectorConfig.use_external_addr]
+    type = "boolean"
+    optional = true
+
+    [types.autoscalerConnectorConfig.keepalive]
+    typeof = "types.durationValue"
+    optional = true
+
+    [types.autoscalerConnectorConfig.timeout]
+    typeof = "types.durationValue"
+    optional = true
+
+[types.autoscalerScaleThrottle]
+type = "table"
+
+    [types.autoscalerScaleThrottle.limit]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.autoscalerScaleThrottle.burst]
+    type = "integer"
+    min = 0
+    optional = true
+
+[types.autoscalerStateStorage]
+type = "table"
+
+    [types.autoscalerStateStorage.enabled]
+    type = "boolean"
+    optional = true
+
+    [types.autoscalerStateStorage.dir]
+    type = "string"
+    optional = true
+
+    [types.autoscalerStateStorage.keep_instance_with_acquisitions]
+    type = "boolean"
+    optional = true
+
+[types.autoscalerPolicy]
+type = "table"
+
+    [types.autoscalerPolicy.periods]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.autoscalerPolicy.timezone]
+    type = "string"
+    optional = true
+
+    [types.autoscalerPolicy.idle_count]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.autoscalerPolicy.idle_time]
+    typeof = "types.durationValue"
+    optional = true
+
+    [types.autoscalerPolicy.scale_factor]
+    typeof = "types.numberValue"
+    optional = true
+
+    [types.autoscalerPolicy.scale_factor_limit]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.autoscalerPolicy.preemptive_mode]
+    type = "boolean"
+    optional = true
+
+[types.autoscalerPolicies]
+type = "array"
+arraytype = "table"
+itemtype = "types.autoscalerPolicy"
+
+[types.vmIsolation]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.vmIsolation.enabled]
+    type = "boolean"
+    optional = true
+
+    [types.vmIsolation.nesting_host]
+    type = "string"
+    optional = true
+
+    [types.vmIsolation.nesting_config]
+    typeof = "types.anyMap"
+    optional = true
+
+    [types.vmIsolation.image]
+    type = "string"
+    optional = true
+
+    [types.vmIsolation.connector_config]
+    typeof = "types.autoscalerConnectorConfig"
+    optional = true
+
+[types.autoscaler]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.autoscaler.capacity_per_instance]
+    type = "integer"
+    min = 1
+    optional = true
+
+    [types.autoscaler.max_use_count]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.autoscaler.max_instances]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.autoscaler.plugin]
+    type = "string"
+    optional = true
+
+    [types.autoscaler.plugin_config]
+    typeof = "types.anyMap"
+    optional = true
+
+    [types.autoscaler.connector_config]
+    typeof = "types.autoscalerConnectorConfig"
+    optional = true
+
+    [types.autoscaler.state_storage]
+    typeof = "types.autoscalerStateStorage"
+    optional = true
+
+    [types.autoscaler.scale_throttle]
+    typeof = "types.autoscalerScaleThrottle"
+    optional = true
+
+    [types.autoscaler.policy]
+    typeof = "types.autoscalerPolicies"
+    optional = true
+
+    [types.autoscaler.vm_isolation]
+    typeof = "types.vmIsolation"
+    optional = true
+
+[types.customExecutor]
+type = "table"
+
+    [types.customExecutor.config_exec]
+    type = "string"
+    optional = true
+
+    [types.customExecutor.config_args]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.customExecutor.config_exec_timeout]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.customExecutor.prepare_exec]
+    type = "string"
+    optional = true
+
+    [types.customExecutor.prepare_args]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.customExecutor.prepare_exec_timeout]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.customExecutor.run_exec]
+    type = "string"
+    optional = true
+
+    [types.customExecutor.run_args]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.customExecutor.cleanup_exec]
+    type = "string"
+    optional = true
+
+    [types.customExecutor.cleanup_args]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.customExecutor.cleanup_exec_timeout]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.customExecutor.graceful_kill_timeout]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.customExecutor.force_kill_timeout]
+    type = "integer"
+    min = 0
+    optional = true
+
+[types.cacheS3]
+type = "table"
+
+    [types.cacheS3.ServerAddress]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.AccessKey]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.SecretKey]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.SessionToken]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.BucketName]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.BucketLocation]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.Insecure]
+    type = "boolean"
+    optional = true
+
+    [types.cacheS3.AuthenticationType]
+    type = "string"
+    allowedvalues = [ "iam", "access-key" ]
+    optional = true
+
+    [types.cacheS3.ServerSideEncryption]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.ServerSideEncryptionKeyID]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.DualStack]
+    type = "boolean"
+    optional = true
+
+    [types.cacheS3.Accelerate]
+    type = "boolean"
+    optional = true
+
+    [types.cacheS3.PathStyle]
+    type = "boolean"
+    optional = true
+
+    [types.cacheS3.RoleARN]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.UploadRoleARN]
+    type = "string"
+    optional = true
+
+    [types.cacheS3.AssumeRoleMaxConcurrency]
+    type = "integer"
+    min = 1
+    optional = true
+
+[types.cacheGCS]
+type = "table"
+
+    [types.cacheGCS.CredentialsFile]
+    type = "string"
+    optional = true
+
+    [types.cacheGCS.AccessID]
+    type = "string"
+    optional = true
+
+    [types.cacheGCS.PrivateKey]
+    type = "string"
+    optional = true
+
+    [types.cacheGCS.BucketName]
+    type = "string"
+    optional = true
+
+    [types.cacheGCS.UniverseDomain]
+    type = "string"
+    optional = true
+
+[types.cacheAzure]
+type = "table"
+
+    [types.cacheAzure.AccountName]
+    type = "string"
+    optional = true
+
+    [types.cacheAzure.AccountKey]
+    type = "string"
+    optional = true
+
+    [types.cacheAzure.ContainerName]
+    type = "string"
+    optional = true
+
+    [types.cacheAzure.StorageDomain]
+    type = "string"
+    optional = true
+
+[types.cache]
+type = "table"
+
+    [types.cache.Type]
+    type = "string"
+    allowedvalues = [ "s3", "gcs", "azure" ]
+    optional = true
+
+    [types.cache.Path]
+    type = "string"
+    optional = true
+
+    [types.cache.Shared]
+    type = "boolean"
+    optional = true
+
+    [types.cache.MaxUploadedArchiveSize]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.cache.s3]
+    typeof = "types.cacheS3"
+    optional = true
+
+    [types.cache.gcs]
+    typeof = "types.cacheGCS"
+    optional = true
+
+    [types.cache.azure]
+    typeof = "types.cacheAzure"
+    optional = true
+
+[types.runner]
+type = "collection"
+typeof = "types.anyValue"
+
+    [types.runner.name]
+    type = "string"
+    optional = true
+
+    [types.runner.url]
+    type = "string"
+    optional = true
+
+    [types.runner.token]
+    type = "string"
+    optional = true
+
+    [types.runner.tls-ca-file]
+    type = "string"
+    optional = true
+
+    [types.runner.tls-cert-file]
+    type = "string"
+    optional = true
+
+    [types.runner.tls-key-file]
+    type = "string"
+    optional = true
+
+    [types.runner.limit]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runner.executor]
+    typeof = "types.executor"
+    optional = true
+
+    [types.runner.shell]
+    typeof = "types.shell"
+    optional = true
+
+    [types.runner.builds_dir]
+    type = "string"
+    optional = true
+
+    [types.runner.cache_dir]
+    type = "string"
+    optional = true
+
+    [types.runner.environment]
+    typeof = "types.stringArray"
+    optional = true
+
+    [types.runner.request_concurrency]
+    type = "integer"
+    min = 1
+    optional = true
+
+    [types.runner.strict_check_interval]
+    type = "boolean"
+    optional = true
+
+    [types.runner.output_limit]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runner.pre_clone_script]
+    type = "string"
+    optional = true
+
+    [types.runner.post_clone_script]
+    type = "string"
+    optional = true
+
+    [types.runner.pre_build_script]
+    type = "string"
+    optional = true
+
+    [types.runner.post_build_script]
+    type = "string"
+    optional = true
+
+    [types.runner.clone_url]
+    type = "string"
+    optional = true
+
+    [types.runner.debug_trace_disabled]
+    type = "boolean"
+    optional = true
+
+    [types.runner.clean_git_config]
+    type = "boolean"
+    optional = true
+
+    [types.runner.unhealthy_requests_limit]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runner.unhealthy_interval]
+    typeof = "types.durationValue"
+    optional = true
+
+    [types.runner.job_status_final_update_retry_limit]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runner.prepare_timeout]
+    type = "integer"
+    min = 0
+    optional = true
+
+    [types.runner.custom_build_dir]
+    typeof = "types.customBuildDir"
+    optional = true
+
+    [types.runner.referees]
+    typeof = "types.referees"
+    optional = true
+
+    [types.runner.artifact]
+    typeof = "types.runnerArtifact"
+    optional = true
+
+    [types.runner.docker]
+    typeof = "types.docker"
+    optional = true
+
+    [types.runner.kubernetes]
+    typeof = "types.kubernetes"
+    optional = true
+
+    [types.runner.ssh]
+    typeof = "types.ssh"
+    optional = true
+
+    [types.runner.parallels]
+    typeof = "types.parallels"
+    optional = true
+
+    [types.runner.virtualbox]
+    typeof = "types.virtualbox"
+    optional = true
+
+    [types.runner.machine]
+    typeof = "types.runnerMachine"
+    optional = true
+
+    [types.runner.autoscaler]
+    typeof = "types.autoscaler"
+    optional = true
+
+    [types.runner.custom]
+    typeof = "types.customExecutor"
+    optional = true
+
+    [types.runner.cache]
+    typeof = "types.cache"
+    optional = true
+
+[types.runners]
+type = "array"
+arraytype = "table"
+itemtype = "types.runner"
+
+[elements]
+
+[elements.concurrent]
+type = "integer"
+min = 1
+optional = true
+
+[elements.log_level]
+typeof = "types.logLevel"
+optional = true
+
+[elements.log_format]
+typeof = "types.logFormat"
+optional = true
+
+[elements.check_interval]
+type = "integer"
+min = 0
+optional = true
+
+[elements.sentry_dsn]
+type = "string"
+optional = true
+
+[elements.connection_max_age]
+typeof = "types.durationValue"
+optional = true
+
+[elements.listen_address]
+type = "string"
+optional = true
+
+[elements.shutdown_timeout]
+type = "integer"
+min = 0
+optional = true
+
+[elements.machine]
+typeof = "types.machineGlobal"
+optional = true
+
+[elements.session_server]
+typeof = "types.sessionServer"
+optional = true
+
+[elements.runners]
+typeof = "types.runners"
+optional = true
