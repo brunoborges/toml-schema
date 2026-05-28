@@ -6,7 +6,7 @@
 
     <groupId>org.tomlschema</groupId>
     <artifactId>toml-schema</artifactId>
-    <version>1.0.0-rc.1</version>
+    <version>1.0.0-rc.2</version>
     <name>TOML Schema</name>
     <description>Java reference implementation for TOML Schema</description>
 

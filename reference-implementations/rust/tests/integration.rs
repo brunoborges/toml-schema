@@ -691,7 +691,7 @@ location = "ignored.tosd"
 
     let schema_text = fs::read_to_string(&extracted_schema).expect("read extracted schema");
     for expected in [
-        "version = \"1.0.0-rc.1\"",
+        "version = \"1.0.0\"",
         "[elements.title]",
         "type = \"string\"",
         "[elements.owner]",

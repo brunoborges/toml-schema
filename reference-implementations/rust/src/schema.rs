@@ -107,7 +107,7 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "anyof",
 ];
 
-pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0-rc.1";
+pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0";
 
 fn is_definition_key(key: &str) -> bool {
     DEFINITION_KEYS.contains(&key)

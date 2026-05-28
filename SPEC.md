@@ -79,7 +79,7 @@ Example of a TOML Schema that validates the TOML document above:
 ```toml
 # This is a TOML Schema document
 [toml-schema]
-version = "1.0.0-rc.1"
+version = "1.0.0"
 
 [types.serverType]
 type="table"
@@ -152,7 +152,7 @@ This table is reserved for metadata regarding the TOML Schema itself.
 
 ```toml
 [toml-schema]
-version = "1.0.0-rc.1"
+version = "1.0.0"
 # custom = "value" # *NOT allowed
 
 [toml-schema.meta]
@@ -178,11 +178,11 @@ version = "1.0.0-rc.1"
 
 TOML Schema follows the same version-numbering policy as the TOML specification: schema language versions use [Semantic Versioning](https://semver.org/).
 
-The `version` property MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form. The current TOML Schema version is `1.0.0-rc.1`.
+The `version` property MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form. The current TOML Schema version is `1.0.0`.
 
 ```toml
 [toml-schema]
-version = "1.0.0-rc.1"
+version = "1.0.0"
 ```
 
 Parsers MUST reject schema documents whose `version` is missing, is not a string, or is not a valid SemVer value. Shorthand values such as `"1"` and `"1.0"` are invalid.
@@ -663,7 +663,7 @@ A TOML file can include this indication to reference which schema file to use fo
 
 ```toml
 [toml-schema]
-version = "1.0.0-rc.1"
+version = "1.0.0"
 location = "<uri>"
 ```
 

@@ -525,7 +525,7 @@ location = "ignored.tosd"
 	}
 	schemaText := string(schemaBytes)
 	for _, expected := range []string{
-		`version = "1.0.0-rc.1"`,
+		`version = "1.0.0"`,
 		"[elements.title]",
 		`type = "string"`,
 		"[elements.owner]",

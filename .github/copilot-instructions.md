@@ -5,8 +5,8 @@
 - Full Java test suite: `mvn -f reference-implementations/java/pom.xml test`
 - Single Java test method: `mvn -f reference-implementations/java/pom.xml -Dtest=TomlSchemaTest#validatesCheckedInExample test`
 - Build executable Java CLI jar: `mvn -f reference-implementations/java/pom.xml package`
-- Validate the checked-in example with an explicit schema after packaging: `java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar validate config.tosd config.toml`
-- Validate using `[toml-schema].location` from the TOML document after packaging: `java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar validate config.toml`
+- Validate the checked-in example with an explicit schema after packaging: `java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate config.tosd config.toml`
+- Validate using `[toml-schema].location` from the TOML document after packaging: `java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate config.toml`
 
 No separate lint command is defined.
 

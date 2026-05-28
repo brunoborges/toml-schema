@@ -1,7 +1,7 @@
 # Based on https://docs.gitlab.com/runner/configuration/advanced-configuration/
 
 [toml-schema]
-version = "1.0.0-rc.1"
+version = "1.0.0"
 
 [types.numberValue]
 oneof = [ "integer", "float" ]

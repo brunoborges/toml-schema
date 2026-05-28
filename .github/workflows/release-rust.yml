@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+  group: rust-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -51,7 +51,7 @@ jobs:
           - os: ubuntu-latest
             asset: linux-x86_64
             binary: toml-schema
-          - os: macos-13
+          - os: macos-15-intel
             asset: macos-x86_64
             binary: toml-schema
           - os: windows-latest
@@ -121,3 +121,5 @@ jobs:
           files: dist/*
           fail_on_unmatched_files: true
           generate_release_notes: true
+          prerelease: ${{ contains(env.RELEASE_TAG, '-rc.') }}
+          make_latest: false
