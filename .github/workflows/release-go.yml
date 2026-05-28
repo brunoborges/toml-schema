@@ -1,0 +1,149 @@
+name: Go release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "go-v*"
+      - "reference-implementations/go/v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing tag to release
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+
+jobs:
+  test:
+    name: Test Go reference implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: reference-implementations/go/go.mod
+          cache-dependency-path: reference-implementations/go/go.sum
+
+      - name: Test
+        working-directory: reference-implementations/go
+        run: go test ./...
+
+      - name: Validate checked-in example with explicit schema
+        working-directory: reference-implementations/go
+        run: go run ./cmd/toml-schema validate ../../config.tosd ../../config.toml
+
+      - name: Validate checked-in example with schema reference
+        working-directory: reference-implementations/go
+        run: go run ./cmd/toml-schema validate ../../config.toml
+
+      - name: Validate example schema against self-schema
+        working-directory: reference-implementations/go
+        run: go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../config.tosd
+
+      - name: Validate self-schema against itself
+        working-directory: reference-implementations/go
+        run: go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../toml-schema.tosd
+
+  build:
+    name: Build Go CLI (${{ matrix.goos }}/${{ matrix.goarch }})
+    needs: test
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+          - goos: darwin
+            goarch: amd64
+          - goos: darwin
+            goarch: arm64
+          - goos: windows
+            goarch: amd64
+          - goos: windows
+            goarch: arm64
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: reference-implementations/go/go.mod
+          cache-dependency-path: reference-implementations/go/go.sum
+
+      - name: Build archive
+        working-directory: reference-implementations/go
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
+        run: |
+          release_version="${RELEASE_TAG##*/}"
+          release_version="${release_version#go-v}"
+          release_version="${release_version#v}"
+          asset_name="toml-schema-go-${release_version}-${GOOS}-${GOARCH}"
+          binary_name="toml-schema"
+          if [ "${GOOS}" = "windows" ]; then
+            binary_name="${binary_name}.exe"
+          fi
+
+          mkdir -p "dist/${asset_name}"
+          go build -trimpath -ldflags="-s -w" -o "dist/${asset_name}/${binary_name}" ./cmd/toml-schema
+          tar -C dist -czf "dist/${asset_name}.tar.gz" "${asset_name}"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: toml-schema-go-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: reference-implementations/go/dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish Go release assets
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          release_version="${RELEASE_TAG##*/}"
+          release_version="${release_version#go-v}"
+          release_version="${release_version#v}"
+          cd dist
+          shasum -a 256 *.tar.gz > "toml-schema-go-${release_version}-SHA256SUMS.txt"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

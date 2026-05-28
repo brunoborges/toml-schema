@@ -4,7 +4,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 final class TomlSchemaVersion {
-    static final String CURRENT = "1.0.0";
+    static final String CURRENT = "1.0.0-rc.1";
 
     private static final String SUPPORTED_MAJOR = "1";
     private static final String SUPPORTED_MINOR = "0";

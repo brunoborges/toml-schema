@@ -1,0 +1,123 @@
+name: Rust release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "rust-v*"
+      - "reference-implementations/rust/v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing tag to release
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+
+jobs:
+  test:
+    name: Test Rust reference implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Test
+        working-directory: reference-implementations/rust
+        run: cargo test --locked
+
+  build:
+    name: Build Rust CLI (${{ matrix.asset }})
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: linux-x86_64
+            binary: toml-schema
+          - os: macos-13
+            asset: macos-x86_64
+            binary: toml-schema
+          - os: windows-latest
+            asset: windows-x86_64
+            binary: toml-schema.exe
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build archive
+        shell: bash
+        working-directory: reference-implementations/rust
+        run: |
+          release_version="${RELEASE_TAG##*/}"
+          release_version="${release_version#rust-v}"
+          release_version="${release_version#v}"
+          asset_name="toml-schema-rust-${release_version}-${{ matrix.asset }}"
+          cargo build --locked --release
+
+          "./target/release/${{ matrix.binary }}" validate ../../config.tosd ../../config.toml
+          "./target/release/${{ matrix.binary }}" validate ../../config.toml
+          "./target/release/${{ matrix.binary }}" validate ../../toml-schema.tosd ../../config.tosd
+          "./target/release/${{ matrix.binary }}" validate ../../toml-schema.tosd ../../toml-schema.tosd
+
+          mkdir -p "dist/${asset_name}"
+          cp "target/release/${{ matrix.binary }}" "dist/${asset_name}/"
+          tar -C dist -czf "dist/${asset_name}.tar.gz" "${asset_name}"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: toml-schema-rust-${{ matrix.asset }}
+          path: reference-implementations/rust/dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    name: Publish Rust release assets
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download archives
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          release_version="${RELEASE_TAG##*/}"
+          release_version="${release_version#rust-v}"
+          release_version="${release_version#v}"
+          cd dist
+          shasum -a 256 *.tar.gz > "toml-schema-rust-${release_version}-SHA256SUMS.txt"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

@@ -37,7 +37,7 @@ var definitionKeys = map[string]bool{
 	"oneof": true, "anyof": true,
 }
 
-const currentTomlSchemaVersion = "1.0.0"
+const currentTomlSchemaVersion = "1.0.0-rc.1"
 
 var semverPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
 

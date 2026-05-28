@@ -27,7 +27,7 @@ with the Java CLI from the repository root:
 
 ```bash
 mvn -f reference-implementations/java/pom.xml package
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar \
+java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar \
     validate examples/pyproject.tosd path/to/your/pyproject.toml
 ```
 

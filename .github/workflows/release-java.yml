@@ -1,0 +1,82 @@
+name: Java release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "java-v*"
+      - "reference-implementations/java/v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing tag to release
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+
+jobs:
+  release:
+    name: Build and publish Java CLI jar
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref }}
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: maven
+          cache-dependency-path: reference-implementations/java/pom.xml
+
+      - name: Set Maven release version
+        run: |
+          release_version="${RELEASE_TAG##*/}"
+          release_version="${release_version#java-v}"
+          release_version="${release_version#v}"
+          mvn -B -f reference-implementations/java/pom.xml versions:set \
+            -DnewVersion="${release_version}" \
+            -DgenerateBackupPoms=false
+
+      - name: Build and test
+        run: mvn -B -f reference-implementations/java/pom.xml package
+
+      - name: Validate release jar
+        run: |
+          jar_path="$(find reference-implementations/java/target -maxdepth 1 -name 'toml-schema-*.jar' ! -name 'original-*' | head -n 1)"
+          java -jar "${jar_path}" validate config.tosd config.toml
+          java -jar "${jar_path}" validate config.toml
+          java -jar "${jar_path}" validate toml-schema.tosd config.tosd
+          java -jar "${jar_path}" validate toml-schema.tosd toml-schema.tosd
+
+      - name: Stage release assets
+        run: |
+          release_version="${RELEASE_TAG##*/}"
+          release_version="${release_version#java-v}"
+          release_version="${release_version#v}"
+          jar_path="$(find reference-implementations/java/target -maxdepth 1 -name 'toml-schema-*.jar' ! -name 'original-*' | head -n 1)"
+          mkdir -p dist
+          cp "${jar_path}" "dist/toml-schema-java-${release_version}.jar"
+          cd dist
+          shasum -a 256 "toml-schema-java-${release_version}.jar" > "toml-schema-java-${release_version}-SHA256SUMS.txt"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

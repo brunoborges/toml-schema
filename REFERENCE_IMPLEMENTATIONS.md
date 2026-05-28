@@ -36,31 +36,31 @@ mvn -f reference-implementations/java/pom.xml package
 Validate with an explicit schema:
 
 ```shell
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml
+java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar validate config.tosd config.toml
 ```
 
 Validate using `[toml-schema].location` from the TOML document:
 
 ```shell
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
+java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar validate config.toml
 ```
 
 Validate the example schema against the TOML Schema self-schema:
 
 ```shell
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd config.tosd
+java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar validate toml-schema.tosd config.tosd
 ```
 
 Validate the TOML Schema self-schema against itself:
 
 ```shell
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd toml-schema.tosd
+java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar validate toml-schema.tosd toml-schema.tosd
 ```
 
 Extract a schema from a sample TOML document:
 
 ```shell
-java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar extract config.toml extracted.tosd
+java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.1.jar extract config.toml extracted.tosd
 ```
 
 Use the library API:

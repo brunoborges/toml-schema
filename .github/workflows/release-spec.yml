@@ -1,0 +1,64 @@
+name: Spec release
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "spec-v*"
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: Existing tag to release
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+
+jobs:
+  release:
+    name: Package and publish spec
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref }}
+
+      - name: Stage spec assets
+        run: |
+          release_version="${RELEASE_TAG##*/}"
+          release_version="${release_version#spec-v}"
+          release_version="${release_version#v}"
+          asset_name="toml-schema-spec-${release_version}"
+
+          mkdir -p "dist/${asset_name}"
+          cp SPEC.md "dist/${asset_name}/"
+          cp toml-schema.abnf "dist/${asset_name}/"
+          cp toml-schema.tosd "dist/${asset_name}/"
+          cp config.tosd "dist/${asset_name}/"
+          cp config.toml "dist/${asset_name}/"
+          cp README.md "dist/${asset_name}/"
+          cp REFERENCE_IMPLEMENTATIONS.md "dist/${asset_name}/"
+          cp LICENSE "dist/${asset_name}/"
+          cp -R examples "dist/${asset_name}/"
+
+          tar -C dist -czf "dist/${asset_name}.tar.gz" "${asset_name}"
+          cd dist
+          shasum -a 256 "${asset_name}.tar.gz" > "${asset_name}-SHA256SUMS.txt"
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          generate_release_notes: true

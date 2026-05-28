@@ -35,7 +35,7 @@ TOML Schema document:
 
 ```toml
 [toml-schema]
-version = "1.0.0"
+version = "1.0.0-rc.1"
 
 [elements.title]
 type = "string"
@@ -61,7 +61,7 @@ A TOML document can point to a schema with reserved metadata:
 
 ```toml
 [toml-schema]
-version = "1.0.0"
+version = "1.0.0-rc.1"
 location = "config.tosd"
 ```
 

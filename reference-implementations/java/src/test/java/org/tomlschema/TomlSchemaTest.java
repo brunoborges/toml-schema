@@ -707,7 +707,7 @@ class TomlSchemaTest {
         assertTrue(out.toString(StandardCharsets.UTF_8).contains("Extracted schema to"));
 
         String schemaText = Files.readString(extractedSchema, StandardCharsets.UTF_8);
-        assertTrue(schemaText.contains("version = \"1.0.0\""));
+        assertTrue(schemaText.contains("version = \"1.0.0-rc.1\""));
         assertTrue(schemaText.contains("[elements.title]"));
         assertTrue(schemaText.contains("type = \"string\""));
         assertTrue(schemaText.contains("[elements.owner]"));

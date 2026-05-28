@@ -36,17 +36,20 @@ jobs:
       - name: Build and test
         run: mvn -B -f reference-implementations/java/pom.xml package
 
+      - name: Locate Java CLI jar
+        run: echo "JAVA_CLI_JAR=$(find reference-implementations/java/target -maxdepth 1 -name 'toml-schema-*.jar' ! -name 'original-*' | head -n 1)" >> "$GITHUB_ENV"
+
       - name: Validate checked-in example with explicit schema
-        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.tosd config.toml
+        run: java -jar "${JAVA_CLI_JAR}" validate config.tosd config.toml
 
       - name: Validate checked-in example with schema reference
-        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate config.toml
+        run: java -jar "${JAVA_CLI_JAR}" validate config.toml
 
       - name: Validate example schema against self-schema
-        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd config.tosd
+        run: java -jar "${JAVA_CLI_JAR}" validate toml-schema.tosd config.tosd
 
       - name: Validate self-schema against itself
-        run: java -jar reference-implementations/java/target/toml-schema-0.1.0-SNAPSHOT.jar validate toml-schema.tosd toml-schema.tosd
+        run: java -jar "${JAVA_CLI_JAR}" validate toml-schema.tosd toml-schema.tosd
 
   go:
     name: Go reference implementation
