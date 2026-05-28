@@ -54,6 +54,9 @@ jobs:
           - os: macos-15-intel
             asset: macos-x86_64
             binary: toml-schema
+          - os: macos-15
+            asset: macos-arm64
+            binary: toml-schema
           - os: windows-latest
             asset: windows-x86_64
             binary: toml-schema.exe
