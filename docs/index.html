@@ -57,7 +57,7 @@
             <span class="dots" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
           </div>
           <pre><code>[toml-schema]
-version = "1.0.0"
+version = "1.0.0-rc.1"
 
 [elements.title]
 type = "string"
@@ -65,12 +65,12 @@ type = "string"
 [elements.database]
 type = "table"
 
-  [elements.database.enabled]
-  type = "boolean"
+[elements.database.enabled]
+type = "boolean"
 
-  [elements.database.ports]
-  type = "array"
-  arraytype = "integer"</code></pre>
+[elements.database.ports]
+type = "array"
+arraytype = "integer"</code></pre>
         </aside>
       </section>
 
@@ -115,7 +115,7 @@ type = "table"
               <p>Every schema document starts with <code>[toml-schema]</code> and a full SemVer version.</p>
             </div>
             <pre><code>[toml-schema]
-version = "1.0.0"</code></pre>
+version = "1.0.0-rc.1"</code></pre>
           </article>
           <article class="tour-step">
             <div>
@@ -129,8 +129,8 @@ type = "string"
 [elements.database]
 type = "table"
 
-  [elements.database.enabled]
-  type = "boolean"</code></pre>
+[elements.database.enabled]
+type = "boolean"</code></pre>
           </article>
           <article class="tour-step">
             <div>
@@ -152,12 +152,12 @@ minlength = 1</code></pre>
             <pre><code>[types.server]
 type = "table"
 
-  [types.server.ip]
-  type = "string"
-  pattern = "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$"
+[types.server.ip]
+type = "string"
+pattern = "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$"
 
-  [types.server.role]
-  type = "string"</code></pre>
+[types.server.role]
+type = "string"</code></pre>
           </article>
           <article class="tour-step">
             <div>
