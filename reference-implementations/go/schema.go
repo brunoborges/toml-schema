@@ -88,6 +88,7 @@ type Definition struct {
 	optional      bool
 	allowedValues []any
 	pattern       *regexp.Regexp
+	keyPattern    *regexp.Regexp
 	min           any
 	max           any
 	minLength     *int
@@ -259,6 +260,10 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	keyPattern, err := getPatternKey(name, table, "keypattern")
+	if err != nil {
+		return Definition{}, err
+	}
 	minLength, err := getIntegerPointer(table, "minlength")
 	if err != nil {
 		return Definition{}, err
@@ -326,6 +331,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	}
 	min := propertyValue(table, "min")
 	max := propertyValue(table, "max")
+	if keyPattern != nil && typeName != TypeCollection {
+		return Definition{}, fmt.Errorf("%s can only define keypattern when type is collection", name)
+	}
 	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), min, max); err != nil {
 		return Definition{}, err
 	}
@@ -333,7 +341,7 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		name: name, typeName: typeName, reference: normalizeReference(reference),
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
 		items:         normalizeReferences(items),
-		allowedValues: allowedValues, pattern: pattern, min: min, max: max,
+		allowedValues: allowedValues, pattern: pattern, keyPattern: keyPattern, min: min, max: max,
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
 		children: children,
 	}, nil
@@ -536,6 +544,9 @@ func (v *validator) validateCollection(path string, table map[string]any, defini
 			continue
 		}
 		dynamicEntries++
+		if definition.keyPattern != nil && !matchesEntireString(definition.keyPattern, key) {
+			v.add(childPath, "key does not match keypattern "+definition.keyPattern.String())
+		}
 		if definition.reference == "" {
 			v.add(childPath, "collection entry has no typeof reference")
 			continue
@@ -715,6 +726,7 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 		optional:      definition.optional || referenced.optional,
 		allowedValues: firstAnySlice(definition.allowedValues, referenced.allowedValues),
 		pattern:       firstPattern(definition.pattern, referenced.pattern),
+		keyPattern:    firstPattern(definition.keyPattern, referenced.keyPattern),
 		min:           firstAny(definition.min, referenced.min), max: firstAny(definition.max, referenced.max),
 		minLength: firstIntPointer(definition.minLength, referenced.minLength),
 		maxLength: firstIntPointer(definition.maxLength, referenced.maxLength),
@@ -825,13 +837,17 @@ func getIntegerPointer(table map[string]any, key string) (*int, error) {
 }
 
 func getPattern(name string, table map[string]any) (*regexp.Regexp, error) {
-	pattern, err := getString(table, "pattern")
+	return getPatternKey(name, table, "pattern")
+}
+
+func getPatternKey(name string, table map[string]any, key string) (*regexp.Regexp, error) {
+	pattern, err := getString(table, key)
 	if err != nil || pattern == "" {
 		return nil, err
 	}
 	compiled, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("%s has invalid pattern: %w", name, err)
+		return nil, fmt.Errorf("%s has invalid %s: %w", name, key, err)
 	}
 	return compiled, nil
 }
