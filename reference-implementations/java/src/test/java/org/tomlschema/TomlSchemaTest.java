@@ -215,6 +215,43 @@ class TomlSchemaTest {
     }
 
     @Test
+    void rejectsTypeAndTypeofOnSameNode() throws IOException {
+        Path schema = write("type-and-typeof.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.nameType]
+                type = "string"
+
+                [elements.name]
+                type = "string"
+                typeof = "types.nameType"
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
+
+    @Test
+    void allowsTypeAndTypeofOnCollection() throws IOException {
+        Path schema = write("collection-type-and-typeof.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.itemType]
+                type = "table"
+
+                    [types.itemType.value]
+                    type = "string"
+
+                [elements.items]
+                type = "collection"
+                typeof = "types.itemType"
+                """);
+
+        assertDoesNotThrow(() -> TomlSchema.load(schema));
+    }
+
+    @Test
     void rejectsKeyPatternOnNonCollection() throws IOException {
         Path schema = write("keypattern-scalar.tosd", """
                 [toml-schema]

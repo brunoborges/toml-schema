@@ -230,6 +230,8 @@ Type references are strings accepted by `typeof`, `itemtype`, `items`, `oneof`, 
 
 Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`.
 
+The `type` and `typeof` keywords play distinct roles. `type` declares a **built-in** type only, such as `string`, `integer`, `array`, `table`, or `collection`. `typeof` is a **type reference** to a named reusable definition from `[types]`; using a built-in type name in `typeof` is permitted as shorthand, but `type` is the preferred (canonical) form for built-ins. A schema node MUST NOT use both `type` and `typeof` to declare its own type, and parsers MUST reject a schema that does so. The sole exception is a `collection`: `type = "collection"` declares the node, while `typeof` (or `oneof`/`anyof`) declares the type of its dynamic child entries. See [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+
 ```toml
 [types]
 
@@ -564,6 +566,8 @@ A `collection` may be represented as subtables of a common table in a TOML docum
 ### Type Reference
 
 A type reference applies the referenced built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references.
+
+`typeof` declares a node's type by reference and is mutually exclusive with `type`: a node MUST NOT set both `type` and `typeof`, and parsers MUST reject such a schema. The one exception is a `collection`, whose `typeof` declares the type of its dynamic child entries rather than the collection node itself. For a built-in type, prefer the canonical `type = "<built-in>"` form; the shorthand `typeof = "boolean"` remains valid but `type = "boolean"` is preferred.
 
 ```toml
 [types]

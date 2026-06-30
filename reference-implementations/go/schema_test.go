@@ -398,6 +398,47 @@ ip = "10.0.0.2"
 	}
 }
 
+func TestRejectsTypeAndTypeofOnSameNode(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "type-and-typeof.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.nameType]
+type = "string"
+
+[elements.name]
+type = "string"
+typeof = "types.nameType"
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected a node defining both type and typeof to be rejected")
+	}
+}
+
+func TestAllowsTypeAndTypeofOnCollection(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "collection-type-and-typeof.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.itemType]
+type = "table"
+
+    [types.itemType.value]
+    type = "string"
+
+[elements.items]
+type = "collection"
+typeof = "types.itemType"
+`)
+
+	if _, err := LoadSchema(schemaPath); err != nil {
+		t.Fatalf("expected collection with typeof child reference to load: %v", err)
+	}
+}
+
 func TestRejectsKeyPatternOnNonCollection(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "keypattern-scalar.tosd", `

@@ -549,6 +549,54 @@ keypattern = "^[a-z]+$"
 }
 
 #[test]
+fn rejects_type_and_typeof_on_same_node() {
+    let directory = tempfile_dir("type-and-typeof");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.nameType]
+type = "string"
+
+[elements.name]
+type = "string"
+typeof = "types.nameType"
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("expected type and typeof rejection");
+    assert!(error.contains("both type and typeof"));
+}
+
+#[test]
+fn allows_type_and_typeof_on_collection() {
+    let directory = tempfile_dir("collection-type-and-typeof");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.itemType]
+type = "table"
+
+    [types.itemType.value]
+    type = "string"
+
+[elements.items]
+type = "collection"
+typeof = "types.itemType"
+"#,
+    );
+
+    Schema::load(&schema_path).expect("expected collection with typeof child reference to load");
+}
+
+#[test]
 fn rejects_invalid_key_pattern_regex() {
     let directory = tempfile_dir("keypattern-invalid-regex");
     let schema_path = write_file(

@@ -336,6 +336,9 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     if !one_of.is_empty() && !any_of.is_empty() {
         return Err(format!("{name} cannot define both oneof and anyof"));
     }
+    if type_name.is_some() && reference.is_some() && type_name != Some(SchemaType::Collection) {
+        return Err(format!("{name} cannot define both type and typeof"));
+    }
     let mut children: BTreeMap<String, Definition> = BTreeMap::new();
     for (key, value) in table.iter() {
         if let Some(child_table) = value.as_table() {

@@ -287,6 +287,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if len(oneOf) > 0 && len(anyOf) > 0 {
 		return Definition{}, fmt.Errorf("%s cannot define both oneof and anyof", name)
 	}
+	if typeName != "" && reference != "" && typeName != TypeCollection {
+		return Definition{}, fmt.Errorf("%s cannot define both type and typeof", name)
+	}
 	children := map[string]Definition{}
 	for key, value := range table {
 		childTable, ok := asMap(value)

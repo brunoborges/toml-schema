@@ -107,6 +107,9 @@ final class SchemaLoader {
         if (!oneOf.isEmpty() && !anyOf.isEmpty()) {
             throw new SchemaException(name + " cannot define both oneof and anyof");
         }
+        if (type != null && normalizedReference != null && type != SchemaType.COLLECTION) {
+            throw new SchemaException(name + " cannot define both type and typeof");
+        }
 
         Map<String, SchemaDefinition> children = new LinkedHashMap<>();
         for (String key : table.keySet()) {
