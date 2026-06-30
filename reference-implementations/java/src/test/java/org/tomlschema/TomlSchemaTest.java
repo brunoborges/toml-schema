@@ -91,6 +91,57 @@ class TomlSchemaTest {
     }
 
     @Test
+    void rejectsUnknownTopLevelKey() throws IOException {
+        Path schema = write("unknown-top-level.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.title]
+                type = "string"
+                """);
+        Path document = write("unknown-top-level.toml", """
+                title = "Example"
+                extra = "not allowed"
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertFalse(result.isValid(), () -> result.errors().toString());
+        assertTrue(result.errors().stream().anyMatch(error -> error.path().equals("$.extra")));
+    }
+
+    @Test
+    void emptyElementsRejectsApplicationData() throws IOException {
+        Path schema = write("empty-elements.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements]
+                """);
+        Path emptyDocument = write("empty-elements-empty.toml", """
+                """);
+        Path documentWithData = write("empty-elements-data.toml", """
+                title = "Example"
+                """);
+        Path documentWithReservedTable = write("empty-elements-reserved.toml", """
+                [toml-schema]
+                location = "empty-elements.tosd"
+                """);
+
+        TomlSchema tomlSchema = TomlSchema.load(schema);
+
+        ValidationResult empty = tomlSchema.validate(emptyDocument);
+        assertTrue(empty.isValid(), () -> empty.errors().toString());
+
+        ValidationResult reserved = tomlSchema.validate(documentWithReservedTable);
+        assertTrue(reserved.isValid(), () -> reserved.errors().toString());
+
+        ValidationResult withData = tomlSchema.validate(documentWithData);
+        assertFalse(withData.isValid(), () -> withData.errors().toString());
+        assertTrue(withData.errors().stream().anyMatch(error -> error.path().equals("$.title")));
+    }
+
+    @Test
     void patternMatchesUnanchored() throws IOException {
         Path schema = write("pattern-unanchored.tosd", """
                 [toml-schema]

@@ -20,6 +20,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Supported Properties](#supported-properties)
   - [Schema Versioning](#schema-versioning)
 - [Elements table - `[elements]`](#elements-table---elements)
+  - [Root validation semantics](#root-validation-semantics)
 - [Types table - `[types]`](#types-table---types)
   - [Simple Types - `<simple-type>`](#simple-types---simple-type)
     - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
@@ -218,6 +219,14 @@ enabled = true
 ```
 
 Use `[elements]` for document-specific keys. Use `[types]` for reusable definitions that can be referenced from `[elements]` or from other reusable types. Elements follow the same structure and validation rules as types, except that elements cannot reference other elements. To reuse conditions and structures, define them under `[types]` and reference them from `[elements]`.
+
+### Root validation semantics
+
+The root `[elements]` table behaves like a defined `table` (see [Tables](#tables)): a TOML document validates only if every top-level key is described by a direct child of `[elements]`. Parsers MUST reject a top-level key that has no matching child of `[elements]`, the same way unknown keys are rejected inside any other defined table.
+
+The reserved root `[toml-schema]` table is the only exception: it is ignored during application-data validation unless the schema explicitly defines `[elements.toml-schema]` (see [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)).
+
+An **empty** `[elements]` table therefore means the TOML document MUST contain no application data; only the optional reserved `[toml-schema]` table may appear. Emptiness never means "allow anything." A schema that intends to accept arbitrary top-level data MUST express that with an explicit construct rather than by leaving `[elements]` empty.
 
 ## Types table - `[types]`
 
