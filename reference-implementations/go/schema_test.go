@@ -132,7 +132,50 @@ min = 2026-01-01T00:00:00Z
 	}
 }
 
+<<<<<<< HEAD
 func TestPatternMatchesUnanchored(t *testing.T) {
+=======
+func TestRejectsMalformedLengthSchemas(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]string{
+		"negative-minlength": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+minlength = -1
+`,
+		"negative-maxlength": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+maxlength = -1
+`,
+		"inverted-length": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+minlength = 5
+maxlength = 2
+`,
+	}
+
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := LoadSchema(write(t, dir, name+".tosd", content)); err == nil {
+				t.Fatal("expected malformed length schema to be rejected")
+			}
+		})
+	}
+}
+
+func TestPatternMustMatchEntireString(t *testing.T) {
+>>>>>>> origin/main
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
