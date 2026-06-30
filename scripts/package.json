@@ -1,0 +1,13 @@
+{
+  "name": "toml-schema-site-build",
+  "private": true,
+  "type": "module",
+  "description": "Build tooling for the toml-schema.org static site (renders SPEC.md into docs/spec/).",
+  "scripts": {
+    "render-spec": "node render-spec.mjs"
+  },
+  "dependencies": {
+    "github-slugger": "^2.0.0",
+    "marked": "^12.0.2"
+  }
+}
