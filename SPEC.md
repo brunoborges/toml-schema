@@ -21,6 +21,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Schema Versioning](#schema-versioning)
 - [Elements table - `[elements]`](#elements-table---elements)
 - [Types table - `[types]`](#types-table---types)
+  - [Type Declaration of a Node](#type-declaration-of-a-node)
   - [Simple Types - `<simple-type>`](#simple-types---simple-type)
     - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
   - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
@@ -219,6 +220,10 @@ enabled = true
 
 Use `[elements]` for document-specific keys. Use `[types]` for reusable definitions that can be referenced from `[elements]` or from other reusable types. Elements follow the same structure and validation rules as types, except that elements cannot reference other elements. To reuse conditions and structures, define them under `[types]` and reference them from `[elements]`.
 
+The root `[elements]` table behaves like a defined `table`: validation is closed-world. A TOML document validates only if every top-level key is described by a direct child of `[elements]`. An undescribed top-level key makes the document invalid, with one exception — the reserved `[toml-schema]` table, which is ignored during application-data validation unless the schema explicitly defines `[elements.toml-schema]` (see [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)).
+
+Consequently, an **empty** `[elements]` table means the document MUST contain no application data; only the optional reserved `[toml-schema]` table may be present. An empty `[elements]` does not mean "accept anything." (This closed-world behavior applies to the root and to any `table` node with defined children; a `table` node with no defined children is open-ended, as described in [Tables](#tables).)
+
 ## Types table - `[types]`
 
 The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A type is referenced in an element or another type with a type reference.
@@ -229,6 +234,11 @@ Type references are strings accepted by `typeof`, `itemtype`, `items`, `oneof`, 
 - a named reusable definition from `[types]`, written either as `"types.<typename>"` or `"<typename>"`.
 
 Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`.
+
+Two of the reserved names have restrictions when used as a *type reference* (in `typeof`, `itemtype`, `items`, `oneof`, or `anyof`):
+
+- `collection` MUST NOT be used as a bare type reference. A collection has no meaning without its own item rule (`typeof`, `oneof`, or `anyof`) and optional `keypattern`, so it must always be declared inline as `type = "collection"` with those properties. Parsers MUST reject a schema that references `collection`.
+- `any` MAY be used as a standalone type (`type = "any"`) but MUST NOT appear inside `oneof` or `anyof`. An `any` alternative would make the alternation trivially true and defeats the purpose of listing alternatives. Parsers MUST reject `any` as a member of `oneof` or `anyof`.
 
 ```toml
 [types]
@@ -250,6 +260,20 @@ max = <integer | float | offset-date-time | local-date-time | local-date | local
 minlength = <integer>
 maxlength = <integer>
 ```
+
+### Type Declaration of a Node
+
+Every schema node — an `[elements]` field, a `[types]` definition, or any nested child — resolves to exactly one type. A node's type is declared in one of two roles, and it is important not to confuse them:
+
+- **Own type** — the type of the node itself, declared with `type`, or (when `type` is absent) with `typeof`, `oneof`, or `anyof`.
+- **Item type** — for the container types `array` and `collection`, the type of the *contents*, declared with the container's item keywords. An `array` uses `arraytype`, `itemtype`, or `items`; a `collection` uses exactly one of `typeof`, `oneof`, or `anyof`. These item keywords describe the elements, not the container node, so they correctly co-exist with `type = "array"` / `type = "collection"`.
+
+Rules for a node's **own type**:
+
+1. A node declares its own type with **at most one** of `type`, `typeof`, `oneof`, and `anyof`. The single exception is a `collection`, which combines `type = "collection"` with exactly one item rule (`typeof`, `oneof`, or `anyof`) as described in [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys). Apart from that case, declaring two or more of these keywords on one node is invalid and parsers MUST reject it (for example both `type = "string"` and `typeof`, or both `oneof` and `anyof`).
+2. If a node declares none of them but has nested child definitions, it is treated as `type = "table"` (see [Tables](#tables)).
+3. If a node declares none of them and has no nested child definitions, the schema is malformed and parsers MUST reject it; a leaf node must declare a type.
+4. When `typeof` declares a node's **own type** (that is, `type` is absent), the node inherits the referenced definition as-is and MUST NOT add constraint keywords (`pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`, `arraytype`, `itemtype`, `items`) or nested child definitions. `optional` is permitted because it governs presence, not type. To specialize a reused type, declare a new named type under `[types]` and reference that. (This restriction does not apply to a `collection`'s item `typeof`, where `minlength`, `maxlength`, and `keypattern` constrain the collection itself.)
 
 ### Quoted and Special Keys
 
@@ -308,6 +332,8 @@ Example:
 type="string"
 allowedvalues=[ "red", "black", "blue" ]
 ```
+
+When `allowedvalues` is combined with other constraints on the same node (`pattern`, `min`, `max`, `minlength`, `maxlength`), every entry in `allowedvalues` MUST itself satisfy those constraints. Otherwise the schema is malformed and parsers MUST reject it at schema-load time. Because membership in `allowedvalues` therefore already implies conformance, a document value is valid for such a node if and only if it is equal to one of the enumerated values; the sibling constraints are enforced against the enumeration when the schema loads rather than re-checked per document value.
 
 ### Minimum Value / Maximum Value - `min` and `max`
 
@@ -400,11 +426,13 @@ If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `m
 
 If `arraytype` is not defined, then the type of array elements is `any`, and any data type can be used and mixed together.
 
-If `type` is `array` and `arraytype` is of type `array`, then automatically any data type can be used and mixed together.
+If `arraytype = "array"`, then each item MUST itself be an array. The contents of those inner arrays are not validated unless an `itemtype` supplies an item schema. (To allow a mix of arbitrary item types, omit `arraytype` so items default to `any`.)
 
 ##### Array Item Schemas and Arrays of Tables
 
 Use `itemtype` when each array item must be validated against a reusable schema definition. This is required for TOML arrays of tables and arrays of inline tables, because both parse as arrays whose items are table values.
+
+When `itemtype` is present, `arraytype` is optional. If both are present they MUST be consistent: `arraytype` must name the built-in kind of the value that the referenced `itemtype` describes (for example, a `table` definition requires `arraytype = "table"`). Parsers MUST reject an inconsistent pairing, such as `arraytype = "string"` together with an `itemtype` that resolves to a `table`. The examples below keep `arraytype = "table"` for readability even though `itemtype` alone is sufficient.
 
 Example with TOML arrays of tables:
 
@@ -602,7 +630,7 @@ Use `oneof` or `anyof` when a value may validate against alternative type refere
 - `oneof`: exactly one referenced type must validate.
 - `anyof`: at least one referenced type must validate.
 
-These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array items. Alternatives may reference built-in type names directly or named definitions when a branch needs constraints.
+These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array items. Alternatives may reference built-in type names directly or named definitions when a branch needs constraints. The reserved name `any` MUST NOT be used as an alternative in `oneof` or `anyof`, and `collection` MUST NOT be referenced at all (declare a collection inline instead); see [Types table](#types-table---types).
 
 ```toml
 [types.stringId]
@@ -711,6 +739,10 @@ location = "<uri>"
 ```
 
 Where `<uri>` can be a remote URL (e.g. https) or a local file.
+
+`location` is the only property required to resolve a schema through the document. A relative `location` MUST be resolved relative to the location of the referencing TOML document, not the current working directory. An absolute URI (such as an `https` URL) is used as-is. When the referencing document has no location of its own — for example, content read from standard input — a relative `location` cannot be resolved and the validator MUST report an error.
+
+`version` in the referencing document is **optional**. When present, it denotes the TOML Schema language version the author expects, in the same full SemVer form required by [Schema Versioning](#schema-versioning). It does not have to equal the `version` declared inside the resolved schema. A validator SHOULD warn, rather than fail, when the document's `version` and the resolved schema's `version` differ only in minor or patch; it MUST report an error when their major versions differ, because that indicates an incompatible schema language.
 
 The root `[toml-schema]` table is reserved for schema metadata. Validators should use it to locate schema information and should not treat it as application data unless the schema explicitly defines `[elements.toml-schema]`.
 
