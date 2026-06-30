@@ -11,7 +11,7 @@
 // node = { name, props: { <prop>: <editorValue> }, children: [ node, ... ] }
 //
 // Editor value encoding per property:
-//   type/typeof/arraytype/itemtype/pattern : plain string
+//   type/typeof/arraytype/itemtype/pattern/keypattern : plain string
 //   optional                               : boolean
 //   minlength/maxlength                    : number
 //   items/oneof/anyof                      : string[]  (type references)
@@ -36,6 +36,7 @@ export const PROP_ORDER = [
     "anyof",
     "allowedvalues",
     "pattern",
+    "keypattern",
     "min",
     "max",
     "minlength",
@@ -44,7 +45,7 @@ export const PROP_ORDER = [
     "default",
 ];
 
-const STRING_PROPS = new Set(["type", "typeof", "arraytype", "itemtype", "pattern"]);
+const STRING_PROPS = new Set(["type", "typeof", "arraytype", "itemtype", "pattern", "keypattern"]);
 const INT_PROPS = new Set(["minlength", "maxlength"]);
 const BOOL_PROPS = new Set(["optional"]);
 const REFLIST_PROPS = new Set(["items", "oneof", "anyof"]);
@@ -305,6 +306,10 @@ export function validateModel(model) {
 
         if (p.pattern && p.type && p.type !== "string") {
             issues.push({ level: "warning", path: label, message: `\`pattern\` is ignored on \`${p.type}\` — it only validates \`string\` values.` });
+        }
+
+        if (p.keypattern && p.type && p.type !== "collection") {
+            issues.push({ level: "warning", path: label, message: `\`keypattern\` only applies to \`collection\` — it validates dynamic entry keys.` });
         }
 
         for (const ref of [p.typeof, p.itemtype]) {

@@ -97,6 +97,7 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "items",
     "allowedvalues",
     "pattern",
+    "keypattern",
     "optional",
     "default",
     "min",

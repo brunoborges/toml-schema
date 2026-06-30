@@ -32,7 +32,7 @@ const (
 
 var definitionKeys = map[string]bool{
 	"type": true, "typeof": true, "arraytype": true, "itemtype": true, "items": true,
-	"allowedvalues": true, "pattern": true, "optional": true, "default": true, "min": true,
+	"allowedvalues": true, "pattern": true, "keypattern": true, "optional": true, "default": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true,
 }

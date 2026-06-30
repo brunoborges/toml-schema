@@ -25,7 +25,7 @@ final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
             "type", "typeof", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
-            "optional", "default", "min", "max", "minlength", "maxlength",
+            "keypattern", "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof"
     );
 
@@ -97,7 +97,8 @@ final class SchemaLoader {
         String itemReference = normalizeReference(getString(table, "itemtype"));
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
         Boolean optional = getBoolean(table, "optional");
-        Pattern pattern = getPattern(name, table);
+        Pattern pattern = getPattern(name, table, "pattern");
+        Pattern keyPattern = getPattern(name, table, "keypattern");
         Integer minLength = getInteger(table, "minlength");
         Integer maxLength = getInteger(table, "maxlength");
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
@@ -145,6 +146,9 @@ final class SchemaLoader {
                 throw new SchemaException(name + " cannot define minlength or maxlength together with items");
             }
         }
+        if (keyPattern != null && type != SchemaType.COLLECTION) {
+            throw new SchemaException(name + " can only define keypattern when type is collection");
+        }
         Object min = getPropertyValue(table, "min");
         Object max = getPropertyValue(table, "max");
         validateRangeConstraints(name, type, arrayType, itemReference, min, max);
@@ -158,6 +162,7 @@ final class SchemaLoader {
                 optional != null && optional,
                 allowedValues,
                 pattern,
+                keyPattern,
                 min,
                 max,
                 minLength,
@@ -214,15 +219,15 @@ final class SchemaLoader {
         return longValue.intValue();
     }
 
-    private Pattern getPattern(String definitionName, TomlTable table) {
-        String pattern = getString(table, "pattern");
+    private Pattern getPattern(String definitionName, TomlTable table, String key) {
+        String pattern = getString(table, key);
         if (pattern == null) {
             return null;
         }
         try {
             return Pattern.compile(pattern);
         } catch (PatternSyntaxException e) {
-            throw new SchemaException(definitionName + " has invalid pattern: " + pattern, e);
+            throw new SchemaException(definitionName + " has invalid " + key + ": " + pattern, e);
         }
     }
 

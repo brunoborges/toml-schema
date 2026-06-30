@@ -112,6 +112,9 @@ final class TomlSchemaValidator {
                 continue;
             }
             dynamicEntries++;
+            if (definition.keyPattern() != null && !definition.keyPattern().matcher(key).matches()) {
+                add(childPath, "key does not match keypattern " + definition.keyPattern().pattern());
+            }
             String reference = definition.reference();
             if (reference == null) {
                 add(childPath, "collection entry has no typeof reference");
@@ -282,6 +285,7 @@ final class TomlSchemaValidator {
                 definition.optional() || referenced.optional(),
                 definition.allowedValues().isEmpty() ? referenced.allowedValues() : definition.allowedValues(),
                 definition.pattern() == null ? referenced.pattern() : definition.pattern(),
+                definition.keyPattern() == null ? referenced.keyPattern() : definition.keyPattern(),
                 definition.min() == null ? referenced.min() : definition.min(),
                 definition.max() == null ? referenced.max() : definition.max(),
                 definition.minLength() == null ? referenced.minLength() : definition.minLength(),
@@ -318,6 +322,7 @@ final class TomlSchemaValidator {
                 List.of(),
                 false,
                 List.of(),
+                null,
                 null,
                 null,
                 null,

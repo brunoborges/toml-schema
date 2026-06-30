@@ -143,6 +143,85 @@ class TomlSchemaTest {
     }
 
     @Test
+    void validatesCollectionKeysAgainstKeyPattern() throws IOException {
+        Path schema = write("keypattern.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.serverType]
+                type = "table"
+
+                    [types.serverType.ip]
+                    type = "string"
+
+                [elements.servers]
+                type = "collection"
+                typeof = "types.serverType"
+                keypattern = "^server_[0-9]+$"
+                """);
+        Path validDocument = write("keypattern-valid.toml", """
+                [servers.server_01]
+                ip = "10.0.0.1"
+
+                [servers.server_02]
+                ip = "10.0.0.2"
+                """);
+        Path invalidDocument = write("keypattern-invalid.toml", """
+                [servers.server_01]
+                ip = "10.0.0.1"
+
+                [servers.alpha]
+                ip = "10.0.0.2"
+                """);
+
+        TomlSchema tomlSchema = TomlSchema.load(schema);
+
+        assertTrue(tomlSchema.validate(validDocument).isValid());
+        ValidationResult invalidResult = tomlSchema.validate(invalidDocument);
+        assertFalse(invalidResult.isValid());
+        assertTrue(invalidResult.errors().stream()
+                .anyMatch(error -> error.path().equals("$.servers.alpha")
+                        && error.message().contains("keypattern")));
+        assertTrue(invalidResult.errors().stream()
+                .noneMatch(error -> error.path().equals("$.servers.server_01")));
+    }
+
+    @Test
+    void rejectsKeyPatternOnNonCollection() throws IOException {
+        Path schema = write("keypattern-scalar.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.name]
+                type = "string"
+                keypattern = "^[a-z]+$"
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
+
+    @Test
+    void rejectsInvalidKeyPatternRegex() throws IOException {
+        Path schema = write("keypattern-invalid-regex.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.itemType]
+                type = "table"
+
+                    [types.itemType.value]
+                    type = "string"
+
+                [elements.items]
+                type = "collection"
+                typeof = "types.itemType"
+                keypattern = "["
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
+
+    @Test
     void rejectsOccurrenceAliases() throws IOException {
         Path minOccurs = write("minoccurs-alias.tosd", """
                 [toml-schema]

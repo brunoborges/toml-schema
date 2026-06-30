@@ -36,6 +36,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
   - [Optionality - `optional`](#optionality---optional)
   - [Pattern - `pattern`](#pattern---pattern)
+  - [Key Pattern - `keypattern`](#key-pattern---keypattern)
 - [Parsers](#parsers)
 - [Filename Extension](#filename-extension)
 - [MIME Type](#mime-type)
@@ -243,6 +244,7 @@ oneof = [ "<type-reference>", ... ]
 anyof = [ "<type-reference>", ... ]
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
+keypattern = "<string-regex-for-collection-key-validation>"
 optional = true|false
 min = <integer | float | offset-date-time | local-date-time | local-date | local-time>
 max = <integer | float | offset-date-time | local-date-time | local-date | local-time>
@@ -493,6 +495,8 @@ The types allowed in a collection may be defined with **only one** of the follow
  - `oneof`: one type of a provided array of types. Only one type must return `true` in the validation. Parser must throw an error if more than one type is valid for the input.
  - `anyof`: any type of a provided array of types. Parser stops validating at the first return of a `true` validation. Parser should throw an error if input is not valid for any type.
 
+A `collection` may additionally constrain the **keys** (entry names) of its dynamic children with `keypattern`. See [Key Pattern - `keypattern`](#key-pattern---keypattern).
+
 
 **Example:**
 The below example shows a table `servers` that is a `collection`.
@@ -640,6 +644,42 @@ Parsers must only skip a structure validation if the structure is optional in th
 This property is only used for validating `string` input. Parsers must validate the input with the provided regular expression.
 
 Parsers must support Perl/PCRE syntax. Parsers may support more extensions and other syntaxes.
+
+### Key Pattern - `keypattern`
+
+This property may only be used on a `collection`. It constrains the **keys** (entry names) of the
+collection's dynamic children: every dynamically keyed entry must match the provided regular
+expression. It does not validate entry *values* — that is the role of `typeof`, `oneof`, or
+`anyof`. It is therefore orthogonal to those properties and may be combined with them.
+
+`keypattern` is invalid on any non-`collection` type (scalars, `array`, plain `table`), and a
+parser must reject a schema that uses it elsewhere.
+
+Keys that are explicitly declared as fixed child definitions of the collection (schema-restricted
+key-value pairs) are validated by their own definitions and are not subject to `keypattern`. Only
+dynamic, user-provided keys are matched against the pattern.
+
+Parsers must support Perl/PCRE syntax, the same flavor as [`pattern`](#pattern---pattern).
+
+**Example:**
+
+```toml
+[types.listOfServersType]
+type       = "collection"
+typeof     = "types.serverType"
+minlength  = 1
+keypattern = "^server_[0-9]+$"
+```
+
+Against a TOML document:
+
+```toml
+[servers.server_01]   # accepted
+[servers.server_02]   # accepted
+[servers.alpha]       # rejected: key does not match ^server_[0-9]+$
+```
+
+This mirrors JSON Schema's `propertyNames: { pattern: ... }`, applied to TOML maps.
 
 ## Parsers
 
