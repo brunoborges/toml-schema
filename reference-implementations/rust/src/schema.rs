@@ -658,7 +658,7 @@ impl<'schema> Validator<'schema> {
             }
             dynamic_entries += 1;
             if let Some(key_pattern) = &definition.key_pattern {
-                if !matches_entire_string(key_pattern, key) {
+                if !matches_pattern(key_pattern, key) {
                     self.add(
                         &child_path,
                         &format!("key does not match keypattern {}", key_pattern.as_str()),
@@ -781,7 +781,7 @@ impl<'schema> Validator<'schema> {
         if let Value::String(string_value) = value {
             self.validate_length(path, string_value.chars().count(), definition);
             if let Some(pattern) = &definition.pattern {
-                if !matches_entire_string(pattern, string_value) {
+                if !matches_pattern(pattern, string_value) {
                     self.add(
                         path,
                         &format!("does not match pattern {}", pattern.as_str()),
@@ -1096,11 +1096,8 @@ fn values_equal(left: &Value, right: &Value) -> bool {
     }
 }
 
-fn matches_entire_string(pattern: &Regex, value: &str) -> bool {
-    pattern
-        .find(value)
-        .map(|matched| matched.start() == 0 && matched.end() == value.len())
-        .unwrap_or(false)
+fn matches_pattern(pattern: &Regex, value: &str) -> bool {
+    pattern.is_match(value)
 }
 
 fn append_path(path: &str, key: &str) -> String {

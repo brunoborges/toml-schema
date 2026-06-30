@@ -91,6 +91,34 @@ class TomlSchemaTest {
     }
 
     @Test
+    void patternMatchesUnanchored() throws IOException {
+        Path schema = write("pattern-unanchored.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.id]
+                type = "string"
+                pattern = "\\\\d+"
+                """);
+        // "abc123" contains digits, so unanchored pattern "\d+" should match
+        Path matchingDocument = write("pattern-unanchored-matching.toml", """
+                id = "abc123"
+                """);
+        // "abcdef" contains no digits, so pattern "\d+" should not match
+        Path nonMatchingDocument = write("pattern-unanchored-nonmatching.toml", """
+                id = "abcdef"
+                """);
+
+        TomlSchema tomlSchema = TomlSchema.load(schema);
+
+        assertTrue(tomlSchema.validate(matchingDocument).isValid(),
+                "expected unanchored pattern to accept a superstring");
+        ValidationResult noMatch = tomlSchema.validate(nonMatchingDocument);
+        assertFalse(noMatch.isValid());
+        assertTrue(noMatch.errors().stream().anyMatch(error -> error.path().equals("$.id")));
+    }
+
+    @Test
     void stringLengthCountsUnicodeScalarValues() throws IOException {
         Path schema = write("unicode-length.tosd", """
                 [toml-schema]

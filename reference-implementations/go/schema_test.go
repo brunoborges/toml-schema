@@ -171,7 +171,7 @@ maxlength = 2
 	}
 }
 
-func TestPatternMustMatchEntireString(t *testing.T) {
+func TestPatternMatchesUnanchored(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
@@ -181,21 +181,31 @@ version = "1.0.0"
 type = "string"
 pattern = "\\d+"
 `)
-	documentPath := write(t, dir, "document.toml", `
+	// "abc123" contains digits, so unanchored pattern "\d+" should match
+	matchingPath := write(t, dir, "matching.toml", `
 id = "abc123"
+`)
+	// "abcdef" contains no digits, so pattern "\d+" should not match
+	nonMatchingPath := write(t, dir, "nonmatching.toml", `
+id = "abcdef"
 `)
 
 	schema, err := LoadSchema(schemaPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.ValidateFile(documentPath)
 
-	if result.Valid() {
-		t.Fatal("expected unanchored pattern not to match the entire string")
+	matchResult := schema.ValidateFile(matchingPath)
+	if !matchResult.Valid() {
+		t.Fatalf("expected unanchored pattern to accept a superstring, got %#v", matchResult.Errors)
 	}
-	if !hasPath(result, "$.id") {
-		t.Fatalf("expected id pattern error, got %#v", result.Errors)
+
+	noMatchResult := schema.ValidateFile(nonMatchingPath)
+	if noMatchResult.Valid() {
+		t.Fatal("expected pattern to reject string with no matching substring")
+	}
+	if !hasPath(noMatchResult, "$.id") {
+		t.Fatalf("expected id pattern error, got %#v", noMatchResult.Errors)
 	}
 }
 

@@ -570,7 +570,7 @@ A type reference applies the referenced built-in type or inherits the rules of a
 
     [types.nameType]
     type="string"
-    pattern="[a-zA-Z]"
+    pattern="[a-zA-Z]"  # unanchored: matches any string containing a letter
 
     [types.serverType.name]
     typeof = "types.nameType"
@@ -646,6 +646,8 @@ This property is only used for validating `string` input. Parsers must validate 
 
 Parsers must support Perl/PCRE syntax. Parsers may support more extensions and other syntaxes.
 
+The pattern is not implicitly anchored. A value validates if the regular expression matches anywhere in the string. Authors who require a full-string match must anchor the expression with `^` and `$` (or `\A` and `\z`).
+
 ### Key Pattern - `keypattern`
 
 This property may only be used on a `collection`. It constrains the **keys** (entry names) of the
@@ -660,7 +662,7 @@ Keys that are explicitly declared as fixed child definitions of the collection (
 key-value pairs) are validated by their own definitions and are not subject to `keypattern`. Only
 dynamic, user-provided keys are matched against the pattern.
 
-Parsers must support Perl/PCRE syntax, the same flavor as [`pattern`](#pattern---pattern).
+Parsers must support Perl/PCRE syntax, the same flavor as [`pattern`](#pattern---pattern). Like `pattern`, `keypattern` is not implicitly anchored: a key validates if the regular expression matches anywhere in the key string. Authors who require a full-key match must anchor the expression with `^` and `$`.
 
 **Example:**
 
