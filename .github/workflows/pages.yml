@@ -6,12 +6,18 @@ on:
       - main
     paths:
       - docs/**
+      - SPEC.md
+      - scripts/render-spec.mjs
+      - scripts/package.json
       - .github/workflows/pages.yml
   pull_request:
     branches:
       - main
     paths:
       - docs/**
+      - SPEC.md
+      - scripts/render-spec.mjs
+      - scripts/package.json
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -32,6 +38,21 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: scripts/package-lock.json
+
+      - name: Install site build dependencies
+        working-directory: scripts
+        run: npm ci
+
+      - name: Render specification page
+        working-directory: scripts
+        run: npm run render-spec
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
