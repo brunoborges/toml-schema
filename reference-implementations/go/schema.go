@@ -331,6 +331,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	}
 	min := propertyValue(table, "min")
 	max := propertyValue(table, "max")
+	if minLength != nil && maxLength != nil && *minLength > *maxLength {
+		return Definition{}, fmt.Errorf("%s minlength must not be greater than maxlength", name)
+	}
 	if keyPattern != nil && typeName != TypeCollection {
 		return Definition{}, fmt.Errorf("%s can only define keypattern when type is collection", name)
 	}

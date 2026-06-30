@@ -146,6 +146,9 @@ final class SchemaLoader {
                 throw new SchemaException(name + " cannot define minlength or maxlength together with items");
             }
         }
+        if (minLength != null && maxLength != null && minLength > maxLength) {
+            throw new SchemaException(name + " minlength must not be greater than maxlength");
+        }
         if (keyPattern != null && type != SchemaType.COLLECTION) {
             throw new SchemaException(name + " can only define keypattern when type is collection");
         }

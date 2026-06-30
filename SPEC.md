@@ -334,6 +334,8 @@ For `string` values, length is counted as the number of Unicode scalar values af
 
 For `array` and `collection` values, length is counted as the number of items or dynamic entries.
 
+Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present, `minlength` MUST be less than or equal to `maxlength`. A schema violating either rule is malformed and parsers MUST reject it at schema-load time.
+
 ### Conditions on `any`
 
 No min/max condition may be applied to type `any`. The parser must show an error if this happens.

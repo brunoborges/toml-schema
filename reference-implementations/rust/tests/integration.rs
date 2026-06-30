@@ -218,6 +218,52 @@ min = 2026-01-01T00:00:00Z
 }
 
 #[test]
+fn rejects_malformed_length_schemas() {
+    let directory = tempfile_dir("malformed-lengths");
+    let cases = [
+        (
+            "negative-minlength",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+minlength = -1
+"#,
+        ),
+        (
+            "negative-maxlength",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+maxlength = -1
+"#,
+        ),
+        (
+            "inverted-length",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+minlength = 5
+maxlength = 2
+"#,
+        ),
+    ];
+
+    for (name, content) in cases {
+        let schema_path = write_file(&directory, &format!("{name}.tosd"), content);
+        Schema::load(&schema_path).expect_err("expected malformed length schema");
+    }
+}
+
+#[test]
 fn pattern_must_match_entire_string() {
     let directory = tempfile_dir("pattern-entire-string");
     let schema_path = write_file(
