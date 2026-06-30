@@ -218,8 +218,8 @@ min = 2026-01-01T00:00:00Z
 }
 
 #[test]
-fn pattern_must_match_entire_string() {
-    let directory = tempfile_dir("pattern-entire-string");
+fn pattern_matches_unanchored() {
+    let directory = tempfile_dir("pattern-unanchored");
     let schema_path = write_file(
         &directory,
         "schema.tosd",
@@ -232,22 +232,37 @@ type = "string"
 pattern = "\\d+"
 "#,
     );
-    let document_path = write_file(
+    // "abc123" contains digits, so unanchored pattern "\d+" should match
+    let matching_path = write_file(
         &directory,
-        "document.toml",
+        "matching.toml",
         r#"
 id = "abc123"
 "#,
     );
+    // "abcdef" contains no digits, so pattern "\d+" should not match
+    let non_matching_path = write_file(
+        &directory,
+        "nonmatching.toml",
+        r#"
+id = "abcdef"
+"#,
+    );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let result = schema.validate_file(&document_path);
 
+    let match_result = schema.validate_file(&matching_path);
     assert!(
-        !result.valid(),
-        "expected unanchored pattern not to match the entire string"
+        match_result.valid(),
+        "expected unanchored pattern to accept a superstring"
     );
-    assert!(has_path(&result, "$.id"));
+
+    let no_match_result = schema.validate_file(&non_matching_path);
+    assert!(
+        !no_match_result.valid(),
+        "expected pattern to reject string with no matching substring"
+    );
+    assert!(has_path(&no_match_result, "$.id"));
 }
 
 #[test]

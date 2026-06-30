@@ -112,7 +112,7 @@ final class TomlSchemaValidator {
                 continue;
             }
             dynamicEntries++;
-            if (definition.keyPattern() != null && !definition.keyPattern().matcher(key).matches()) {
+            if (definition.keyPattern() != null && !definition.keyPattern().matcher(key).find()) {
                 add(childPath, "key does not match keypattern " + definition.keyPattern().pattern());
             }
             String reference = definition.reference();
@@ -212,7 +212,7 @@ final class TomlSchemaValidator {
         validateRange(path, value, definition);
         if (value instanceof String stringValue) {
             validateLength(path, stringLength(stringValue), definition);
-            if (definition.pattern() != null && !definition.pattern().matcher(stringValue).matches()) {
+            if (definition.pattern() != null && !definition.pattern().matcher(stringValue).find()) {
                 add(path, "does not match pattern " + definition.pattern().pattern());
             }
         }

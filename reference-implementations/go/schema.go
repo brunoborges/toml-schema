@@ -544,7 +544,7 @@ func (v *validator) validateCollection(path string, table map[string]any, defini
 			continue
 		}
 		dynamicEntries++
-		if definition.keyPattern != nil && !matchesEntireString(definition.keyPattern, key) {
+		if definition.keyPattern != nil && !matchesPattern(definition.keyPattern, key) {
 			v.add(childPath, "key does not match keypattern "+definition.keyPattern.String())
 		}
 		if definition.reference == "" {
@@ -646,7 +646,7 @@ func (v *validator) validateCommonConstraints(path string, value any, definition
 	v.validateRange(path, value, definition)
 	if stringValue, ok := value.(string); ok {
 		v.validateLength(path, utf8.RuneCountInString(stringValue), definition)
-		if definition.pattern != nil && !matchesEntireString(definition.pattern, stringValue) {
+		if definition.pattern != nil && !matchesPattern(definition.pattern, stringValue) {
 			v.add(path, "does not match pattern "+definition.pattern.String())
 		}
 	}
@@ -1012,9 +1012,8 @@ func encodePathKey(key string) string {
 	return fmt.Sprintf("%q", key)
 }
 
-func matchesEntireString(pattern *regexp.Regexp, value string) bool {
-	match := pattern.FindStringIndex(value)
-	return match != nil && match[0] == 0 && match[1] == len(value)
+func matchesPattern(pattern *regexp.Regexp, value string) bool {
+	return pattern.MatchString(value)
 }
 
 func asMap(value any) (map[string]any, bool) {
