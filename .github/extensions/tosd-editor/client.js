@@ -432,6 +432,7 @@ function fitZoom() {
         1.4,
     );
     setZoom(z);
+    host.scrollTo({ left: 0, top: 0 });
 }
 
 // --- Mutations ----------------------------------------------------------
