@@ -155,7 +155,7 @@ function updateValidityPill() {
 
 // --- Render orchestration -----------------------------------------------
 function renderAll() {
-    $("#path").textContent = state.path || "(new schema)";
+    $("#path").value = state.path || "";
     $("#path").title = state.path || "";
     renderDiagram();
     renderEditor();
@@ -829,18 +829,41 @@ function renderIssues() {
 function boot() {
     document.body.innerHTML = `
     <div class="toolbar">
-      <span class="title"><span class="brand-mark">◆</span> TOML Schema Editor</span>
-      <span class="path" id="path"></span>
-      <span class="pill" id="validity"></span>
-      <span class="spacer"></span>
-      <span class="status" id="status"></span>
-      <button id="new" title="Start a new, empty schema">New</button>
-      <button id="generate" title="Describe a config file and let Copilot generate the schema">&#10024; Generate</button>
-      <button id="infer" title="Generate a schema from a sample TOML document">Infer from TOML</button>
-      <button id="add-type">+ Type</button>
-      <button id="add-element">+ Element</button>
-      <button id="revert">Revert</button>
-      <button id="save" class="primary">Save</button>
+      <div class="tb-row tb-row-info">
+        <div class="tb-brand">
+          <span class="brand-mark">&#9670;</span>
+          <span class="brand-text">TOML Schema <b>Editor</b></span>
+        </div>
+        <span class="tb-sep"></span>
+        <div class="tb-info">
+          <input class="path-field mono" id="path" readonly title="" placeholder="(new schema)" />
+          <span class="pill" id="validity"></span>
+          <span class="status" id="status"></span>
+        </div>
+      </div>
+      <div class="tb-row tb-row-actions">
+        <div class="tb-actions">
+          <div class="tb-group">
+            <button id="add-element" class="btn"><span class="bi">+</span>Element</button>
+            <button id="add-type" class="btn"><span class="bi">+</span>Type</button>
+          </div>
+          <span class="tb-sep"></span>
+          <div class="tb-group">
+            <button id="generate" class="btn accent" title="Describe a config file and let Copilot generate the schema"><span class="bi">&#10024;</span>Generate</button>
+            <button id="infer" class="btn" title="Infer a schema from a sample TOML document">Infer from TOML</button>
+          </div>
+          <span class="tb-sep"></span>
+          <div class="tb-group">
+            <button id="new" class="btn" title="Start a new, empty schema"><span class="bi">&#10010;</span>New</button>
+            <button id="open" class="btn" title="Open an existing .tosd schema file"><span class="bi">&#128193;</span>Open</button>
+          </div>
+          <span class="spacer"></span>
+          <div class="tb-group">
+            <button id="revert" class="btn ghost" title="Discard changes and reload from disk">Revert</button>
+            <button id="save" class="btn primary" title="Save to disk">Save</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="workspace">
       <div class="diagram-pane">
@@ -880,6 +903,7 @@ function boot() {
     $("#save").addEventListener("click", save);
     $("#revert").addEventListener("click", load);
     $("#new").addEventListener("click", newSchema);
+    $("#open").addEventListener("click", openSchema);
     $("#generate").addEventListener("click", openGenerateModal);
     $("#infer").addEventListener("click", openInferModal);
     $("#add-type").addEventListener("click", () => { state.view = "types"; addNode(state.model.types, ["types"]); });
@@ -1016,6 +1040,61 @@ function openGenerateModal() {
     overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
     document.body.append(overlay);
     ta.focus();
+}
+
+// --- Open existing schema modal ----------------------------------------
+function openSchema() {
+    const existing = $("#open-modal");
+    if (existing) existing.remove();
+
+    const overlay = el("div", { class: "modal-overlay", id: "open-modal" });
+    const dialog = el("div", { class: "modal" });
+    dialog.append(el("h3", { text: "\u{1F4C1} Open schema file" }));
+    dialog.append(el("p", { class: "hint", text: "Enter the path to an existing .tosd schema file (absolute or workspace-relative). It will be loaded into the editor, replacing the current schema." }));
+
+    const errBox = el("div", { class: "modal-err" });
+
+    const doOpen = async (input, openBtn) => {
+        const p = input.value.trim();
+        if (!p) { errBox.textContent = "Enter a file path."; return; }
+        errBox.textContent = "Opening\u2026";
+        if (openBtn) openBtn.disabled = true;
+        try {
+            const res = await fetch("open", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ path: p }),
+            });
+            const data = await res.json();
+            if (data.error) { errBox.textContent = data.error; if (openBtn) openBtn.disabled = false; return; }
+            state.path = data.path;
+            state.model = data.model;
+            state.dirty = false;
+            state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
+            renderAll();
+            schedulePreview();
+            overlay.remove();
+        } catch (e) { errBox.textContent = e.message; if (openBtn) openBtn.disabled = false; }
+    };
+
+    const pathRow = el("div", { class: "list-row" });
+    const pathInput = el("input", { type: "text", class: "mono", placeholder: "path/to/schema.tosd" });
+    pathInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doOpen(pathInput, openBtn); } });
+    pathRow.append(pathInput);
+    dialog.append(pathRow);
+    dialog.append(errBox);
+
+    const actions = el("div", { class: "modal-actions" });
+    actions.append(el("button", { text: "Cancel", onclick: () => overlay.remove() }));
+    const openBtn = el("button", { class: "primary", text: "Open" });
+    openBtn.addEventListener("click", () => doOpen(pathInput, openBtn));
+    actions.append(openBtn);
+    dialog.append(actions);
+
+    overlay.append(dialog);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.append(overlay);
+    pathInput.focus();
 }
 
 // --- Infer-from-TOML modal ---------------------------------------------

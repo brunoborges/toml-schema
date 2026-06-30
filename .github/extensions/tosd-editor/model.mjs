@@ -304,7 +304,7 @@ export function validateModel(model) {
         }
 
         if (p.pattern && p.type && p.type !== "string") {
-            issues.push({ level: "warning", path: label, message: "`pattern` only validates string values." });
+            issues.push({ level: "warning", path: label, message: `\`pattern\` is ignored on \`${p.type}\` — it only validates \`string\` values.` });
         }
 
         for (const ref of [p.typeof, p.itemtype]) {

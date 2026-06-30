@@ -59,52 +59,119 @@ code,
 /* Toolbar ---------------------------------------------------------------- */
 .toolbar {
     display: flex;
-    align-items: center;
-    gap: 10px;
+    flex-direction: column;
+    gap: 8px;
     padding: 10px 14px;
     border-bottom: 1px solid var(--tosd-border);
     background: linear-gradient(180deg, var(--tosd-bg), var(--tosd-subtle));
     flex: 0 0 auto;
 }
 
-.toolbar .title {
-    font-weight: var(--font-weight-semibold, 600);
+.tb-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    overflow-x: auto;
+    scrollbar-width: none;
+}
+
+.tb-row::-webkit-scrollbar {
+    display: none;
+}
+
+.tb-row-actions {
+    padding-top: 8px;
+    border-top: 1px solid var(--tosd-border-soft);
+}
+
+.tb-brand {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    letter-spacing: -0.01em;
+    gap: 8px;
+    flex: 0 0 auto;
+    white-space: nowrap;
 }
 
 .brand-mark {
     color: var(--tosd-accent);
-    font-size: 13px;
-    transform: translateY(0.5px);
-    filter: drop-shadow(0 1px 1px color-mix(in srgb, var(--tosd-accent) 40%, transparent));
+    font-size: 15px;
+    line-height: 1;
+    filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--tosd-accent) 45%, transparent));
 }
 
-.toolbar .path {
-    color: var(--tosd-muted);
+.brand-text {
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    color: var(--text-color-default);
+}
+
+.brand-text b {
+    font-weight: var(--font-weight-semibold, 700);
+}
+
+.tb-sep {
+    width: 1px;
+    align-self: stretch;
+    margin: 4px 0;
+    background: var(--tosd-border);
+    flex: 0 0 auto;
+}
+
+.tb-info {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.path-field {
+    color: var(--text-color-default);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    max-width: 36ch;
-    padding: 2px 8px;
-    background: var(--tosd-subtle);
-    border: 1px solid var(--tosd-border-soft);
-    border-radius: 20px;
+    flex: 1 1 320px;
+    min-width: 180px;
+    max-width: 520px;
+    padding: 5px 10px;
+    background: var(--tosd-bg);
+    border: 1px solid var(--tosd-border);
+    border-radius: 6px;
+    font-family: var(--font-mono, monospace);
     font-size: 12px;
+    box-shadow: var(--tosd-shadow);
+    cursor: text;
+}
+
+.path-field:read-only {
+    background: var(--tosd-subtle);
+}
+
+.path-field:focus {
+    outline: 2px solid var(--color-focus-outline, var(--tosd-accent));
+    outline-offset: 1px;
+    border-color: var(--tosd-accent);
 }
 
 .toolbar .spacer {
     flex: 1 1 auto;
+    min-width: 8px;
 }
 
 .status {
     font-size: 12px;
+    font-weight: 500;
     color: var(--tosd-muted);
     display: inline-flex;
     align-items: center;
     gap: 6px;
+    white-space: nowrap;
+    flex: 0 0 auto;
+    padding: 3px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--tosd-border-soft);
+    background: var(--tosd-bg);
 }
 
 .status::before {
@@ -113,15 +180,81 @@ code,
     height: 7px;
     border-radius: 50%;
     background: currentColor;
-    opacity: 0.7;
+    flex: 0 0 auto;
 }
 
 .status.dirty {
     color: var(--tosd-warn);
+    border-color: color-mix(in srgb, var(--tosd-warn) 35%, transparent);
+    background: color-mix(in srgb, var(--tosd-warn) 8%, transparent);
 }
 
 .status.saved {
     color: var(--tosd-ok);
+    border-color: color-mix(in srgb, var(--tosd-ok) 35%, transparent);
+    background: color-mix(in srgb, var(--tosd-ok) 8%, transparent);
+}
+
+/* Toolbar action buttons ------------------------------------------------- */
+.tb-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1 1 auto;
+    width: 100%;
+}
+
+.tb-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    height: 30px;
+    padding: 0 12px;
+    white-space: nowrap;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 500;
+    flex: 0 0 auto;
+}
+
+.btn .bi {
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.85;
+}
+
+.btn.ghost {
+    border-color: transparent;
+    background: transparent;
+    color: var(--tosd-muted);
+}
+
+.btn.ghost:hover {
+    background: var(--tosd-subtle);
+    border-color: var(--tosd-border);
+    color: var(--text-color-default);
+}
+
+.btn.accent {
+    border-color: color-mix(in srgb, var(--tosd-accent) 45%, var(--tosd-border));
+    background: color-mix(in srgb, var(--tosd-accent) 8%, var(--tosd-bg));
+    color: var(--tosd-accent);
+    font-weight: 600;
+}
+
+.btn.accent:hover {
+    background: color-mix(in srgb, var(--tosd-accent) 15%, var(--tosd-bg));
+    border-color: var(--tosd-accent);
+}
+
+.btn.accent .bi {
+    opacity: 1;
 }
 
 button {

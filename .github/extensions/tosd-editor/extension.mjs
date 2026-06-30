@@ -194,6 +194,23 @@ async function startServer(instanceId, entry) {
                 return sendJson(res, 200, { toml, issues, error });
             }
 
+            if (req.method === "POST" && path === "/open") {
+                const body = JSON.parse(await readBody(req));
+                const target = resolvePath((body.path || "").trim());
+                if (!target) return sendJson(res, 200, { error: "Enter a file path." });
+                if (!existsSync(target)) return sendJson(res, 200, { error: "File not found: " + target });
+                if (!target.endsWith(".tosd")) return sendJson(res, 200, { error: "Not a .tosd schema file: " + target });
+                try {
+                    const text = await readFile(target, "utf8");
+                    const model = parseDocument(text);
+                    entry.path = target;
+                    entry.model = model;
+                    return sendJson(res, 200, { ok: true, path: target, model });
+                } catch (e) {
+                    return sendJson(res, 200, { error: "Failed to parse " + target + ": " + e.message });
+                }
+            }
+
             if (req.method === "GET" && path === "/readfile") {
                 const target = resolvePath(url.searchParams.get("path"));
                 if (!target || !existsSync(target)) return sendJson(res, 200, { error: "file not found" });
