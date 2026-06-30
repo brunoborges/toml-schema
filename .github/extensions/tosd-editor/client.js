@@ -834,6 +834,7 @@ function boot() {
       <span class="spacer"></span>
       <span class="status" id="status"></span>
       <button id="new" title="Start a new, empty schema">New</button>
+      <button id="generate" title="Describe a config file and let Copilot generate the schema">&#10024; Generate</button>
       <button id="infer" title="Generate a schema from a sample TOML document">Infer from TOML</button>
       <button id="add-type">+ Type</button>
       <button id="add-element">+ Element</button>
@@ -878,6 +879,7 @@ function boot() {
     $("#save").addEventListener("click", save);
     $("#revert").addEventListener("click", load);
     $("#new").addEventListener("click", newSchema);
+    $("#generate").addEventListener("click", openGenerateModal);
     $("#infer").addEventListener("click", openInferModal);
     $("#add-type").addEventListener("click", () => { state.view = "types"; addNode(state.model.types, ["types"]); });
     $("#add-element").addEventListener("click", () => { state.view = "elements"; addNode(state.model.elements, ["elements"]); });
@@ -892,14 +894,44 @@ function boot() {
     $("#prop-close").addEventListener("click", clearSelection);
 
     $("#diagram").addEventListener("click", (e) => {
+        if (suppressDiagramClick) { suppressDiagramClick = false; return; }
         if (e.target.closest(".dg-box, .dg-root, .dg-comp, button")) return;
         if (state.selected) clearSelection();
     });
     document.addEventListener("keydown", (e) => {
         if (e.key === "Escape" && state.selected && !document.querySelector(".modal-overlay")) clearSelection();
     });
+    setupPanning();
 
     load();
+}
+
+// --- Pan / hand tool ----------------------------------------------------
+let suppressDiagramClick = false;
+function setupPanning() {
+    const dg = $("#diagram");
+    let pan = null;
+    dg.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        if (e.target.closest(".dg-box, .dg-root, .dg-comp, button, input, textarea")) return;
+        pan = { x: e.clientX, y: e.clientY, sl: dg.scrollLeft, st: dg.scrollTop, moved: false };
+        dg.classList.add("panning");
+        e.preventDefault();
+    });
+    window.addEventListener("mousemove", (e) => {
+        if (!pan) return;
+        const dx = e.clientX - pan.x;
+        const dy = e.clientY - pan.y;
+        if (Math.abs(dx) + Math.abs(dy) > 3) pan.moved = true;
+        dg.scrollLeft = pan.sl - dx;
+        dg.scrollTop = pan.st - dy;
+    });
+    window.addEventListener("mouseup", () => {
+        if (!pan) return;
+        if (pan.moved) suppressDiagramClick = true;
+        pan = null;
+        dg.classList.remove("panning");
+    });
 }
 
 function clearSelection() {
@@ -915,6 +947,74 @@ function newSchema() {
     state.selected = "__meta__";
     markDirty();
     renderAll();
+}
+
+// --- Generate-with-Copilot modal ---------------------------------------
+function openGenerateModal() {
+    const existing = $("#generate-modal");
+    if (existing) existing.remove();
+
+    const overlay = el("div", { class: "modal-overlay", id: "generate-modal" });
+    const dialog = el("div", { class: "modal" });
+    dialog.append(el("h3", { text: "\u2728 Generate schema with Copilot" }));
+    dialog.append(el("p", { class: "hint", text: "Describe the configuration file you want a schema for \u2014 its sections, fields, and any constraints. Copilot will draft the TOML Schema. The result replaces the current schema (not saved until you click Save)." }));
+
+    const ta = el("textarea", {
+        class: "modal-textarea",
+        placeholder: "e.g. A web service config with a [server] section (host string, port integer 1-65535), a [database] table with url and pool_size, an optional [logging] section with level one of debug/info/warn/error, and a list of [[routes]] each having path and handler.",
+    });
+    dialog.append(ta);
+
+    const errBox = el("div", { class: "modal-err" });
+    dialog.append(errBox);
+
+    const actions = el("div", { class: "modal-actions" });
+    const cancelBtn = el("button", { text: "Cancel", onclick: () => overlay.remove() });
+    const genBtn = el("button", { class: "primary", text: "Generate" });
+    genBtn.addEventListener("click", async () => {
+        const description = ta.value.trim();
+        if (!description) { errBox.textContent = "Describe the configuration first."; return; }
+        genBtn.disabled = true;
+        cancelBtn.disabled = true;
+        ta.disabled = true;
+        errBox.className = "modal-err working";
+        errBox.textContent = "Asking Copilot\u2026 this runs a Copilot turn and may take a moment.";
+        try {
+            const res = await fetch("generate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ description }),
+            });
+            const data = await res.json();
+            if (data.error) {
+                errBox.className = "modal-err";
+                errBox.textContent = data.error;
+                genBtn.disabled = false;
+                cancelBtn.disabled = false;
+                ta.disabled = false;
+                return;
+            }
+            state.model = data.model;
+            state.view = "elements";
+            state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
+            markDirty();
+            renderAll();
+            overlay.remove();
+        } catch (e) {
+            errBox.className = "modal-err";
+            errBox.textContent = e.message;
+            genBtn.disabled = false;
+            cancelBtn.disabled = false;
+            ta.disabled = false;
+        }
+    });
+    actions.append(cancelBtn, genBtn);
+    dialog.append(actions);
+
+    overlay.append(dialog);
+    overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.append(overlay);
+    ta.focus();
 }
 
 // --- Infer-from-TOML modal ---------------------------------------------

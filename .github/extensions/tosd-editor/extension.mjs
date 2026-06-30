@@ -69,8 +69,7 @@ async function findDefaultTosd() {
     return join(base, "untitled.tosd");
 }
 
-async function loadModelForPath(filePath) {
-    if (filePath && existsSync(filePath)) {
+async function loadModelForPath(filePath) {    if (filePath && existsSync(filePath)) {
         const text = await readFile(filePath, "utf8");
         try {
             return parseDocument(text);
@@ -82,7 +81,49 @@ async function loadModelForPath(filePath) {
     return blankModel();
 }
 
-// --- Static + JSON HTTP server -----------------------------------------
+// --- Copilot generation -------------------------------------------------
+// Build a focused instruction that asks the agent to emit a .tosd document.
+function buildGeneratePrompt(desc) {
+    return [
+        "I'm using the TOML Schema visual editor and want to generate a TOML Schema definition (.tosd) document for the configuration file described below.",
+        "",
+        "Description:",
+        desc.trim(),
+        "",
+        "Requirements:",
+        "- Reply with ONLY the .tosd document inside a single ```toml code block — no commentary before or after.",
+        '- Include a [toml-schema] table with version = "1.0.0".',
+        "- Describe the document's top-level structure under [elements]; use nested tables like [elements.<name>.<child>] for sub-tables.",
+        '- Put reusable definitions under [types.<name>] and reference them with typeof = "types.<name>" (use itemtype = "types.<name>" for arrays of tables).',
+        "- Use only TOSD property keys: type (string, integer, float, boolean, datetime, date, time, array, table, collection), optional, default, min, max, minlength, maxlength, pattern, allowedvalues, arraytype, itemtype, items, oneof, anyof.",
+        "- Mark fields that may be omitted with optional = true; everything is required by default.",
+    ].join("\n");
+}
+
+function extractTosd(text) {
+    if (!text) return null;
+    const fence = /```(?:toml|tosd)?\s*\r?\n([\s\S]*?)```/i.exec(text);
+    if (fence) return fence[1].trim();
+    if (/\[toml-schema\]/.test(text) && /\[elements\]/.test(text)) return text.trim();
+    return null;
+}
+
+async function generateFromDescription(description) {
+    const desc = (description || "").trim();
+    if (!desc) throw new Error("Describe the configuration first.");
+    const ev = await session.sendAndWait({ prompt: buildGeneratePrompt(desc) }, 180000);
+    const text = ev && ev.data ? (ev.data.content || "") : "";
+    const tosd = extractTosd(text);
+    if (!tosd) {
+        const e = new Error("Copilot did not return a schema. Try rephrasing or adding detail.");
+        e.raw = text.slice(0, 500);
+        throw e;
+    }
+    const model = parseDocument(tosd);
+    return { model, tosd };
+}
+
+
 function readBody(req) {
     return new Promise((resolveBody, reject) => {
         let data = "";
@@ -179,6 +220,16 @@ async function startServer(instanceId, entry) {
                 }
             }
 
+            if (req.method === "POST" && path === "/generate") {
+                const body = JSON.parse(await readBody(req));
+                try {
+                    const { model, tosd } = await generateFromDescription(body.description);
+                    return sendJson(res, 200, { model, tosd });
+                } catch (e) {
+                    return sendJson(res, 200, { error: e.message, raw: e.raw });
+                }
+            }
+
             if (req.method === "POST" && path === "/save") {
                 const model = JSON.parse(await readBody(req));
                 entry.model = model;
@@ -269,6 +320,37 @@ const canvas = createCanvas({
                 }
                 if (!tomlText) throw new CanvasError("bad_input", "Provide either `path` or `toml`.");
                 entry.model = inferModelFromToml(tomlText);
+                return {
+                    path: entry.path,
+                    toml: serializeDocument(entry.model),
+                    model: entry.model,
+                    issues: validateModel(entry.model),
+                };
+            },
+        },
+        {
+            name: "generate_from_description",
+            description: "Generate a TOML Schema from a natural-language description of a configuration file (uses Copilot) and load it into the editor, replacing the current schema.",
+            inputSchema: {
+                type: "object",
+                properties: {
+                    description: { type: "string", description: "Natural-language description of the configuration file and its fields." },
+                },
+                required: ["description"],
+                additionalProperties: false,
+            },
+            handler: async (ctx) => {
+                const entry = instances.get(ctx.instanceId);
+                if (!entry) throw new CanvasError("not_open", "Canvas instance is not open.");
+                const desc = ctx.input && ctx.input.description;
+                if (!desc) throw new CanvasError("bad_input", "Provide a `description`.");
+                let result;
+                try {
+                    result = await generateFromDescription(desc);
+                } catch (e) {
+                    throw new CanvasError("generate_failed", e.message);
+                }
+                entry.model = result.model;
                 return {
                     path: entry.path,
                     toml: serializeDocument(entry.model),
