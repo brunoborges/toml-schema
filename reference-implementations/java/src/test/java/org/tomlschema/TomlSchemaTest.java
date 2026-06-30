@@ -677,6 +677,39 @@ class TomlSchemaTest {
     }
 
     @Test
+    void rejectsMalformedLengthSchemas() throws IOException {
+        Path negativeLengthSchema = write("negative-minlength.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "string"
+                minlength = -1
+                """);
+        Path negativeMaxLengthSchema = write("negative-maxlength.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "string"
+                maxlength = -1
+                """);
+        Path invertedLengthSchema = write("inverted-length.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "string"
+                minlength = 5
+                maxlength = 2
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(negativeLengthSchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(negativeMaxLengthSchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(invertedLengthSchema));
+    }
+
+    @Test
     void ignoresReservedTomlSchemaMetadataUnlessSchemaDefinesIt() throws IOException {
         Path schema = write("metadata-ignored.tosd", """
                 [toml-schema]

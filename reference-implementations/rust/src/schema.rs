@@ -387,6 +387,13 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             "{name} can only define keypattern when type is collection"
         ));
     }
+    if let (Some(min), Some(max)) = (min_length, max_length) {
+        if min > max {
+            return Err(format!(
+                "{name} minlength must not be greater than maxlength"
+            ));
+        }
+    }
     let min = property_value(table, "min").cloned();
     let max = property_value(table, "max").cloned();
     validate_range_constraints(
