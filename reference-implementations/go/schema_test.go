@@ -298,6 +298,96 @@ typeof = "types.item"
 	}
 }
 
+func TestValidatesCollectionKeysAgainstKeyPattern(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "keypattern.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.serverType]
+type = "table"
+
+    [types.serverType.ip]
+    type = "string"
+
+[elements.servers]
+type = "collection"
+typeof = "types.serverType"
+keypattern = "^server_[0-9]+$"
+`)
+	validDocument := write(t, dir, "valid.toml", `
+[servers.server_01]
+ip = "10.0.0.1"
+
+[servers.server_02]
+ip = "10.0.0.2"
+`)
+	invalidDocument := write(t, dir, "invalid.toml", `
+[servers.server_01]
+ip = "10.0.0.1"
+
+[servers.alpha]
+ip = "10.0.0.2"
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(validDocument); !result.Valid() {
+		t.Fatalf("expected valid keys to pass, got %#v", result.Errors)
+	}
+	result := schema.ValidateFile(invalidDocument)
+	if result.Valid() {
+		t.Fatal("expected non-matching key to be rejected")
+	}
+	if !hasPath(result, "$.servers.alpha") {
+		t.Fatalf("expected keypattern error on $.servers.alpha, got %#v", result.Errors)
+	}
+	if hasPath(result, "$.servers.server_01") {
+		t.Fatalf("did not expect error on matching key, got %#v", result.Errors)
+	}
+}
+
+func TestRejectsKeyPatternOnNonCollection(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "keypattern-scalar.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+type = "string"
+keypattern = "^[a-z]+$"
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected keypattern on a scalar to be rejected")
+	}
+}
+
+func TestRejectsInvalidKeyPatternRegex(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "keypattern-invalid-regex.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.itemType]
+type = "table"
+
+    [types.itemType.value]
+    type = "string"
+
+[elements.items]
+type = "collection"
+typeof = "types.itemType"
+keypattern = "("
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected invalid keypattern regex to be rejected")
+	}
+}
+
 func TestRejectsOccurrenceAliases(t *testing.T) {
 	dir := t.TempDir()
 	aliases := []string{"minoccurs", "maxoccurs"}

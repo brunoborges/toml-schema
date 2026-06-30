@@ -22,11 +22,11 @@ metadata-table    = toml-table-header-toml-schema-meta *toml-keyval
 schema-definition = schema-definition-table *definition-property *schema-definition
 
 schema-key = type / typeof / arraytype / itemtype / items / oneof / anyof
-           / allowedvalues / pattern / optional / default / min / max
+           / allowedvalues / pattern / keypattern / optional / default / min / max
            / minlength / maxlength
 
 definition-property = type / typeof / arraytype / itemtype / items / oneof / anyof
-                    / allowedvalues / pattern / optional / default / min / max
+                    / allowedvalues / pattern / keypattern / optional / default / min / max
                     / minlength / maxlength
 
 version       = "version" keyval-sep semver-string
@@ -39,6 +39,7 @@ oneof         = "oneof" keyval-sep type-reference-array
 anyof         = "anyof" keyval-sep type-reference-array
 allowedvalues = "allowedvalues" keyval-sep toml-array
 pattern       = "pattern" keyval-sep toml-string
+keypattern    = "keypattern" keyval-sep toml-string ; collection dynamic-entry keys must match this regular expression
 optional      = "optional" keyval-sep toml-boolean
 default       = "default" keyval-sep toml-value
 min           = "min" keyval-sep range-boundary

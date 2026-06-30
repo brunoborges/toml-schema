@@ -97,6 +97,7 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "items",
     "allowedvalues",
     "pattern",
+    "keypattern",
     "optional",
     "default",
     "min",
@@ -126,6 +127,7 @@ pub struct Definition {
     optional: bool,
     allowed_values: Vec<Value>,
     pattern: Option<Regex>,
+    key_pattern: Option<Regex>,
     min: Option<Value>,
     max: Option<Value>,
     min_length: Option<i64>,
@@ -325,6 +327,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let items = get_string_array_values(name, table, "items")?;
     let optional = get_bool(name, table, "optional")?.unwrap_or(false);
     let pattern = get_pattern(name, table)?;
+    let key_pattern = get_pattern_key(name, table, "keypattern")?;
     let min_length = get_unsigned_integer(name, table, "minlength")?;
     let max_length = get_unsigned_integer(name, table, "maxlength")?;
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
@@ -379,6 +382,11 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             ));
         }
     }
+    if key_pattern.is_some() && type_name != Some(SchemaType::Collection) {
+        return Err(format!(
+            "{name} can only define keypattern when type is collection"
+        ));
+    }
     let min = property_value(table, "min").cloned();
     let max = property_value(table, "max").cloned();
     validate_range_constraints(
@@ -400,6 +408,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         optional,
         allowed_values,
         pattern,
+        key_pattern,
         min,
         max,
         min_length,
@@ -641,6 +650,14 @@ impl<'schema> Validator<'schema> {
                 continue;
             }
             dynamic_entries += 1;
+            if let Some(key_pattern) = &definition.key_pattern {
+                if !matches_entire_string(key_pattern, key) {
+                    self.add(
+                        &child_path,
+                        &format!("key does not match keypattern {}", key_pattern.as_str()),
+                    );
+                }
+            }
             let reference = match definition.reference.as_deref() {
                 Some(reference) => reference,
                 None => {
@@ -856,6 +873,7 @@ impl<'schema> Validator<'schema> {
                 definition.allowed_values.clone()
             },
             pattern: definition.pattern.clone().or(referenced.pattern.clone()),
+            key_pattern: definition.key_pattern.clone().or(referenced.key_pattern.clone()),
             min: definition.min.clone().or(referenced.min.clone()),
             max: definition.max.clone().or(referenced.max.clone()),
             min_length: definition.min_length.or(referenced.min_length),
@@ -1175,12 +1193,16 @@ fn get_unsigned_integer(name: &str, table: &Table, key: &str) -> Result<Option<i
 }
 
 fn get_pattern(name: &str, table: &Table) -> Result<Option<Regex>, String> {
-    let Some(pattern) = get_string(name, table, "pattern")? else {
+    get_pattern_key(name, table, "pattern")
+}
+
+fn get_pattern_key(name: &str, table: &Table, key: &str) -> Result<Option<Regex>, String> {
+    let Some(pattern) = get_string(name, table, key)? else {
         return Ok(None);
     };
     Regex::new(&pattern)
         .map(Some)
-        .map_err(|error| format!("{name} has invalid pattern: {error}"))
+        .map_err(|error| format!("{name} has invalid {key}: {error}"))
 }
 
 fn get_array_values(name: &str, table: &Table, key: &str) -> Result<Vec<Value>, String> {

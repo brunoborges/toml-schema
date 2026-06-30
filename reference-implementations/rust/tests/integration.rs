@@ -412,6 +412,109 @@ typeof = "types.item"
 }
 
 #[test]
+fn validates_collection_keys_against_key_pattern() {
+    let directory = tempfile_dir("keypattern");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.serverType]
+type = "table"
+
+    [types.serverType.ip]
+    type = "string"
+
+[elements.servers]
+type = "collection"
+typeof = "types.serverType"
+keypattern = "^server_[0-9]+$"
+"#,
+    );
+    let valid_document = write_file(
+        &directory,
+        "valid.toml",
+        r#"
+[servers.server_01]
+ip = "10.0.0.1"
+
+[servers.server_02]
+ip = "10.0.0.2"
+"#,
+    );
+    let invalid_document = write_file(
+        &directory,
+        "invalid.toml",
+        r#"
+[servers.server_01]
+ip = "10.0.0.1"
+
+[servers.alpha]
+ip = "10.0.0.2"
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load schema");
+    assert!(
+        schema.validate_file(&valid_document).valid(),
+        "expected matching keys to pass"
+    );
+    let result = schema.validate_file(&invalid_document);
+    assert!(!result.valid(), "expected non-matching key to be rejected");
+    assert!(has_path(&result, "$.servers.alpha"));
+    assert!(!has_path(&result, "$.servers.server_01"));
+}
+
+#[test]
+fn rejects_key_pattern_on_non_collection() {
+    let directory = tempfile_dir("keypattern-scalar");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+type = "string"
+keypattern = "^[a-z]+$"
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("expected keypattern on scalar rejection");
+    assert!(error.contains("keypattern"));
+}
+
+#[test]
+fn rejects_invalid_key_pattern_regex() {
+    let directory = tempfile_dir("keypattern-invalid-regex");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.itemType]
+type = "table"
+
+    [types.itemType.value]
+    type = "string"
+
+[elements.items]
+type = "collection"
+typeof = "types.itemType"
+keypattern = "("
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("expected invalid keypattern regex rejection");
+    assert!(error.contains("invalid keypattern"));
+}
+
+#[test]
 fn rejects_occurrence_aliases() {
     let directory = tempfile_dir("occurrence-aliases");
     for alias in ["minoccurs", "maxoccurs"] {

@@ -567,6 +567,11 @@ function renderEditor() {
         box.append(textField("pattern", "Pattern (regex)", p.pattern || "", (v) => setProp(p, "pattern", v), true,
             "PCRE-compatible regular expression."));
     }
+    // collection key pattern
+    if (t === "collection") {
+        box.append(textField("keypattern", "Key pattern (regex)", p.keypattern || "", (v) => setProp(p, "keypattern", v), true,
+            "PCRE-compatible regex every dynamic entry key must match."));
+    }
     if (SIMPLE_TYPES.includes(t) || t === "array") {
         box.append(listField("allowedvalues", "Allowed values (enum)", p.allowedvalues || [],
             (arr) => setListProp(p, "allowedvalues", arr), false,
@@ -619,7 +624,7 @@ function renderEditor() {
 function advancedAll(p) {
     const wrap = el("div");
     wrap.append(el("div", { class: "section-title", text: "All properties" }));
-    const allProps = ["type", "typeof", "arraytype", "itemtype", "pattern", "min", "max", "default"];
+    const allProps = ["type", "typeof", "arraytype", "itemtype", "pattern", "keypattern", "min", "max", "default"];
     for (const key of allProps) {
         wrap.append(textField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v), true));
     }
