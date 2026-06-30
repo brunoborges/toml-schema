@@ -132,9 +132,6 @@ min = 2026-01-01T00:00:00Z
 	}
 }
 
-<<<<<<< HEAD
-func TestPatternMatchesUnanchored(t *testing.T) {
-=======
 func TestRejectsMalformedLengthSchemas(t *testing.T) {
 	dir := t.TempDir()
 	cases := map[string]string{
@@ -174,8 +171,7 @@ maxlength = 2
 	}
 }
 
-func TestPatternMustMatchEntireString(t *testing.T) {
->>>>>>> origin/main
+func TestPatternMatchesUnanchored(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]

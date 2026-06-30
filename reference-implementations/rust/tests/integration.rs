@@ -218,10 +218,6 @@ min = 2026-01-01T00:00:00Z
 }
 
 #[test]
-<<<<<<< HEAD
-fn pattern_matches_unanchored() {
-    let directory = tempfile_dir("pattern-unanchored");
-=======
 fn rejects_malformed_length_schemas() {
     let directory = tempfile_dir("malformed-lengths");
     let cases = [
@@ -268,9 +264,8 @@ maxlength = 2
 }
 
 #[test]
-fn pattern_must_match_entire_string() {
-    let directory = tempfile_dir("pattern-entire-string");
->>>>>>> origin/main
+fn pattern_matches_unanchored() {
+    let directory = tempfile_dir("pattern-unanchored");
     let schema_path = write_file(
         &directory,
         "schema.tosd",
