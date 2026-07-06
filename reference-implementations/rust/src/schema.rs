@@ -1027,7 +1027,12 @@ fn datetime_tuple(value: &Datetime) -> (u16, u8, u8, u8, u8, u8, u32) {
         None => (0, 0, 0),
     };
     let (hour, minute, second, nanosecond) = match value.time {
-        Some(time) => (time.hour, time.minute, time.second, time.nanosecond),
+        Some(time) => (
+            time.hour,
+            time.minute,
+            time.second.unwrap_or(0),
+            time.nanosecond.unwrap_or(0),
+        ),
         None => (0, 0, 0, 0),
     };
     (year, month, day, hour, minute, second, nanosecond)
@@ -1040,7 +1045,7 @@ fn datetime_to_utc_minutes(value: &Datetime, offset: Offset) -> Option<i64> {
     let seconds = (days * 86_400)
         + (time.hour as i64) * 3600
         + (time.minute as i64) * 60
-        + (time.second as i64);
+        + (time.second.unwrap_or(0) as i64);
     let offset_minutes = match offset {
         Offset::Z => 0i64,
         Offset::Custom { minutes } => minutes as i64,

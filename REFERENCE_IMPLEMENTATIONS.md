@@ -219,7 +219,7 @@ The current reference implementations parse TOML with libraries that target TOML
 
 - Java: [Tomlj](https://github.com/tomlj/tomlj) `1.1.1`, which documents support up to TOML 1.0.0.
 - Go: [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1`, which targets TOML 1.0.
-- Rust: [`toml`](https://crates.io/crates/toml) `0.8`, which targets TOML 1.0.
+- Rust: [`toml`](https://crates.io/crates/toml) `1`, which targets TOML 1.0.
 
 For that reason, the reference implementations' current effective parser profile is **TOML 1.0**. TOML 1.1 syntax (for example multi-line inline tables, trailing commas in inline tables, omitted seconds in date-times, or the `\e` and `\xHH` string escapes) is not guaranteed to parse in either reference implementation until the underlying TOML parser declares TOML 1.1 conformance.
 
