@@ -21,6 +21,16 @@ func TestValidatesCheckedInExample(t *testing.T) {
 	}
 }
 
+func TestLoadsExamplesMigratedFromReferenceSpecialization(t *testing.T) {
+	for _, name := range []string{"hugo.tosd", "netlify.tosd"} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := LoadSchema(filepath.Join(fixture("examples"), name)); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestAcceptsStringDescriptionsAndRejectsOtherValues(t *testing.T) {
 	dir := t.TempDir()
 	describedSchema := write(t, dir, "described.tosd", `
@@ -451,6 +461,70 @@ typeof = "types.nameType"
 
 	if _, err := LoadSchema(schemaPath); err == nil {
 		t.Fatal("expected the retired typeof property to be rejected")
+	}
+}
+
+func TestAllowsOptionalAndDescriptionOnNamedTypeReference(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "named-reference-metadata.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.nameType]
+type = "string"
+pattern = "^[a-z]+$"
+
+[elements.name]
+type = "types.nameType"
+description = "Optional display name."
+optional = true
+`)
+	documentPath := write(t, dir, "named-reference-metadata.toml", "# name is optional\n")
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(documentPath); !result.Valid() {
+		t.Fatalf("expected optional named reference to validate: %#v", result.Errors)
+	}
+}
+
+func TestRejectsConstraintsAndChildrenOnNamedTypeReference(t *testing.T) {
+	invalidSiblings := []string{
+		`arraytype = "string"`,
+		`itemtype = "string"`,
+		`items = [ "string" ]`,
+		`allowedvalues = [ "name" ]`,
+		`pattern = "^[a-z]+$"`,
+		`keypattern = "^[a-z]+$"`,
+		`min = 1`,
+		`max = 1`,
+		`minlength = 1`,
+		`maxlength = 1`,
+		`default = "name"`,
+		"[elements.name.child]\ntype = \"string\"",
+	}
+
+	for index, invalidSibling := range invalidSiblings {
+		t.Run(fmt.Sprintf("sibling-%d", index), func(t *testing.T) {
+			dir := t.TempDir()
+			schemaPath := write(t, dir, "named-reference-constraint.tosd", fmt.Sprintf(`
+[toml-schema]
+version = "1.0.0"
+
+[types.nameType]
+type = "string"
+
+[elements.name]
+type = "types.nameType"
+%s
+`, invalidSibling))
+
+			if _, err := LoadSchema(schemaPath); err == nil || !strings.Contains(err.Error(), "named type reference") {
+				t.Fatalf("expected named reference sibling rejection, got %v", err)
+			}
+		})
 	}
 }
 

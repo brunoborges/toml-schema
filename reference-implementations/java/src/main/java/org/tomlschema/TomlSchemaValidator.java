@@ -267,32 +267,25 @@ final class TomlSchemaValidator {
             return definition;
         }
         SchemaDefinition referenced = resolveReference(definition.reference(), seenReferences);
-        SchemaType type = definition.type() == null ? referenced.type() : definition.type();
-        Map<String, SchemaDefinition> children = referenced.children();
-        if (!definition.children().isEmpty()) {
-            java.util.LinkedHashMap<String, SchemaDefinition> merged = new java.util.LinkedHashMap<>(referenced.children());
-            merged.putAll(definition.children());
-            children = merged;
-        }
         return new SchemaDefinition(
                 definition.name(),
-                type,
+                referenced.type(),
                 null,
                 definition.description(),
-                definition.arrayType() == null ? referenced.arrayType() : definition.arrayType(),
-                definition.itemReference() == null ? referenced.itemReference() : definition.itemReference(),
-                definition.items().isEmpty() ? referenced.items() : definition.items(),
+                referenced.arrayType(),
+                referenced.itemReference(),
+                referenced.items(),
                 definition.optional() || referenced.optional(),
-                definition.allowedValues().isEmpty() ? referenced.allowedValues() : definition.allowedValues(),
-                definition.pattern() == null ? referenced.pattern() : definition.pattern(),
-                definition.keyPattern() == null ? referenced.keyPattern() : definition.keyPattern(),
-                definition.min() == null ? referenced.min() : definition.min(),
-                definition.max() == null ? referenced.max() : definition.max(),
-                definition.minLength() == null ? referenced.minLength() : definition.minLength(),
-                definition.maxLength() == null ? referenced.maxLength() : definition.maxLength(),
-                definition.oneOf().isEmpty() ? referenced.oneOf() : definition.oneOf(),
-                definition.anyOf().isEmpty() ? referenced.anyOf() : definition.anyOf(),
-                children
+                referenced.allowedValues(),
+                referenced.pattern(),
+                referenced.keyPattern(),
+                referenced.min(),
+                referenced.max(),
+                referenced.minLength(),
+                referenced.maxLength(),
+                referenced.oneOf(),
+                referenced.anyOf(),
+                referenced.children()
         );
     }
 

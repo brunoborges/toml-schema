@@ -37,6 +37,8 @@ var definitionKeys = map[string]bool{
 	"oneof": true, "anyof": true,
 }
 
+var namedReferenceKeys = map[string]bool{"type": true, "description": true, "optional": true}
+
 const currentTomlSchemaVersion = "1.0.0"
 
 var semverPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
@@ -244,6 +246,13 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 			typeName = builtInType
 		} else {
 			reference = normalizeReference(typeSelector)
+		}
+	}
+	if reference != "" {
+		for key := range table {
+			if !namedReferenceKeys[key] {
+				return Definition{}, fmt.Errorf("%s named type reference cannot define %s", name, key)
+			}
 		}
 	}
 	description, err := getString(table, "description")
@@ -726,34 +735,22 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 	if err != nil {
 		return Definition{}, err
 	}
-	typeName := definition.typeName
-	if typeName == "" {
-		typeName = referenced.typeName
-	}
-	children := referenced.children
-	if len(definition.children) > 0 {
-		children = map[string]Definition{}
-		for key, child := range referenced.children {
-			children[key] = child
-		}
-		for key, child := range definition.children {
-			children[key] = child
-		}
-	}
 	return Definition{
-		name: definition.name, typeName: typeName, description: definition.description,
-		arrayType:     firstSchemaType(definition.arrayType, referenced.arrayType),
-		itemReference: firstNonEmpty(definition.itemReference, referenced.itemReference),
-		items:         firstStringSlice(definition.items, referenced.items),
+		name: definition.name, typeName: referenced.typeName, description: definition.description,
+		arrayType:     referenced.arrayType,
+		itemReference: referenced.itemReference,
+		items:         referenced.items,
 		optional:      definition.optional || referenced.optional,
-		allowedValues: firstAnySlice(definition.allowedValues, referenced.allowedValues),
-		pattern:       firstPattern(definition.pattern, referenced.pattern),
-		keyPattern:    firstPattern(definition.keyPattern, referenced.keyPattern),
-		min:           firstAny(definition.min, referenced.min), max: firstAny(definition.max, referenced.max),
-		minLength: firstIntPointer(definition.minLength, referenced.minLength),
-		maxLength: firstIntPointer(definition.maxLength, referenced.maxLength),
-		oneOf:     firstStringSlice(definition.oneOf, referenced.oneOf),
-		anyOf:     firstStringSlice(definition.anyOf, referenced.anyOf), children: children,
+		allowedValues: referenced.allowedValues,
+		pattern:       referenced.pattern,
+		keyPattern:    referenced.keyPattern,
+		min:           referenced.min,
+		max:           referenced.max,
+		minLength:     referenced.minLength,
+		maxLength:     referenced.maxLength,
+		oneOf:         referenced.oneOf,
+		anyOf:         referenced.anyOf,
+		children:      referenced.children,
 	}, nil
 }
 
@@ -1106,53 +1103,4 @@ func compareLocalTime(left, right toml.LocalTime) int {
 		}
 	}
 	return 0
-}
-
-func firstNonEmpty(left, right string) string {
-	if left != "" {
-		return left
-	}
-	return right
-}
-
-func firstSchemaType(left, right SchemaType) SchemaType {
-	if left != "" {
-		return left
-	}
-	return right
-}
-
-func firstAny(left, right any) any {
-	if left != nil {
-		return left
-	}
-	return right
-}
-
-func firstPattern(left, right *regexp.Regexp) *regexp.Regexp {
-	if left != nil {
-		return left
-	}
-	return right
-}
-
-func firstIntPointer(left, right *int) *int {
-	if left != nil {
-		return left
-	}
-	return right
-}
-
-func firstAnySlice(left, right []any) []any {
-	if len(left) > 0 {
-		return left
-	}
-	return right
-}
-
-func firstStringSlice(left, right []string) []string {
-	if len(left) > 0 {
-		return left
-	}
-	return right
 }

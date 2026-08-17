@@ -29,6 +29,13 @@ class TomlSchemaTest {
     }
 
     @Test
+    void loadsExamplesMigratedFromReferenceSpecialization() {
+        for (String schema : List.of("examples/hugo.tosd", "examples/netlify.tosd")) {
+            assertDoesNotThrow(() -> TomlSchema.load(fixture(schema)), schema);
+        }
+    }
+
+    @Test
     void acceptsStringDescriptionsAndRejectsOtherValues() throws IOException {
         Path describedSchema = write("described.tosd", """
                 [toml-schema]
@@ -258,6 +265,61 @@ class TomlSchemaTest {
                 """);
 
         assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
+
+    @Test
+    void allowsOptionalAndDescriptionOnNamedTypeReference() throws IOException {
+        Path schema = write("named-reference-metadata.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.nameType]
+                type = "string"
+                pattern = "^[a-z]+$"
+
+                [elements.name]
+                type = "types.nameType"
+                description = "Optional display name."
+                optional = true
+                """);
+        Path document = write("named-reference-metadata.toml", "# name is optional\n");
+
+        assertTrue(TomlSchema.load(schema).validate(document).isValid());
+    }
+
+    @Test
+    void rejectsConstraintsAndChildrenOnNamedTypeReference() throws IOException {
+        List<String> invalidSiblings = List.of(
+                "arraytype = \"string\"",
+                "itemtype = \"string\"",
+                "items = [ \"string\" ]",
+                "allowedvalues = [ \"name\" ]",
+                "pattern = \"^[a-z]+$\"",
+                "keypattern = \"^[a-z]+$\"",
+                "min = 1",
+                "max = 1",
+                "minlength = 1",
+                "maxlength = 1",
+                "default = \"name\"",
+                "[elements.name.child]\ntype = \"string\""
+        );
+
+        for (String invalidSibling : invalidSiblings) {
+            Path schema = write("named-reference-constraint.tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [types.nameType]
+                    type = "string"
+
+                    [elements.name]
+                    type = "types.nameType"
+                    %s
+                    """.formatted(invalidSibling));
+
+            SchemaException error = assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+            assertTrue(error.getMessage().contains("named type reference"), error::getMessage);
+        }
     }
 
     @Test

@@ -59,6 +59,15 @@ fn validates_checked_in_example() {
 }
 
 #[test]
+fn loads_examples_migrated_from_reference_specialization() {
+    for name in ["hugo.tosd", "netlify.tosd"] {
+        let path = fixture("examples").join(name);
+        Schema::load(&path)
+            .unwrap_or_else(|error| panic!("failed to load {}: {error}", path.display()));
+    }
+}
+
+#[test]
 fn accepts_string_descriptions_and_rejects_other_values() {
     let directory = tempfile_dir("descriptions");
     let described_schema = write_file(
@@ -614,6 +623,82 @@ typeof = "types.nameType"
 
     let error = Schema::load(&schema_path).expect_err("expected retired typeof rejection");
     assert!(error.contains("typeof"));
+}
+
+#[test]
+fn allows_optional_and_description_on_named_type_reference() {
+    let directory = tempfile_dir("named-reference-metadata");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.nameType]
+type = "string"
+pattern = "^[a-z]+$"
+
+[elements.name]
+type = "types.nameType"
+description = "Optional display name."
+optional = true
+"#,
+    );
+    let document_path = write_file(&directory, "document.toml", "# name is optional\n");
+
+    let schema = Schema::load(&schema_path).expect("expected named reference metadata to load");
+    let result = schema.validate_file(&document_path);
+    assert!(
+        result.valid(),
+        "expected optional named reference to validate: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn rejects_constraints_and_children_on_named_type_reference() {
+    let invalid_siblings = [
+        r#"arraytype = "string""#,
+        r#"itemtype = "string""#,
+        r#"items = [ "string" ]"#,
+        r#"allowedvalues = [ "name" ]"#,
+        r#"pattern = "^[a-z]+$""#,
+        r#"keypattern = "^[a-z]+$""#,
+        "min = 1",
+        "max = 1",
+        "minlength = 1",
+        "maxlength = 1",
+        r#"default = "name""#,
+        "[elements.name.child]\ntype = \"string\"",
+    ];
+
+    for (index, invalid_sibling) in invalid_siblings.iter().enumerate() {
+        let directory = tempfile_dir(&format!("named-reference-constraint-{index}"));
+        let schema_path = write_file(
+            &directory,
+            "schema.tosd",
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.nameType]
+type = "string"
+
+[elements.name]
+type = "types.nameType"
+{invalid_sibling}
+"#
+            ),
+        );
+
+        let error = Schema::load(&schema_path).expect_err("expected named reference rejection");
+        assert!(
+            error.contains("named type reference"),
+            "unexpected error for {invalid_sibling}: {error}"
+        );
+    }
 }
 
 #[test]

@@ -327,6 +327,13 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         .as_deref()
         .filter(|_| type_name.is_none())
         .map(|selector| normalize_reference(selector.to_string()));
+    if reference.is_some() {
+        for key in table.keys() {
+            if !matches!(key.as_str(), "type" | "description" | "optional") {
+                return Err(format!("{name} named type reference cannot define {key}"));
+            }
+        }
+    }
     let description = get_string(name, table, "description")?;
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
@@ -862,57 +869,25 @@ impl<'schema> Validator<'schema> {
         }
         let reference = definition.reference.as_deref().unwrap();
         let referenced = self.resolve_reference(reference, seen)?;
-        let type_name = definition.type_name.or(referenced.type_name);
-        let children = if definition.children.is_empty() {
-            referenced.children.clone()
-        } else {
-            let mut merged = referenced.children.clone();
-            for (key, child) in &definition.children {
-                merged.insert(key.clone(), child.clone());
-            }
-            merged
-        };
         Ok(Definition {
             name: definition.name.clone(),
-            type_name,
+            type_name: referenced.type_name,
             reference: None,
             description: definition.description.clone(),
-            array_type: definition.array_type.or(referenced.array_type),
-            item_reference: definition
-                .item_reference
-                .clone()
-                .or(referenced.item_reference.clone()),
-            items: if definition.items.is_empty() {
-                referenced.items.clone()
-            } else {
-                definition.items.clone()
-            },
+            array_type: referenced.array_type,
+            item_reference: referenced.item_reference,
+            items: referenced.items,
             optional: definition.optional || referenced.optional,
-            allowed_values: if definition.allowed_values.is_empty() {
-                referenced.allowed_values.clone()
-            } else {
-                definition.allowed_values.clone()
-            },
-            pattern: definition.pattern.clone().or(referenced.pattern.clone()),
-            key_pattern: definition
-                .key_pattern
-                .clone()
-                .or(referenced.key_pattern.clone()),
-            min: definition.min.clone().or(referenced.min.clone()),
-            max: definition.max.clone().or(referenced.max.clone()),
-            min_length: definition.min_length.or(referenced.min_length),
-            max_length: definition.max_length.or(referenced.max_length),
-            one_of: if definition.one_of.is_empty() {
-                referenced.one_of.clone()
-            } else {
-                definition.one_of.clone()
-            },
-            any_of: if definition.any_of.is_empty() {
-                referenced.any_of.clone()
-            } else {
-                definition.any_of.clone()
-            },
-            children,
+            allowed_values: referenced.allowed_values,
+            pattern: referenced.pattern,
+            key_pattern: referenced.key_pattern,
+            min: referenced.min,
+            max: referenced.max,
+            min_length: referenced.min_length,
+            max_length: referenced.max_length,
+            one_of: referenced.one_of,
+            any_of: referenced.any_of,
+            children: referenced.children,
         })
     }
 
