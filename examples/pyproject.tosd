@@ -15,7 +15,7 @@ arraytype = "string"
 
 [types.stringMap]
 type = "collection"
-typeof = "string"
+itemtype = "string"
 
 [types.openTable]
 type = "table"
@@ -24,14 +24,14 @@ type = "table"
 type = "table"
 
     [types.buildSystem.requires]
-    typeof = "types.dependencyArray"
+    type = "types.dependencyArray"
 
     [types.buildSystem."build-backend"]
     type = "string"
     optional = true
 
     [types.buildSystem."backend-path"]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
 [types.readmeTable]
@@ -129,17 +129,17 @@ allowedvalues = [
 
 [types.optionalDependencies]
 type = "collection"
-typeof = "types.dependencyArray"
+itemtype = "types.dependencyArray"
 
 [types.entryPoints]
 type = "collection"
-typeof = "types.stringMap"
+itemtype = "types.stringMap"
 
 [types.project]
 type = "table"
 
     [types.project.name]
-    typeof = "types.projectName"
+    type = "types.projectName"
 
     [types.project.version]
     type = "string"
@@ -150,35 +150,35 @@ type = "table"
     optional = true
 
     [types.project.readme]
-    typeof = "types.readme"
+    type = "types.readme"
     optional = true
 
     [types.project.license]
-    typeof = "types.license"
+    type = "types.license"
     optional = true
 
     [types.project.authors]
-    typeof = "types.people"
+    type = "types.people"
     optional = true
 
     [types.project.maintainers]
-    typeof = "types.people"
+    type = "types.people"
     optional = true
 
     [types.project.keywords]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.project.classifiers]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.project.urls]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.project.scripts]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.project."requires-python"]
@@ -186,35 +186,35 @@ type = "table"
     optional = true
 
     [types.project."license-files"]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.project."gui-scripts"]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.project."entry-points"]
-    typeof = "types.entryPoints"
+    type = "types.entryPoints"
     optional = true
 
     [types.project.dependencies]
-    typeof = "types.dependencyArray"
+    type = "types.dependencyArray"
     optional = true
 
     [types.project."optional-dependencies"]
-    typeof = "types.optionalDependencies"
+    type = "types.optionalDependencies"
     optional = true
 
     [types.project."import-names"]
-    typeof = "types.importNames"
+    type = "types.importNames"
     optional = true
 
     [types.project."import-namespaces"]
-    typeof = "types.importNamespaces"
+    type = "types.importNamespaces"
     optional = true
 
     [types.project.dynamic]
-    typeof = "types.dynamicMetadata"
+    type = "types.dynamicMetadata"
     optional = true
 
 [types.dependencyGroupInclude]
@@ -233,23 +233,23 @@ itemtype = "types.dependencyGroupItem"
 
 [types.dependencyGroups]
 type = "collection"
-typeof = "types.dependencyGroup"
+itemtype = "types.dependencyGroup"
 
 [elements]
 
 [elements.project]
-typeof = "types.project"
+type = "types.project"
 optional = true
 
 [elements.tool]
 type = "collection"
-typeof = "types.openTable"
+itemtype = "types.openTable"
 optional = true
 
 [elements."build-system"]
-typeof = "types.buildSystem"
+type = "types.buildSystem"
 optional = true
 
 [elements."dependency-groups"]
-typeof = "types.dependencyGroups"
+type = "types.dependencyGroups"
 optional = true

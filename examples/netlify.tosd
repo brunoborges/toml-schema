@@ -9,11 +9,11 @@ arraytype = "string"
 
 [types.stringMap]
 type = "collection"
-typeof = "string"
+itemtype = "string"
 
 [types.anyMap]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
 [types.stringOrStringArray]
 oneof = [ "string", "types.stringArray" ]
@@ -31,7 +31,7 @@ allowedvalues = [ "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS" ]
 oneof = [ "types.httpMethod", "types.httpMethodArray" ]
 
 [types.environment]
-typeof = "types.stringMap"
+type = "types.stringMap"
 
 [types.processing]
 type = "table"
@@ -108,11 +108,11 @@ type = "table"
     optional = true
 
     [types.build.environment]
-    typeof = "types.environment"
+    type = "types.environment"
     optional = true
 
     [types.build.processing]
-    typeof = "types.processing"
+    type = "types.processing"
     optional = true
 
 [types.plugin]
@@ -122,7 +122,7 @@ type = "table"
     type = "string"
 
     [types.plugin.inputs]
-    typeof = "types.anyMap"
+    type = "types.anyMap"
     optional = true
 
 [types.plugins]
@@ -137,7 +137,7 @@ type = "table"
     type = "string"
 
     [types.integration.config]
-    typeof = "types.anyMap"
+    type = "types.anyMap"
     optional = true
 
 [types.integrations]
@@ -146,22 +146,22 @@ arraytype = "table"
 itemtype = "types.integration"
 
 [types.context]
-typeof = "types.build"
+type = "types.build"
 
     [types.context.plugins]
-    typeof = "types.plugins"
+    type = "types.plugins"
     optional = true
 
 [types.contexts]
 type = "collection"
-typeof = "types.context"
+itemtype = "types.context"
 
 [types.redirectCondition]
 oneof = [ "string", "types.stringArray" ]
 
 [types.redirectConditions]
 type = "collection"
-typeof = "types.redirectCondition"
+itemtype = "types.redirectCondition"
 
 [types.redirect]
 type = "table"
@@ -183,15 +183,15 @@ type = "table"
     optional = true
 
     [types.redirect.query]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.redirect.conditions]
-    typeof = "types.redirectConditions"
+    type = "types.redirectConditions"
     optional = true
 
     [types.redirect.headers]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.redirect.signed]
@@ -210,7 +210,7 @@ type = "table"
     type = "string"
 
     [types.header.values]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
 
 [types.headers]
 type = "array"
@@ -242,7 +242,7 @@ type = "table"
 
 [types.functions]
 type = "collection"
-typeof = "types.functionConfig"
+itemtype = "types.functionConfig"
 
     [types.functions.directory]
     type = "string"
@@ -273,7 +273,7 @@ oneof = [ "string", "boolean" ]
 
 [types.edgeHeaderConditions]
 type = "collection"
-typeof = "types.edgeHeaderCondition"
+itemtype = "types.edgeHeaderCondition"
 
 [types.edgeFunction]
 type = "table"
@@ -282,11 +282,11 @@ type = "table"
     type = "string"
 
     [types.edgeFunction.path]
-    typeof = "types.stringOrStringArray"
+    type = "types.stringOrStringArray"
     optional = true
 
     [types.edgeFunction.excludedPath]
-    typeof = "types.stringOrStringArray"
+    type = "types.stringOrStringArray"
     optional = true
 
     [types.edgeFunction.pattern]
@@ -294,15 +294,15 @@ type = "table"
     optional = true
 
     [types.edgeFunction.excludedPattern]
-    typeof = "types.stringOrStringArray"
+    type = "types.stringOrStringArray"
     optional = true
 
     [types.edgeFunction.method]
-    typeof = "types.httpMethodOrArray"
+    type = "types.httpMethodOrArray"
     optional = true
 
     [types.edgeFunction.header]
-    typeof = "types.edgeHeaderConditions"
+    type = "types.edgeHeaderConditions"
     optional = true
 
     [types.edgeFunction.cache]
@@ -381,7 +381,7 @@ type = "table"
     optional = true
 
     [types.dev.https]
-    typeof = "types.devHttps"
+    type = "types.devHttps"
     optional = true
 
 [types.template]
@@ -398,7 +398,7 @@ type = "table"
     optional = true
 
     [types.template.environment]
-    typeof = "types.environment"
+    type = "types.environment"
     optional = true
 
 [types.images]
@@ -412,45 +412,45 @@ type = "table"
 [elements]
 
 [elements.build]
-typeof = "types.build"
+type = "types.build"
 optional = true
 
 [elements.context]
-typeof = "types.contexts"
+type = "types.contexts"
 optional = true
 
 [elements.plugins]
-typeof = "types.plugins"
+type = "types.plugins"
 optional = true
 
 [elements.integrations]
-typeof = "types.integrations"
+type = "types.integrations"
 optional = true
 
 [elements.redirects]
-typeof = "types.redirects"
+type = "types.redirects"
 optional = true
 
 [elements.headers]
-typeof = "types.headers"
+type = "types.headers"
 optional = true
 
 [elements.functions]
-typeof = "types.functions"
+type = "types.functions"
 optional = true
 
 [elements.edge_functions]
-typeof = "types.edgeFunctions"
+type = "types.edgeFunctions"
 optional = true
 
 [elements.dev]
-typeof = "types.dev"
+type = "types.dev"
 optional = true
 
 [elements.template]
-typeof = "types.template"
+type = "types.template"
 optional = true
 
 [elements.images]
-typeof = "types.images"
+type = "types.images"
 optional = true

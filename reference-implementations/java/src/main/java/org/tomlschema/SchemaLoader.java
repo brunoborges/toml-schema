@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "typeof", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
+            "type", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
             "keypattern", "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof"
     );
@@ -90,9 +90,13 @@ final class SchemaLoader {
     }
 
     private SchemaDefinition parseDefinition(String name, TomlTable table) {
-        SchemaType type = getSchemaType(table, "type");
-        String reference = getString(table, "typeof");
-        String normalizedReference = normalizeReference(reference);
+        String typeSelector = getString(table, "type");
+        SchemaType type = typeSelector == null
+                ? null
+                : SchemaType.fromSchemaNameOptional(typeSelector).orElse(null);
+        String normalizedReference = typeSelector != null && type == null
+                ? normalizeReference(typeSelector)
+                : null;
         SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
@@ -104,11 +108,11 @@ final class SchemaLoader {
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
         List<String> oneOf = getStringArrayValues(table, "oneof");
         List<String> anyOf = getStringArrayValues(table, "anyof");
-        if (!oneOf.isEmpty() && !anyOf.isEmpty()) {
-            throw new SchemaException(name + " cannot define both oneof and anyof");
-        }
-        if (type != null && normalizedReference != null && type != SchemaType.COLLECTION) {
-            throw new SchemaException(name + " cannot define both type and typeof");
+        int typeSelectors = (typeSelector == null ? 0 : 1)
+                + (oneOf.isEmpty() ? 0 : 1)
+                + (anyOf.isEmpty() ? 0 : 1);
+        if (typeSelectors > 1) {
+            throw new SchemaException(name + " cannot define more than one of type, oneof, and anyof");
         }
 
         Map<String, SchemaDefinition> children = new LinkedHashMap<>();
@@ -125,15 +129,15 @@ final class SchemaLoader {
         }
         if (type == null && normalizedReference == null && oneOf.isEmpty() && anyOf.isEmpty()) {
             if (children.isEmpty()) {
-                throw new SchemaException(name + " must define type, typeof, oneof, anyof, or child definitions");
+                throw new SchemaException(name + " must define type, oneof, anyof, or child definitions");
             }
             type = SchemaType.TABLE;
         }
         if (type != SchemaType.ARRAY && arrayType != null) {
             throw new SchemaException(name + " can only define arraytype when type is array");
         }
-        if (type != SchemaType.ARRAY && itemReference != null) {
-            throw new SchemaException(name + " can only define itemtype when type is array");
+        if (type != SchemaType.ARRAY && type != SchemaType.COLLECTION && itemReference != null) {
+            throw new SchemaException(name + " can only define itemtype when type is array or collection");
         }
         if (type != SchemaType.ARRAY && !items.isEmpty()) {
             throw new SchemaException(name + " can only define items when type is array");
@@ -154,6 +158,9 @@ final class SchemaLoader {
         }
         if (keyPattern != null && type != SchemaType.COLLECTION) {
             throw new SchemaException(name + " can only define keypattern when type is collection");
+        }
+        if (type == SchemaType.COLLECTION && itemReference == null) {
+            throw new SchemaException(name + " must define itemtype when type is collection");
         }
         Object min = getPropertyValue(table, "min");
         Object max = getPropertyValue(table, "max");

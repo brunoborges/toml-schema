@@ -169,8 +169,7 @@ function renderTree() {
 
 function typeBadge(node) {
     const p = node.props || {};
-    if (p.type) return p.type;
-    if (p.typeof) return "→ " + p.typeof.replace(/^types\./, "");
+    if (p.type) return BUILTIN_TYPES.includes(p.type) ? p.type : "→ " + p.type.replace(/^types\./, "");
     if (p.oneof) return "oneof";
     if (p.anyof) return "anyof";
     if (node.children && node.children.length) return "table";
@@ -186,7 +185,7 @@ function typeCategory(node) {
     if (t === "datetime" || t === "date" || t === "time" || t === "offset-datetime" || t === "local-datetime" || t === "local-date" || t === "local-time") return "date";
     if (t === "table" || t === "collection") return "table";
     if (t === "array") return "array";
-    if (p.typeof) return "ref";
+    if (t && !BUILTIN_TYPES.includes(t)) return "ref";
     if (p.oneof || p.anyof) return "choice";
     if (node.children && node.children.length) return "table";
     return "any";
@@ -353,12 +352,15 @@ function diagramBox(node) {
 
     const typeLine = el("div", { class: "dg-typeline" });
     typeLine.append(el("span", { class: "dg-type", "data-cat": typeCategory(node), text: typeBadge(node) }));
-    if (p.typeof) {
+    const jumpReference = p.type && !BUILTIN_TYPES.includes(p.type)
+        ? p.type
+        : p.itemtype && !BUILTIN_TYPES.includes(p.itemtype) ? p.itemtype : null;
+    if (jumpReference) {
         typeLine.append(el("button", {
             class: "dg-jump",
-            title: "Jump to " + p.typeof,
+            title: "Jump to " + jumpReference,
             text: "\u2197",
-            onclick: (e) => { e.stopPropagation(); jumpToType(p.typeof); },
+            onclick: (e) => { e.stopPropagation(); jumpToType(jumpReference); },
         }));
     }
     box.append(typeLine);
@@ -460,7 +462,7 @@ function addNode(siblings, basePath) {
 
 function addChild(node) {
     node.props = node.props || {};
-    if (!node.props.type && !node.props.typeof && !node.props.oneof && !node.props.anyof) {
+    if (!node.props.type && !node.props.oneof && !node.props.anyof) {
         node.props.type = "table";
     }
     const child = { name: uniqueName(node.children, "field"), props: { type: "string" }, children: [] };
@@ -527,22 +529,13 @@ function renderEditor() {
     actions.append(el("button", { class: "danger", text: "Delete", onclick: () => deleteNode(node) }));
     box.append(actions);
 
-    // Type selector
+    // Current-node type selector
     box.append(
-        selectField("Type", p.type || "", ["", ...BUILTIN_TYPES], (v) => {
-            if (v) p.type = v;
-            else delete p.type;
-            renderEditor();
-            markDirty();
-        }, "The built-in kind of this definition."),
+        refField("type", "Type", p.type || "", (v) => setProp(p, "type", v),
+            "A built-in type or reusable type reference. Mutually exclusive with oneof/anyof."),
     );
 
     const t = p.type;
-
-    // typeof (reference) - relevant when no concrete type, or for collection items
-    if (!t || t === "collection") {
-        box.append(refField("typeof", "Type reference", p.typeof || "", (v) => setProp(p, "typeof", v)));
-    }
 
     // Array-specific
     if (t === "array") {
@@ -556,8 +549,13 @@ function renderEditor() {
             true, "Ordered type refs; fixed arity. Mutually exclusive with arraytype/itemtype."));
     }
 
-    // collection alternatives
-    if (t === "collection" || p.oneof || p.anyof) {
+    if (t === "collection") {
+        box.append(refField("itemtype", "Item type", p.itemtype || "", (v) => setProp(p, "itemtype", v),
+            "Validate each dynamically keyed collection value against this type."));
+    }
+
+    // Current-node alternatives
+    if (!t || p.oneof || p.anyof) {
         box.append(listField("oneof", "oneof (exactly one)", p.oneof || [], (arr) => setListProp(p, "oneof", arr), true));
         box.append(listField("anyof", "anyof (at least one)", p.anyof || [], (arr) => setListProp(p, "anyof", arr), true));
     }
@@ -624,7 +622,7 @@ function renderEditor() {
 function advancedAll(p) {
     const wrap = el("div");
     wrap.append(el("div", { class: "section-title", text: "All properties" }));
-    const allProps = ["type", "typeof", "arraytype", "itemtype", "pattern", "keypattern", "min", "max", "default"];
+    const allProps = ["type", "arraytype", "itemtype", "pattern", "keypattern", "min", "max", "default"];
     for (const key of allProps) {
         wrap.append(textField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v), true));
     }

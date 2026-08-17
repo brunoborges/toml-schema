@@ -151,23 +151,21 @@ class TomlSchemaTest {
     }
 
     @Test
-    void rejectsTableCollectionAlias() throws IOException {
+    void rejectsRemovedTableCollectionAliasAsUnknownReference() throws IOException {
         Path schema = write("table-collection-alias.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
-                [types.item]
-                type = "table"
-
-                    [types.item.name]
-                    type = "string"
-
                 [elements.items]
                 type = "table-collection"
-                typeof = "types.item"
+                """);
+        Path document = write("table-collection-alias.toml", """
+                [items]
+                name = "example"
                 """);
 
-        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        TomlSchema loaded = TomlSchema.load(schema);
+        assertThrows(SchemaException.class, () -> loaded.validate(document));
     }
 
     @Test
@@ -184,7 +182,7 @@ class TomlSchemaTest {
 
                 [elements.servers]
                 type = "collection"
-                typeof = "types.serverType"
+                itemtype = "types.serverType"
                 keypattern = "^server_[0-9]+$"
                 """);
         Path validDocument = write("keypattern-valid.toml", """
@@ -215,8 +213,8 @@ class TomlSchemaTest {
     }
 
     @Test
-    void rejectsTypeAndTypeofOnSameNode() throws IOException {
-        Path schema = write("type-and-typeof.tosd", """
+    void rejectsRetiredTypeofProperty() throws IOException {
+        Path schema = write("typeof.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
@@ -224,7 +222,6 @@ class TomlSchemaTest {
                 type = "string"
 
                 [elements.name]
-                type = "string"
                 typeof = "types.nameType"
                 """);
 
@@ -232,23 +229,45 @@ class TomlSchemaTest {
     }
 
     @Test
-    void allowsTypeAndTypeofOnCollection() throws IOException {
-        Path schema = write("collection-type-and-typeof.tosd", """
+    void allowsItemtypeOnCollection() throws IOException {
+        Path schema = write("collection-itemtype.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
-                [types.itemType]
-                type = "table"
+                [types.stringItem]
+                type = "string"
 
-                    [types.itemType.value]
-                    type = "string"
+                [types.integerItem]
+                type = "integer"
+
+                [types.itemType]
+                oneof = [ "types.stringItem", "types.integerItem" ]
 
                 [elements.items]
                 type = "collection"
-                typeof = "types.itemType"
+                itemtype = "types.itemType"
+                """);
+        Path document = write("collection-itemtype.toml", """
+                [items]
+                name = "example"
+                port = 8080
                 """);
 
-        assertDoesNotThrow(() -> TomlSchema.load(schema));
+        assertTrue(TomlSchema.load(schema).validate(document).isValid());
+    }
+
+    @Test
+    void rejectsTypeWithAlternativeTypeSelector() throws IOException {
+        Path schema = write("type-and-oneof.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "string"
+                oneof = [ "string", "integer" ]
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
     }
 
     @Test
@@ -279,7 +298,7 @@ class TomlSchemaTest {
 
                 [elements.items]
                 type = "collection"
-                typeof = "types.itemType"
+                itemtype = "types.itemType"
                 keypattern = "["
                 """);
 
@@ -590,7 +609,7 @@ class TomlSchemaTest {
                 version = "1.0.0"
 
                 [elements.name]
-                typeof = "string"
+                type = "string"
 
                 [elements.flags]
                 type = "array"

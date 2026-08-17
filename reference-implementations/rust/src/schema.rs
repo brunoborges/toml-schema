@@ -91,7 +91,6 @@ impl fmt::Display for SchemaType {
 /// keys are checked against the ABNF grammar in tests.
 pub const DEFINITION_KEYS: &[&str] = &[
     "type",
-    "typeof",
     "arraytype",
     "itemtype",
     "items",
@@ -320,8 +319,12 @@ fn parse_definitions(
 }
 
 fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
-    let mut type_name = get_schema_type(name, table, "type")?;
-    let reference = get_string(name, table, "typeof")?;
+    let type_selector = get_string(name, table, "type")?;
+    let mut type_name = type_selector.as_deref().and_then(SchemaType::parse);
+    let reference = type_selector
+        .as_deref()
+        .filter(|_| type_name.is_none())
+        .map(|selector| normalize_reference(selector.to_string()));
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
     let items = get_string_array_values(name, table, "items")?;
@@ -333,11 +336,13 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
     let one_of = get_string_array_values(name, table, "oneof")?;
     let any_of = get_string_array_values(name, table, "anyof")?;
-    if !one_of.is_empty() && !any_of.is_empty() {
-        return Err(format!("{name} cannot define both oneof and anyof"));
-    }
-    if type_name.is_some() && reference.is_some() && type_name != Some(SchemaType::Collection) {
-        return Err(format!("{name} cannot define both type and typeof"));
+    let type_selectors = usize::from(type_selector.is_some())
+        + usize::from(!one_of.is_empty())
+        + usize::from(!any_of.is_empty());
+    if type_selectors > 1 {
+        return Err(format!(
+            "{name} cannot define more than one of type, oneof, and anyof"
+        ));
     }
     let mut children: BTreeMap<String, Definition> = BTreeMap::new();
     for (key, value) in table.iter() {
@@ -354,7 +359,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     if type_name.is_none() && reference.is_none() && one_of.is_empty() && any_of.is_empty() {
         if children.is_empty() {
             return Err(format!(
-                "{name} must define type, typeof, oneof, anyof, or child definitions"
+                "{name} must define type, oneof, anyof, or child definitions"
             ));
         }
         type_name = Some(SchemaType::Table);
@@ -364,9 +369,11 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             "{name} can only define arraytype when type is array"
         ));
     }
-    if type_name != Some(SchemaType::Array) && item_reference.is_some() {
+    if !matches!(type_name, Some(SchemaType::Array | SchemaType::Collection))
+        && item_reference.is_some()
+    {
         return Err(format!(
-            "{name} can only define itemtype when type is array"
+            "{name} can only define itemtype when type is array or collection"
         ));
     }
     if type_name != Some(SchemaType::Array) && !items.is_empty() {
@@ -390,6 +397,11 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             "{name} can only define keypattern when type is collection"
         ));
     }
+    if type_name == Some(SchemaType::Collection) && item_reference.is_none() {
+        return Err(format!(
+            "{name} must define itemtype when type is collection"
+        ));
+    }
     if let (Some(min), Some(max)) = (min_length, max_length) {
         if min > max {
             return Err(format!(
@@ -407,7 +419,6 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         min.as_ref(),
         max.as_ref(),
     )?;
-    let reference = reference.map(normalize_reference);
     Ok(Definition {
         name: name.to_string(),
         type_name,
@@ -668,10 +679,10 @@ impl<'schema> Validator<'schema> {
                     );
                 }
             }
-            let reference = match definition.reference.as_deref() {
+            let reference = match definition.item_reference.as_deref() {
                 Some(reference) => reference,
                 None => {
-                    self.add(&child_path, "collection entry has no typeof reference");
+                    self.add(&child_path, "collection entry has no itemtype reference");
                     continue;
                 }
             };
@@ -842,17 +853,12 @@ impl<'schema> Validator<'schema> {
         definition: &Definition,
         seen: &mut HashSet<String>,
     ) -> Result<Definition, String> {
-        if definition.reference.is_none() || definition.type_name == Some(SchemaType::Collection) {
+        if definition.reference.is_none() {
             return Ok(definition.clone());
         }
         let reference = definition.reference.as_deref().unwrap();
         let referenced = self.resolve_reference(reference, seen)?;
         let type_name = definition.type_name.or(referenced.type_name);
-        let merged_reference = if type_name == Some(SchemaType::Collection) {
-            referenced.reference.clone()
-        } else {
-            None
-        };
         let children = if definition.children.is_empty() {
             referenced.children.clone()
         } else {
@@ -865,7 +871,7 @@ impl<'schema> Validator<'schema> {
         Ok(Definition {
             name: definition.name.clone(),
             type_name,
-            reference: merged_reference,
+            reference: None,
             array_type: definition.array_type.or(referenced.array_type),
             item_reference: definition
                 .item_reference
@@ -883,7 +889,10 @@ impl<'schema> Validator<'schema> {
                 definition.allowed_values.clone()
             },
             pattern: definition.pattern.clone().or(referenced.pattern.clone()),
-            key_pattern: definition.key_pattern.clone().or(referenced.key_pattern.clone()),
+            key_pattern: definition
+                .key_pattern
+                .clone()
+                .or(referenced.key_pattern.clone()),
             min: definition.min.clone().or(referenced.min.clone()),
             max: definition.max.clone().or(referenced.max.clone()),
             min_length: definition.min_length.or(referenced.min_length),

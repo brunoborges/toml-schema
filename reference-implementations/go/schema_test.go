@@ -272,7 +272,7 @@ func TestSupportsBuiltInTypeReferences(t *testing.T) {
 version = "1.0.0"
 
 [elements.name]
-typeof = "string"
+type = "string"
 
 [elements.flags]
 type = "array"
@@ -325,25 +325,27 @@ type = "string"
 	}
 }
 
-func TestRejectsTableCollectionAlias(t *testing.T) {
+func TestRejectsRemovedTableCollectionAliasAsUnknownReference(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
 [toml-schema]
 version = "1.0.0"
 
-[types.item]
-type = "table"
-
-    [types.item.name]
-    type = "string"
-
 [elements.items]
 type = "table-collection"
-typeof = "types.item"
+`)
+	documentPath := write(t, dir, "document.toml", `
+[items]
+name = "example"
 `)
 
-	if _, err := LoadSchema(schemaPath); err == nil {
-		t.Fatal("expected table-collection alias to be rejected")
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := schema.ValidateFile(documentPath)
+	if result.Valid() || !strings.Contains(result.Errors[0].Message, "unknown type reference") {
+		t.Fatalf("expected table-collection to be rejected as an unknown reference, got %#v", result.Errors)
 	}
 }
 
@@ -361,7 +363,7 @@ type = "table"
 
 [elements.servers]
 type = "collection"
-typeof = "types.serverType"
+itemtype = "types.serverType"
 keypattern = "^server_[0-9]+$"
 `)
 	validDocument := write(t, dir, "valid.toml", `
@@ -398,9 +400,9 @@ ip = "10.0.0.2"
 	}
 }
 
-func TestRejectsTypeAndTypeofOnSameNode(t *testing.T) {
+func TestRejectsRetiredTypeofProperty(t *testing.T) {
 	dir := t.TempDir()
-	schemaPath := write(t, dir, "type-and-typeof.tosd", `
+	schemaPath := write(t, dir, "typeof.tosd", `
 [toml-schema]
 version = "1.0.0"
 
@@ -408,34 +410,61 @@ version = "1.0.0"
 type = "string"
 
 [elements.name]
-type = "string"
 typeof = "types.nameType"
 `)
 
 	if _, err := LoadSchema(schemaPath); err == nil {
-		t.Fatal("expected a node defining both type and typeof to be rejected")
+		t.Fatal("expected the retired typeof property to be rejected")
 	}
 }
 
-func TestAllowsTypeAndTypeofOnCollection(t *testing.T) {
+func TestAllowsItemtypeOnCollection(t *testing.T) {
 	dir := t.TempDir()
-	schemaPath := write(t, dir, "collection-type-and-typeof.tosd", `
+	schemaPath := write(t, dir, "collection-itemtype.tosd", `
 [toml-schema]
 version = "1.0.0"
 
-[types.itemType]
-type = "table"
+[types.stringItem]
+type = "string"
 
-    [types.itemType.value]
-    type = "string"
+[types.integerItem]
+type = "integer"
+
+[types.itemType]
+oneof = [ "types.stringItem", "types.integerItem" ]
 
 [elements.items]
 type = "collection"
-typeof = "types.itemType"
+itemtype = "types.itemType"
+`)
+	documentPath := write(t, dir, "collection-itemtype.toml", `
+[items]
+name = "example"
+port = 8080
 `)
 
-	if _, err := LoadSchema(schemaPath); err != nil {
-		t.Fatalf("expected collection with typeof child reference to load: %v", err)
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(documentPath); !result.Valid() {
+		t.Fatalf("expected collection values to validate through itemtype union, got %#v", result.Errors)
+	}
+}
+
+func TestRejectsTypeWithAlternativeTypeSelector(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "type-and-oneof.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+oneof = [ "string", "integer" ]
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected type and oneof on the same node to be rejected")
 	}
 }
 
@@ -469,7 +498,7 @@ type = "table"
 
 [elements.items]
 type = "collection"
-typeof = "types.itemType"
+itemtype = "types.itemType"
 keypattern = "("
 `)
 

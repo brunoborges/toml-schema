@@ -386,7 +386,7 @@ fn supports_built_in_type_references() {
 version = "1.0.0"
 
 [elements.name]
-typeof = "string"
+type = "string"
 
 [elements.flags]
 type = "array"
@@ -447,7 +447,7 @@ type = "string"
 }
 
 #[test]
-fn rejects_table_collection_alias() {
+fn rejects_removed_table_collection_alias_as_unknown_reference() {
     let directory = tempfile_dir("table-collection-alias");
     let schema_path = write_file(
         &directory,
@@ -456,20 +456,25 @@ fn rejects_table_collection_alias() {
 [toml-schema]
 version = "1.0.0"
 
-[types.item]
-type = "table"
-
-    [types.item.name]
-    type = "string"
-
 [elements.items]
 type = "table-collection"
-typeof = "types.item"
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+[items]
+name = "example"
 "#,
     );
 
-    let error = Schema::load(&schema_path).expect_err("expected table-collection alias rejection");
-    assert!(error.contains("unsupported schema type"));
+    let schema = Schema::load(&schema_path).expect("schema should parse the named reference");
+    let result = schema.validate_file(&document_path);
+    assert!(result
+        .errors
+        .iter()
+        .any(|error| error.message.contains("unknown type reference")));
 }
 
 #[test]
@@ -490,7 +495,7 @@ type = "table"
 
 [elements.servers]
 type = "collection"
-typeof = "types.serverType"
+itemtype = "types.serverType"
 keypattern = "^server_[0-9]+$"
 "#,
     );
@@ -549,8 +554,8 @@ keypattern = "^[a-z]+$"
 }
 
 #[test]
-fn rejects_type_and_typeof_on_same_node() {
-    let directory = tempfile_dir("type-and-typeof");
+fn rejects_retired_typeof_property() {
+    let directory = tempfile_dir("typeof");
     let schema_path = write_file(
         &directory,
         "schema.tosd",
@@ -562,18 +567,17 @@ version = "1.0.0"
 type = "string"
 
 [elements.name]
-type = "string"
 typeof = "types.nameType"
 "#,
     );
 
-    let error = Schema::load(&schema_path).expect_err("expected type and typeof rejection");
-    assert!(error.contains("both type and typeof"));
+    let error = Schema::load(&schema_path).expect_err("expected retired typeof rejection");
+    assert!(error.contains("typeof"));
 }
 
 #[test]
-fn allows_type_and_typeof_on_collection() {
-    let directory = tempfile_dir("collection-type-and-typeof");
+fn allows_itemtype_on_collection() {
+    let directory = tempfile_dir("collection-itemtype");
     let schema_path = write_file(
         &directory,
         "schema.tosd",
@@ -581,19 +585,58 @@ fn allows_type_and_typeof_on_collection() {
 [toml-schema]
 version = "1.0.0"
 
-[types.itemType]
-type = "table"
+[types.stringItem]
+type = "string"
 
-    [types.itemType.value]
-    type = "string"
+[types.integerItem]
+type = "integer"
+
+[types.itemType]
+oneof = [ "types.stringItem", "types.integerItem" ]
 
 [elements.items]
 type = "collection"
-typeof = "types.itemType"
+itemtype = "types.itemType"
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+[items]
+name = "example"
+port = 8080
 "#,
     );
 
-    Schema::load(&schema_path).expect("expected collection with typeof child reference to load");
+    let schema = Schema::load(&schema_path).expect("expected collection with itemtype to load");
+    let result = schema.validate_file(&document_path);
+    assert!(
+        result.valid(),
+        "expected collection itemtype union to validate: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn rejects_type_with_alternative_type_selector() {
+    let directory = tempfile_dir("type-and-oneof");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+oneof = [ "string", "integer" ]
+"#,
+    );
+
+    let error =
+        Schema::load(&schema_path).expect_err("expected type and oneof on one node rejection");
+    assert!(error.contains("more than one of type, oneof, and anyof"));
 }
 
 #[test]
@@ -614,12 +657,13 @@ type = "table"
 
 [elements.items]
 type = "collection"
-typeof = "types.itemType"
+itemtype = "types.itemType"
 keypattern = "("
 "#,
     );
 
-    let error = Schema::load(&schema_path).expect_err("expected invalid keypattern regex rejection");
+    let error =
+        Schema::load(&schema_path).expect_err("expected invalid keypattern regex rejection");
     assert!(error.contains("invalid keypattern"));
 }
 

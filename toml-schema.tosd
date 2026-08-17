@@ -26,10 +26,10 @@ version = "1.0.0"
 
     [elements.types]
     type = "collection"
-    typeof = "types.schemaDef"
+    itemtype = "types.schemaDef"
     minlength = 0
 
     [elements.elements]
     type = "collection"
-    typeof = "types.schemaDef"
+    itemtype = "types.schemaDef"
     minlength = 1

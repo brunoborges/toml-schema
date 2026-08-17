@@ -116,7 +116,7 @@ type="table"
 
 [elements.servers]
 type="collection"
-typeof = "types.serverType"
+itemtype = "types.serverType"
 minlength = 1
 ```
 
@@ -223,21 +223,20 @@ Use `[elements]` for document-specific keys. Use `[types]` for reusable definiti
 
 The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A type is referenced in an element or another type with a type reference.
 
-Type references are strings accepted by `typeof`, `itemtype`, `items`, `oneof`, and `anyof`. A type reference may be either:
+Type references are strings accepted by `type`, `itemtype`, `items`, `oneof`, and `anyof`. A type reference may be either:
 
 - a built-in type name such as `"string"`, `"boolean"`, or `"integer"`;
 - a named reusable definition from `[types]`, written either as `"types.<typename>"` or `"<typename>"`.
 
 Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`.
 
-The `type` and `typeof` keywords play distinct roles. `type` declares a **built-in** type only, such as `string`, `integer`, `array`, `table`, or `collection`. `typeof` is a **type reference** to a named reusable definition from `[types]`; using a built-in type name in `typeof` is permitted as shorthand, but `type` is the preferred (canonical) form for built-ins. A schema node MUST NOT use both `type` and `typeof` to declare its own type, and parsers MUST reject a schema that does so. The sole exception is a `collection`: `type = "collection"` declares the node, while `typeof` (or `oneof`/`anyof`) declares the type of its dynamic child entries. See [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+`type`, `oneof`, and `anyof` are alternative ways to select the type of the current schema node. A definition MUST NOT use more than one of them, and parsers MUST reject a schema that does so. `type` accepts either a built-in type name or a named reusable definition from `[types]`. Container member types are selected separately with `itemtype`: it validates each member of an `array` or each dynamically keyed value of a `collection`. `itemtype` requires the same definition to declare the built-in `type = "array"` or `type = "collection"`; it cannot be attached to another built-in or to a named type reference.
 
 ```toml
 [types]
 
 [types.<typename>]
-type = "<simple-type> | array | table | collection"
-typeof = "<type-reference>"
+type = "<type-reference>"
 arraytype = "<simple-type> | array | table"
 itemtype = "<type-reference>"
 items = [ "<type-reference>", ... ]
@@ -257,9 +256,9 @@ maxlength = <integer>
 
 Schema child definitions use TOML tables. When a target TOML key is empty or contains characters that TOML requires to be quoted, such as a literal dot, quote that key in the schema table path.
 
-Target keys may have the same names as TOML Schema properties, such as `type`, `typeof`, `optional`, or `pattern`. When those names are used as child table path segments, they define target document keys rather than schema properties.
+Target keys may have the same names as TOML Schema properties, such as `type`, `itemtype`, `optional`, or `pattern`. When those names are used as child table path segments, they define target document keys rather than schema properties.
 
-A schema definition with nested child definitions and no explicit `type`, `typeof`, `oneof`, or `anyof` is treated as `type = "table"`. This lets schemas describe target keys that would otherwise collide with schema properties.
+A schema definition with nested child definitions and no explicit `type`, `oneof`, or `anyof` is treated as `type = "table"`. This lets schemas describe target keys that would otherwise collide with schema properties.
 
 Example TOML document:
 
@@ -359,7 +358,7 @@ For simplicity, there is no definition of `inline table` since these are just ta
 
 A `table` may have a set of properties, or none at all. If a table has a definition of properties, then the parser must validate the input and the input must match exactly the rules of the table and its children.
 
-If a schema definition has nested child definitions but does not declare `type`, `typeof`, `oneof`, or `anyof`, parsers MUST treat it as if it declared `type = "table"`.
+If a schema definition has nested child definitions but does not declare `type`, `oneof`, or `anyof`, parsers MUST treat it as if it declared `type = "table"`.
 
 If a property of type `table` has no defined property and/or structure, the parser must not validate its input. This is useful for representing custom JSON data payloads.
 
@@ -406,7 +405,7 @@ If `type` is `array` and `arraytype` is of type `array`, then automatically any 
 
 ##### Array Item Schemas and Arrays of Tables
 
-Use `itemtype` when each array item must be validated against a reusable schema definition. This is required for TOML arrays of tables and arrays of inline tables, because both parse as arrays whose items are table values.
+Use `itemtype` when each array item must be validated against a reusable schema definition. This is required for TOML arrays of tables and arrays of inline tables, because both parse as arrays whose items are table values. The same keyword selects the type of each dynamic value in a `collection`.
 
 Example with TOML arrays of tables:
 
@@ -486,17 +485,13 @@ Semantics:
 
 #### Collection of Elements for Dynamic Keys
 
-One can set an element of type `collection` for when there is a need to have multiple children with dymamic, user-provided keys or table headers.
+One can set an element of type `collection` when there is a need to have multiple children with dynamic, user-provided keys or table headers.
 
 A `collection` is also a `table` and, therefore, it may have nested, schema-restricted key-value pairs of simple types.
 
-A `collection` requires a type definition of the child elements. Each child must be given a unique key in the TOML document.
+A `collection` requires `itemtype` to define the type of its dynamic child values. Each dynamic child must be given a unique key in the TOML document. `itemtype` may reference a built-in type or a named reusable definition.
 
-The types allowed in a collection may be defined with **only one** of the following attributes:
-
- - `typeof`: a single type. Parser must validate against this type.
- - `oneof`: one type of a provided array of types. Only one type must return `true` in the validation. Parser must throw an error if more than one type is valid for the input.
- - `anyof`: any type of a provided array of types. Parser stops validating at the first return of a `true` validation. Parser should throw an error if input is not valid for any type.
+When collection values may have alternative types, define those alternatives in a reusable `[types]` definition with `oneof` or `anyof`, then reference that definition with `itemtype`. This keeps `oneof` and `anyof` consistently scoped to the current node rather than changing their meaning on a container.
 
 A `collection` may additionally constrain the **keys** (entry names) of its dynamic children with `keypattern`. See [Key Pattern - `keypattern`](#key-pattern---keypattern).
 
@@ -538,6 +533,9 @@ TOML Schema:
     type = "string"
     pattern = "<valid-hostname-regex-pattern>"
 
+    [types.dnsValue]
+    anyof = [ "types.dnsType", "types.hostnameType" ]
+
     [types.serverType]
     type = "table"
 
@@ -549,13 +547,13 @@ TOML Schema:
 
         [types.serverType.dnstable]
         type = "collection"
-        anyof = [ "types.dnsType", "types.hostnameType" ]
+        itemtype = "types.dnsValue"
 
 [elements]
 
     [elements.servers]
     type = "collection"
-    typeof = "types.serverType"
+    itemtype = "types.serverType"
 
         [elements.servers.group]
         type = "string"
@@ -565,9 +563,7 @@ A `collection` may be represented as subtables of a common table in a TOML docum
 
 ### Type Reference
 
-A type reference applies the referenced built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references.
-
-`typeof` declares a node's type by reference and is mutually exclusive with `type`: a node MUST NOT set both `type` and `typeof`, and parsers MUST reject such a schema. The one exception is a `collection`, whose `typeof` declares the type of its dynamic child entries rather than the collection node itself. For a built-in type, prefer the canonical `type = "<built-in>"` form; the shorthand `typeof = "boolean"` remains valid but `type = "boolean"` is preferred.
+A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
 
 ```toml
 [types]
@@ -577,10 +573,10 @@ A type reference applies the referenced built-in type or inherits the rules of a
     pattern="[a-zA-Z]"  # unanchored: matches any string containing a letter
 
     [types.serverType.name]
-    typeof = "types.nameType"
+    type = "types.nameType"
 
     [types.serverType.enabled]
-    typeof = "boolean"
+    type = "boolean"
 
 [elements]
 
@@ -588,7 +584,7 @@ A type reference applies the referenced built-in type or inherits the rules of a
     type="table"
 
         [elements.datacenter.name]
-        typeof="types.nameType"
+        type="types.nameType"
 
         [elements.datacenter.tags]
         type = "array"
@@ -596,7 +592,7 @@ A type reference applies the referenced built-in type or inherits the rules of a
 
         [elements.datacenter.servers]
         type = "collection"
-        typeof = "types.serverType"
+        itemtype = "types.serverType"
 ```
 
 ### Alternative Types - `oneof` and `anyof`
@@ -606,7 +602,9 @@ Use `oneof` or `anyof` when a value may validate against alternative type refere
 - `oneof`: exactly one referenced type must validate.
 - `anyof`: at least one referenced type must validate.
 
-These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array items. Alternatives may reference built-in type names directly or named definitions when a branch needs constraints.
+These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array or collection items. Alternatives may reference built-in type names directly or named definitions when a branch needs constraints.
+
+`type`, `oneof`, and `anyof` all select the current node's type and are mutually exclusive. A parser MUST reject a definition containing more than one of them.
 
 ```toml
 [types.stringId]
@@ -638,6 +636,17 @@ type = "table"
 oneof = [ "types.dependencyVersion", "types.inlineDependency" ]
 ```
 
+For container items with alternative types, use a named wrapper:
+
+```toml
+[types.dnsValue]
+oneof = [ "types.ipAddress", "types.hostname" ]
+
+[elements.dns]
+type = "collection"
+itemtype = "types.dnsValue"
+```
+
 ### Optionality - `optional`
 
 Properties may be defined as optional in the schema. By default, optional equals false, and the structure is required.
@@ -656,8 +665,8 @@ The pattern is not implicitly anchored. A value validates if the regular express
 
 This property may only be used on a `collection`. It constrains the **keys** (entry names) of the
 collection's dynamic children: every dynamically keyed entry must match the provided regular
-expression. It does not validate entry *values* — that is the role of `typeof`, `oneof`, or
-`anyof`. It is therefore orthogonal to those properties and may be combined with them.
+expression. It does not validate entry *values* — that is the role of `itemtype`. It is
+therefore orthogonal to `itemtype` and may be combined with it.
 
 `keypattern` is invalid on any non-`collection` type (scalars, `array`, plain `table`), and a
 parser must reject a schema that uses it elsewhere.
@@ -673,7 +682,7 @@ Parsers must support Perl/PCRE syntax, the same flavor as [`pattern`](#pattern--
 ```toml
 [types.listOfServersType]
 type       = "collection"
-typeof     = "types.serverType"
+itemtype   = "types.serverType"
 minlength  = 1
 keypattern = "^server_[0-9]+$"
 ```

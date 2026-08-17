@@ -115,9 +115,9 @@ final class TomlSchemaValidator {
             if (definition.keyPattern() != null && !definition.keyPattern().matcher(key).find()) {
                 add(childPath, "key does not match keypattern " + definition.keyPattern().pattern());
             }
-            String reference = definition.reference();
+            String reference = definition.itemReference();
             if (reference == null) {
-                add(childPath, "collection entry has no typeof reference");
+                add(childPath, "collection entry has no itemtype reference");
                 continue;
             }
             validateValue(childPath, entry.getValue(), resolveReference(reference, new HashSet<>()));
@@ -263,12 +263,11 @@ final class TomlSchemaValidator {
     }
 
     private SchemaDefinition resolve(SchemaDefinition definition, Set<String> seenReferences) {
-        if (definition.reference() == null || definition.type() == SchemaType.COLLECTION) {
+        if (definition.reference() == null) {
             return definition;
         }
         SchemaDefinition referenced = resolveReference(definition.reference(), seenReferences);
         SchemaType type = definition.type() == null ? referenced.type() : definition.type();
-        String reference = type == SchemaType.COLLECTION ? referenced.reference() : null;
         Map<String, SchemaDefinition> children = referenced.children();
         if (!definition.children().isEmpty()) {
             java.util.LinkedHashMap<String, SchemaDefinition> merged = new java.util.LinkedHashMap<>(referenced.children());
@@ -278,7 +277,7 @@ final class TomlSchemaValidator {
         return new SchemaDefinition(
                 definition.name(),
                 type,
-                reference,
+                null,
                 definition.arrayType() == null ? referenced.arrayType() : definition.arrayType(),
                 definition.itemReference() == null ? referenced.itemReference() : definition.itemReference(),
                 definition.items().isEmpty() ? referenced.items() : definition.items(),
