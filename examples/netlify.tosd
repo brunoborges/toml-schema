@@ -146,7 +146,39 @@ arraytype = "table"
 itemtype = "types.integration"
 
 [types.context]
-type = "types.build"
+type = "table"
+
+    [types.context.base]
+    type = "string"
+    optional = true
+
+    [types.context.publish]
+    type = "string"
+    optional = true
+
+    [types.context.command]
+    type = "string"
+    optional = true
+
+    [types.context.ignore]
+    type = "string"
+    optional = true
+
+    [types.context.functions]
+    type = "string"
+    optional = true
+
+    [types.context.edge_functions]
+    type = "string"
+    optional = true
+
+    [types.context.environment]
+    type = "types.environment"
+    optional = true
+
+    [types.context.processing]
+    type = "types.processing"
+    optional = true
 
     [types.context.plugins]
     type = "types.plugins"

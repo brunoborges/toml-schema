@@ -567,6 +567,33 @@ A `collection` may be represented as subtables of a common table in a TOML docum
 
 A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
 
+When `type` selects a named reusable definition, the reference inherits that definition's validation rules as-is. The referencing definition MAY also declare `optional` and `description`, but it MUST NOT declare any other sibling property or child definition. In particular, validation constraints such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`, `arraytype`, `itemtype`, and `items` cannot be added or overridden at the reference site. Parsers MUST reject such schemas at schema-load time.
+
+To specialize validation rules, declare another named reusable definition rather than adding constraints to a reference:
+
+```toml
+[types.lowercaseName]
+type = "string"
+pattern = "^[a-z]+$"
+
+[elements.name]
+type = "types.lowercaseName"
+description = "Display name"
+optional = true
+```
+
+The following is invalid because `pattern` attempts to override the referenced definition:
+
+```toml
+[types.name]
+type = "string"
+pattern = "^[a-z]+$"
+
+[elements.name]
+type = "types.name"
+pattern = "^[A-Z]+$" # invalid
+```
+
 ```toml
 [types]
 

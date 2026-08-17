@@ -28,6 +28,7 @@ final class SchemaLoader {
             "keypattern", "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof"
     );
+    private static final Set<String> NAMED_REFERENCE_KEYS = Set.of("type", "description", "optional");
 
     TomlSchema load(Path schemaPath) {
         TomlParseResult parsed;
@@ -97,6 +98,13 @@ final class SchemaLoader {
         String normalizedReference = typeSelector != null && type == null
                 ? normalizeReference(typeSelector)
                 : null;
+        if (normalizedReference != null) {
+            for (String key : table.keySet()) {
+                if (!NAMED_REFERENCE_KEYS.contains(key)) {
+                    throw new SchemaException(name + " named type reference cannot define " + key);
+                }
+            }
+        }
         String description = getString(table, "description");
         SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));

@@ -772,28 +772,48 @@ type = "table"
     optional = true
 
 [types.privacyGoogleAnalytics]
-type = "types.privacyDisqus"
+type = "table"
+
+    [types.privacyGoogleAnalytics.disable]
+    type = "boolean"
+    optional = true
 
     [types.privacyGoogleAnalytics.respectDoNotTrack]
     type = "boolean"
     optional = true
 
 [types.privacySimple]
-type = "types.privacyDisqus"
+type = "table"
+
+    [types.privacySimple.disable]
+    type = "boolean"
+    optional = true
 
     [types.privacySimple.simple]
     type = "boolean"
     optional = true
 
 [types.privacyDnt]
-type = "types.privacySimple"
+type = "table"
+
+    [types.privacyDnt.disable]
+    type = "boolean"
+    optional = true
+
+    [types.privacyDnt.simple]
+    type = "boolean"
+    optional = true
 
     [types.privacyDnt.enableDNT]
     type = "boolean"
     optional = true
 
 [types.privacyYouTube]
-type = "types.privacyDisqus"
+type = "table"
+
+    [types.privacyYouTube.disable]
+    type = "boolean"
+    optional = true
 
     [types.privacyYouTube.privacyEnhanced]
     type = "boolean"
@@ -840,7 +860,17 @@ type = "table"
     optional = true
 
 [types.securityHttp]
-type = "types.securityAllowDeny"
+type = "table"
+
+    [types.securityHttp.allow]
+    type = "array"
+    arraytype = "string"
+    optional = true
+
+    [types.securityHttp.deny]
+    type = "array"
+    arraytype = "string"
+    optional = true
 
     [types.securityHttp.mediaTypes]
     type = "array"
