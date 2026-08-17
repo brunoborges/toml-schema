@@ -68,6 +68,86 @@ fn loads_examples_migrated_from_reference_specialization() {
 }
 
 #[test]
+fn enforces_closed_root_element_semantics() {
+    let directory = tempfile_dir("closed-root");
+    let schema_path = write_file(
+        &directory,
+        "closed-root.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types]
+
+[elements]
+"#,
+    );
+    let empty_document = write_file(&directory, "empty.toml", "");
+    let metadata_only_document = write_file(
+        &directory,
+        "metadata-only.toml",
+        r#"
+[toml-schema]
+location = "closed-root.tosd"
+"#,
+    );
+    let application_document = write_file(&directory, "application.toml", "extra = true");
+    let defined_root_schema = write_file(
+        &directory,
+        "defined-root.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.allowed]
+type = "string"
+"#,
+    );
+    let document_with_extra_key = write_file(
+        &directory,
+        "extra-key.toml",
+        r#"
+allowed = "value"
+extra = true
+"#,
+    );
+    let schema = Schema::load(&schema_path).expect("load closed-root schema");
+
+    for document in [&empty_document, &metadata_only_document] {
+        let result = schema.validate_file(document);
+        assert!(
+            result.valid(),
+            "expected {} to be valid, got {:#?}",
+            document.display(),
+            result.errors
+        );
+    }
+
+    let result = schema.validate_file(&application_document);
+    assert!(
+        !result.valid() && has_path(&result, "$.extra"),
+        "expected an unexpected-key error at $.extra, got {:#?}",
+        result.errors
+    );
+
+    let defined_schema = Schema::load(&defined_root_schema).expect("load defined-root schema");
+    let result = defined_schema.validate_file(&document_with_extra_key);
+    assert!(
+        !result.valid() && has_path(&result, "$.extra"),
+        "expected an unexpected-key error beside a declared root key, got {:#?}",
+        result.errors
+    );
+
+    let schema_schema = Schema::load(fixture("toml-schema.tosd")).expect("load toml-schema.tosd");
+    let result = schema_schema.validate_file(&schema_path);
+    assert!(
+        result.valid(),
+        "expected self-schema to accept empty [elements], got {:#?}",
+        result.errors
+    );
+}
+
+#[test]
 fn accepts_string_descriptions_and_rejects_other_values() {
     let directory = tempfile_dir("descriptions");
     let described_schema = write_file(

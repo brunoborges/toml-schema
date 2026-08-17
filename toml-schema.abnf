@@ -16,7 +16,7 @@ toml-schema-document = toml-schema-table [ types-table ] elements-table
 
 toml-schema-table = toml-table-header-toml-schema version [ metadata-table ]
 types-table       = toml-table-header-types *schema-definition
-elements-table    = toml-table-header-elements 1*schema-definition
+elements-table    = toml-table-header-elements *schema-definition
 metadata-table    = toml-table-header-toml-schema-meta *toml-keyval
 
 schema-definition = schema-definition-table *definition-property *schema-definition
