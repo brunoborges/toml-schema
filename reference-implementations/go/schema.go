@@ -31,7 +31,7 @@ const (
 )
 
 var definitionKeys = map[string]bool{
-	"type": true, "typeof": true, "description": true, "arraytype": true, "itemtype": true, "items": true,
+	"type": true, "description": true, "arraytype": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "keypattern": true, "optional": true, "default": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true,
@@ -233,13 +233,18 @@ func parseDefinitions(prefix string, table map[string]any, required bool) (map[s
 }
 
 func parseDefinition(name string, table map[string]any) (Definition, error) {
-	typeName, err := getSchemaType(table, "type")
+	typeSelector, err := getString(table, "type")
 	if err != nil {
 		return Definition{}, err
 	}
-	reference, err := getString(table, "typeof")
-	if err != nil {
-		return Definition{}, err
+	var typeName SchemaType
+	var reference string
+	if typeSelector != "" {
+		if builtInType, ok := parseSchemaType(typeSelector); ok {
+			typeName = builtInType
+		} else {
+			reference = normalizeReference(typeSelector)
+		}
 	}
 	description, err := getString(table, "description")
 	if err != nil {
@@ -289,8 +294,18 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
-	if len(oneOf) > 0 && len(anyOf) > 0 {
-		return Definition{}, fmt.Errorf("%s cannot define both oneof and anyof", name)
+	typeSelectors := 0
+	if typeSelector != "" {
+		typeSelectors++
+	}
+	if len(oneOf) > 0 {
+		typeSelectors++
+	}
+	if len(anyOf) > 0 {
+		typeSelectors++
+	}
+	if typeSelectors > 1 {
+		return Definition{}, fmt.Errorf("%s cannot define more than one of type, oneof, and anyof", name)
 	}
 	children := map[string]Definition{}
 	for key, value := range table {
@@ -310,15 +325,15 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	}
 	if typeName == "" && reference == "" && len(oneOf) == 0 && len(anyOf) == 0 {
 		if len(children) == 0 {
-			return Definition{}, fmt.Errorf("%s must define type, typeof, oneof, anyof, or child definitions", name)
+			return Definition{}, fmt.Errorf("%s must define type, oneof, anyof, or child definitions", name)
 		}
 		typeName = TypeTable
 	}
 	if typeName != TypeArray && arrayType != "" {
 		return Definition{}, fmt.Errorf("%s can only define arraytype when type is array", name)
 	}
-	if typeName != TypeArray && itemReference != "" {
-		return Definition{}, fmt.Errorf("%s can only define itemtype when type is array", name)
+	if typeName != TypeArray && typeName != TypeCollection && itemReference != "" {
+		return Definition{}, fmt.Errorf("%s can only define itemtype when type is array or collection", name)
 	}
 	if typeName != TypeArray && len(items) > 0 {
 		return Definition{}, fmt.Errorf("%s can only define items when type is array", name)
@@ -342,11 +357,14 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if keyPattern != nil && typeName != TypeCollection {
 		return Definition{}, fmt.Errorf("%s can only define keypattern when type is collection", name)
 	}
+	if typeName == TypeCollection && itemReference == "" {
+		return Definition{}, fmt.Errorf("%s must define itemtype when type is collection", name)
+	}
 	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), min, max); err != nil {
 		return Definition{}, err
 	}
 	return Definition{
-		name: name, typeName: typeName, reference: normalizeReference(reference), description: description,
+		name: name, typeName: typeName, reference: reference, description: description,
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
 		items:         normalizeReferences(items),
 		allowedValues: allowedValues, pattern: pattern, keyPattern: keyPattern, min: min, max: max,
@@ -555,11 +573,11 @@ func (v *validator) validateCollection(path string, table map[string]any, defini
 		if definition.keyPattern != nil && !matchesPattern(definition.keyPattern, key) {
 			v.add(childPath, "key does not match keypattern "+definition.keyPattern.String())
 		}
-		if definition.reference == "" {
-			v.add(childPath, "collection entry has no typeof reference")
+		if definition.itemReference == "" {
+			v.add(childPath, "collection entry has no itemtype reference")
 			continue
 		}
-		referenced, err := v.resolveReference(definition.reference, map[string]bool{})
+		referenced, err := v.resolveReference(definition.itemReference, map[string]bool{})
 		if err != nil {
 			v.add(childPath, err.Error())
 			continue
@@ -701,7 +719,7 @@ func (v *validator) validateLength(path string, length int, definition Definitio
 }
 
 func (v *validator) resolve(definition Definition, seenReferences map[string]bool) (Definition, error) {
-	if definition.reference == "" || definition.typeName == TypeCollection {
+	if definition.reference == "" {
 		return definition, nil
 	}
 	referenced, err := v.resolveReference(definition.reference, seenReferences)
@@ -711,10 +729,6 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 	typeName := definition.typeName
 	if typeName == "" {
 		typeName = referenced.typeName
-	}
-	reference := ""
-	if typeName == TypeCollection {
-		reference = referenced.reference
 	}
 	children := referenced.children
 	if len(definition.children) > 0 {
@@ -727,8 +741,7 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 		}
 	}
 	return Definition{
-		name: definition.name, typeName: typeName, reference: reference,
-		description: definition.description,
+		name: definition.name, typeName: typeName, description: definition.description,
 		arrayType:     firstSchemaType(definition.arrayType, referenced.arrayType),
 		itemReference: firstNonEmpty(definition.itemReference, referenced.itemReference),
 		items:         firstStringSlice(definition.items, referenced.items),

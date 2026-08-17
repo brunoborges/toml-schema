@@ -41,17 +41,17 @@ version = "1.0.0"
             type = "string"
 
         [types.serverType.maindb]
-        typeof = "types.databaseType"
+        type = "types.databaseType"
         optional = true
 
         [types.serverType.sharding]
         type = "collection"
-        typeof = "types.databaseType"
+        itemtype = "types.databaseType"
         optional = true
         minlength = 1
 
         [types.serverType.replicas]
-        typeof = "types.listOfServersType"
+        type = "types.listOfServersType"
         optional = true
 
     [types.serverGroupType]
@@ -62,17 +62,17 @@ version = "1.0.0"
         pattern = "[a-zA-Z0-9]*"
 
         [types.serverGroupType.servers]
-        typeof = "types.listOfServersType"
+        type = "types.listOfServersType"
 
     [types.listOfServersType]
     type = "collection"
-    typeof = "types.serverType"
+    itemtype = "types.serverType"
     minlength = 1
     keypattern = "^[a-zA-Z][a-zA-Z0-9_]*$"
 
     [types.listOfServerGroupsType]
     type = "collection"
-    typeof = "types.serverGroupType"
+    itemtype = "types.serverGroupType"
     minlength = 1
 
     [types.libraryType]
@@ -125,10 +125,10 @@ version = "1.0.0"
         type = "offset-date-time"
 
     [elements.database]
-    typeof = "types.databaseType"
+    type = "types.databaseType"
 
     [elements.serverGroups]
-    typeof = "types.listOfServerGroupsType"
+    type = "types.listOfServerGroupsType"
 
     [elements.clients]
     type = "table"
@@ -148,7 +148,7 @@ version = "1.0.0"
 
     [elements.libraries]
     type = "collection"
-    typeof = "types.libraryType"
+    itemtype = "types.libraryType"
 
     [elements.products]
     type = "array"

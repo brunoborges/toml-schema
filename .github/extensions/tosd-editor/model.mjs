@@ -11,7 +11,7 @@
 // node = { name, props: { <prop>: <editorValue> }, children: [ node, ... ] }
 //
 // Editor value encoding per property:
-//   type/typeof/arraytype/itemtype/pattern/keypattern : plain string
+//   type/arraytype/itemtype/pattern/keypattern : plain string
 //   optional                               : boolean
 //   minlength/maxlength                    : number
 //   items/oneof/anyof                      : string[]  (type references)
@@ -28,7 +28,6 @@ import {
 
 export const PROP_ORDER = [
     "type",
-    "typeof",
     "arraytype",
     "itemtype",
     "items",
@@ -45,7 +44,7 @@ export const PROP_ORDER = [
     "default",
 ];
 
-const STRING_PROPS = new Set(["type", "typeof", "arraytype", "itemtype", "pattern", "keypattern"]);
+const STRING_PROPS = new Set(["type", "arraytype", "itemtype", "pattern", "keypattern"]);
 const INT_PROPS = new Set(["minlength", "maxlength"]);
 const BOOL_PROPS = new Set(["optional"]);
 const REFLIST_PROPS = new Set(["items", "oneof", "anyof"]);
@@ -272,13 +271,22 @@ export function validateModel(model) {
         const p = node.props || {};
         const label = pathLabel;
 
-        const exclusivity = ["type", "typeof", "oneof", "anyof"].filter((k) => p[k] != null && p[k] !== "" && !(Array.isArray(p[k]) && p[k].length === 0));
+        const exclusivity = ["type", "oneof", "anyof"].filter((k) => p[k] != null && p[k] !== "" && !(Array.isArray(p[k]) && p[k].length === 0));
+        if (exclusivity.length > 1) {
+            issues.push({ level: "error", path: label, message: "`type`, `oneof`, and `anyof` are mutually exclusive." });
+        }
         if (exclusivity.length === 0 && (!node.children || node.children.length === 0)) {
-            issues.push({ level: "warning", path: label, message: "No type, typeof, oneof, anyof, or children - defaults to an open table." });
+            issues.push({ level: "warning", path: label, message: "No type, oneof, anyof, or children - defaults to an open table." });
         }
 
         if (p.items && (p.arraytype || p.itemtype)) {
             issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `arraytype` and `itemtype`." });
+        }
+        if (p.itemtype && !["array", "collection"].includes(p.type)) {
+            issues.push({ level: "error", path: label, message: "`itemtype` requires `type = \"array\"` or `type = \"collection\"`." });
+        }
+        if (p.type === "collection" && !p.itemtype) {
+            issues.push({ level: "error", path: label, message: "A collection must define `itemtype`." });
         }
         if (p.items && (p.minlength != null || p.maxlength != null)) {
             issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `minlength`/`maxlength`." });
@@ -312,7 +320,7 @@ export function validateModel(model) {
             issues.push({ level: "warning", path: label, message: `\`keypattern\` only applies to \`collection\` — it validates dynamic entry keys.` });
         }
 
-        for (const ref of [p.typeof, p.itemtype]) {
+        for (const ref of [p.type, p.itemtype]) {
             if (ref && !refExists(ref)) {
                 issues.push({ level: "error", path: label, message: `Unknown type reference: "${ref}".` });
             }

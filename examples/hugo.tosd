@@ -19,11 +19,11 @@ oneof = [ "string", "types.stringArray" ]
 
 [types.anyMap]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
 [types.stringMap]
 type = "collection"
-typeof = "string"
+itemtype = "string"
 
 [types.buildStats]
 type = "table"
@@ -62,15 +62,15 @@ itemtype = "types.cacheBuster"
 type = "table"
 
     [types.build.buildStats]
-    typeof = "types.buildStats"
+    type = "types.buildStats"
     optional = true
 
     [types.build.cacheBusters]
-    typeof = "types.cacheBusters"
+    type = "types.cacheBusters"
     optional = true
 
     [types.build.cachebusters]
-    typeof = "types.cacheBusters"
+    type = "types.cacheBusters"
     optional = true
 
     [types.build.noJSConfigInAssets]
@@ -95,7 +95,7 @@ type = "table"
 
 [types.caches]
 type = "collection"
-typeof = "types.cache"
+itemtype = "types.cache"
 
 [types.cascade]
 oneof = [ "types.anyMap", "types.anyArray" ]
@@ -190,11 +190,11 @@ type = "table"
     optional = true
 
     [types.imaging.exif]
-    typeof = "types.imagingExif"
+    type = "types.imagingExif"
     optional = true
 
     [types.imaging.meta]
-    typeof = "types.imagingMeta"
+    type = "types.imagingMeta"
     optional = true
 
     [types.imaging.quality]
@@ -208,7 +208,7 @@ type = "table"
     optional = true
 
     [types.imaging.webp]
-    typeof = "types.imagingWebp"
+    type = "types.imagingWebp"
     optional = true
 
 [types.menuEntry]
@@ -223,7 +223,7 @@ type = "table"
     optional = true
 
     [types.menuEntry.params]
-    typeof = "types.anyMap"
+    type = "types.anyMap"
     optional = true
 
     [types.menuEntry.parent]
@@ -261,11 +261,11 @@ itemtype = "types.menuEntry"
 
 [types.menus]
 type = "collection"
-typeof = "types.menu"
+itemtype = "types.menu"
 
 [types.outputFormats]
 type = "collection"
-typeof = "types.outputFormat"
+itemtype = "types.outputFormat"
 
 [types.outputFormat]
 type = "table"
@@ -324,11 +324,11 @@ type = "table"
 
 [types.outputs]
 type = "collection"
-typeof = "types.stringArray"
+itemtype = "types.stringArray"
 
 [types.mediaTypes]
 type = "collection"
-typeof = "types.mediaType"
+itemtype = "types.mediaType"
 
 [types.mediaType]
 type = "table"
@@ -361,23 +361,23 @@ type = "table"
 type = "table"
 
     [types.goldmarkExtensionsExtras.delete]
-    typeof = "types.goldmarkExtensionToggle"
+    type = "types.goldmarkExtensionToggle"
     optional = true
 
     [types.goldmarkExtensionsExtras.insert]
-    typeof = "types.goldmarkExtensionToggle"
+    type = "types.goldmarkExtensionToggle"
     optional = true
 
     [types.goldmarkExtensionsExtras.mark]
-    typeof = "types.goldmarkExtensionToggle"
+    type = "types.goldmarkExtensionToggle"
     optional = true
 
     [types.goldmarkExtensionsExtras.subscript]
-    typeof = "types.goldmarkExtensionToggle"
+    type = "types.goldmarkExtensionToggle"
     optional = true
 
     [types.goldmarkExtensionsExtras.superscript]
-    typeof = "types.goldmarkExtensionToggle"
+    type = "types.goldmarkExtensionToggle"
     optional = true
 
 [types.goldmarkExtensions]
@@ -392,7 +392,7 @@ type = "table"
     optional = true
 
     [types.goldmarkExtensions.extras]
-    typeof = "types.goldmarkExtensionsExtras"
+    type = "types.goldmarkExtensionsExtras"
     optional = true
 
     [types.goldmarkExtensions.footnote]
@@ -485,24 +485,24 @@ type = "table"
     optional = true
 
     [types.goldmark.extensions]
-    typeof = "types.goldmarkExtensions"
+    type = "types.goldmarkExtensions"
     optional = true
 
     [types.goldmark.parser]
-    typeof = "types.goldmarkParser"
+    type = "types.goldmarkParser"
     optional = true
 
     [types.goldmark.renderHooks]
-    typeof = "types.goldmarkRenderHooks"
+    type = "types.goldmarkRenderHooks"
     optional = true
 
     [types.goldmark.renderer]
-    typeof = "types.goldmarkRenderer"
+    type = "types.goldmarkRenderer"
     optional = true
 
 [types.highlight]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.highlight.anchorLineNos]
     type = "boolean"
@@ -580,15 +580,15 @@ type = "table"
     optional = true
 
     [types.markup.goldmark]
-    typeof = "types.goldmark"
+    type = "types.goldmark"
     optional = true
 
     [types.markup.highlight]
-    typeof = "types.highlight"
+    type = "types.highlight"
     optional = true
 
     [types.markup.tableOfContents]
-    typeof = "types.tableOfContents"
+    type = "types.tableOfContents"
     optional = true
 
 [types.minifyTdewolff]
@@ -650,12 +650,12 @@ type = "table"
     optional = true
 
     [types.minify.tdewolff]
-    typeof = "types.minifyTdewolff"
+    type = "types.minifyTdewolff"
     optional = true
 
 [types.moduleImport]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.moduleImport.path]
     type = "string"
@@ -681,7 +681,7 @@ typeof = "any"
 
 [types.moduleMount]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.moduleMount.source]
     type = "string"
@@ -762,7 +762,7 @@ type = "table"
 
 [types.permalinks]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
 [types.privacyDisqus]
 type = "table"
@@ -772,28 +772,28 @@ type = "table"
     optional = true
 
 [types.privacyGoogleAnalytics]
-typeof = "types.privacyDisqus"
+type = "types.privacyDisqus"
 
     [types.privacyGoogleAnalytics.respectDoNotTrack]
     type = "boolean"
     optional = true
 
 [types.privacySimple]
-typeof = "types.privacyDisqus"
+type = "types.privacyDisqus"
 
     [types.privacySimple.simple]
     type = "boolean"
     optional = true
 
 [types.privacyDnt]
-typeof = "types.privacySimple"
+type = "types.privacySimple"
 
     [types.privacyDnt.enableDNT]
     type = "boolean"
     optional = true
 
 [types.privacyYouTube]
-typeof = "types.privacyDisqus"
+type = "types.privacyDisqus"
 
     [types.privacyYouTube.privacyEnhanced]
     type = "boolean"
@@ -803,27 +803,27 @@ typeof = "types.privacyDisqus"
 type = "table"
 
     [types.privacy.disqus]
-    typeof = "types.privacyDisqus"
+    type = "types.privacyDisqus"
     optional = true
 
     [types.privacy.googleAnalytics]
-    typeof = "types.privacyGoogleAnalytics"
+    type = "types.privacyGoogleAnalytics"
     optional = true
 
     [types.privacy.instagram]
-    typeof = "types.privacySimple"
+    type = "types.privacySimple"
     optional = true
 
     [types.privacy.vimeo]
-    typeof = "types.privacyDnt"
+    type = "types.privacyDnt"
     optional = true
 
     [types.privacy.x]
-    typeof = "types.privacyDnt"
+    type = "types.privacyDnt"
     optional = true
 
     [types.privacy.youTube]
-    typeof = "types.privacyYouTube"
+    type = "types.privacyYouTube"
     optional = true
 
 [types.securityAllowDeny]
@@ -840,7 +840,7 @@ type = "table"
     optional = true
 
 [types.securityHttp]
-typeof = "types.securityAllowDeny"
+type = "types.securityAllowDeny"
 
     [types.securityHttp.mediaTypes]
     type = "array"
@@ -865,28 +865,28 @@ type = "table"
     optional = true
 
     [types.security.exec]
-    typeof = "types.securityAllowDeny"
+    type = "types.securityAllowDeny"
     optional = true
 
     [types.security.funcs]
-    typeof = "types.securityAllowDeny"
+    type = "types.securityAllowDeny"
     optional = true
 
     [types.security.getenv]
-    typeof = "types.securityAllowDeny"
+    type = "types.securityAllowDeny"
     optional = true
 
     [types.security.http]
-    typeof = "types.securityHttp"
+    type = "types.securityHttp"
     optional = true
 
 [types.server]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
 [types.services]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
 [types.sitemap]
 type = "table"
@@ -905,16 +905,16 @@ type = "table"
     optional = true
 
     [types.sitemap.priority]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
 [types.taxonomies]
 type = "collection"
-typeof = "string"
+itemtype = "string"
 
 [types.language]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.language.baseURL]
     type = "string"
@@ -954,15 +954,15 @@ typeof = "any"
     optional = true
 
     [types.language.menus]
-    typeof = "types.menus"
+    type = "types.menus"
     optional = true
 
     [types.language.pagination]
-    typeof = "types.pagination"
+    type = "types.pagination"
     optional = true
 
     [types.language.params]
-    typeof = "types.anyMap"
+    type = "types.anyMap"
     optional = true
 
     [types.language.timeZone]
@@ -979,7 +979,7 @@ typeof = "any"
 
 [types.languages]
 type = "collection"
-typeof = "types.language"
+itemtype = "types.language"
 
 [elements]
 
@@ -996,7 +996,7 @@ type = "string"
 optional = true
 
 [elements.build]
-typeof = "types.build"
+type = "types.build"
 optional = true
 
 [elements.buildDrafts]
@@ -1016,7 +1016,7 @@ type = "string"
 optional = true
 
 [elements.caches]
-typeof = "types.caches"
+type = "types.caches"
 optional = true
 
 [elements.canonifyURLs]
@@ -1028,7 +1028,7 @@ type = "boolean"
 optional = true
 
 [elements.cascade]
-typeof = "types.cascade"
+type = "types.cascade"
 optional = true
 
 [elements.cleanDestinationDir]
@@ -1076,7 +1076,7 @@ type = "string"
 optional = true
 
 [elements.deployment]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.disableAliases]
@@ -1134,7 +1134,7 @@ type = "string"
 optional = true
 
 [elements.frontmatter]
-typeof = "types.frontmatter"
+type = "types.frontmatter"
 optional = true
 
 [elements.hasCJKLanguage]
@@ -1142,7 +1142,7 @@ type = "boolean"
 optional = true
 
 [elements.HTTPCache]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.i18nDir]
@@ -1168,7 +1168,7 @@ type = "string"
 optional = true
 
 [elements.imaging]
-typeof = "types.imaging"
+type = "types.imaging"
 optional = true
 
 [elements.languageCode]
@@ -1176,7 +1176,7 @@ type = "string"
 optional = true
 
 [elements.languages]
-typeof = "types.languages"
+type = "types.languages"
 optional = true
 
 [elements.layoutDir]
@@ -1188,27 +1188,27 @@ type = "string"
 optional = true
 
 [elements.mainSections]
-typeof = "types.stringOrStringArray"
+type = "types.stringOrStringArray"
 optional = true
 
 [elements.markup]
-typeof = "types.markup"
+type = "types.markup"
 optional = true
 
 [elements.mediaTypes]
-typeof = "types.mediaTypes"
+type = "types.mediaTypes"
 optional = true
 
 [elements.menus]
-typeof = "types.menus"
+type = "types.menus"
 optional = true
 
 [elements.minify]
-typeof = "types.minify"
+type = "types.minify"
 optional = true
 
 [elements.module]
-typeof = "types.module"
+type = "types.module"
 optional = true
 
 [elements.newContentEditor]
@@ -1228,19 +1228,19 @@ type = "boolean"
 optional = true
 
 [elements.outputFormats]
-typeof = "types.outputFormats"
+type = "types.outputFormats"
 optional = true
 
 [elements.outputs]
-typeof = "types.outputs"
+type = "types.outputs"
 optional = true
 
 [elements.page]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.pagination]
-typeof = "types.pagination"
+type = "types.pagination"
 optional = true
 
 [elements.panicOnWarning]
@@ -1248,11 +1248,11 @@ type = "boolean"
 optional = true
 
 [elements.params]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.permalinks]
-typeof = "types.permalinks"
+type = "types.permalinks"
 optional = true
 
 [elements.pluralizeListTitles]
@@ -1272,7 +1272,7 @@ type = "boolean"
 optional = true
 
 [elements.privacy]
-typeof = "types.privacy"
+type = "types.privacy"
 optional = true
 
 [elements.publishDir]
@@ -1289,7 +1289,7 @@ type = "string"
 optional = true
 
 [elements.related]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.relativeURLs]
@@ -1310,7 +1310,7 @@ type = "string"
 optional = true
 
 [elements.roles]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.sectionPagesMenu]
@@ -1318,27 +1318,27 @@ type = "string"
 optional = true
 
 [elements.security]
-typeof = "types.security"
+type = "types.security"
 optional = true
 
 [elements.segments]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.server]
-typeof = "types.server"
+type = "types.server"
 optional = true
 
 [elements.services]
-typeof = "types.services"
+type = "types.services"
 optional = true
 
 [elements.sitemap]
-typeof = "types.sitemap"
+type = "types.sitemap"
 optional = true
 
 [elements.staticDir]
-typeof = "types.stringOrStringArray"
+type = "types.stringOrStringArray"
 optional = true
 
 [elements.summaryLength]
@@ -1346,7 +1346,7 @@ type = "integer"
 optional = true
 
 [elements.taxonomies]
-typeof = "types.taxonomies"
+type = "types.taxonomies"
 optional = true
 
 [elements.templateMetrics]
@@ -1358,7 +1358,7 @@ type = "boolean"
 optional = true
 
 [elements.theme]
-typeof = "types.stringOrStringArray"
+type = "types.stringOrStringArray"
 optional = true
 
 [elements.themesDir]
@@ -1383,9 +1383,9 @@ allowedvalues = [ "ap", "chicago", "firstupper", "go", "none" ]
 optional = true
 
 [elements.uglyurls]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.versions]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true

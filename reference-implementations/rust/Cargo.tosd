@@ -35,71 +35,71 @@ oneof = [ "boolean", "types.stringArray", "types.workspaceInherited" ]
 type = "table"
 
     [types.packageBase.version]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.authors]
-    typeof = "types.stringArrayOrWorkspace"
+    type = "types.stringArrayOrWorkspace"
     optional = true
 
     [types.packageBase.edition]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.rust-version]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.description]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.documentation]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.readme]
-    typeof = "types.stringOrBooleanOrWorkspace"
+    type = "types.stringOrBooleanOrWorkspace"
     optional = true
 
     [types.packageBase.homepage]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.repository]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.license]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.license-file]
-    typeof = "types.stringOrWorkspace"
+    type = "types.stringOrWorkspace"
     optional = true
 
     [types.packageBase.keywords]
-    typeof = "types.stringArrayOrWorkspace"
+    type = "types.stringArrayOrWorkspace"
     optional = true
 
     [types.packageBase.categories]
-    typeof = "types.stringArrayOrWorkspace"
+    type = "types.stringArrayOrWorkspace"
     optional = true
 
     [types.packageBase.exclude]
-    typeof = "types.stringArrayOrWorkspace"
+    type = "types.stringArrayOrWorkspace"
     optional = true
 
     [types.packageBase.include]
-    typeof = "types.stringArrayOrWorkspace"
+    type = "types.stringArrayOrWorkspace"
     optional = true
 
     [types.packageBase.publish]
-    typeof = "types.publish"
+    type = "types.publish"
     optional = true
 
 [types.package]
-typeof = "types.packageBase"
+type = "types.packageBase"
 
     [types.package.name]
     type = "string"
@@ -109,7 +109,7 @@ typeof = "types.packageBase"
     optional = true
 
     [types.package.build]
-    typeof = "types.stringOrBoolean"
+    type = "types.stringOrBoolean"
     optional = true
 
     [types.package.links]
@@ -262,21 +262,21 @@ type = "table"
 
 [types.dependencyCollection]
 type = "collection"
-typeof = "types.dependency"
+itemtype = "types.dependency"
 
 [types.targetDependencies]
 type = "table"
 
     [types.targetDependencies.dependencies]
-    typeof = "types.dependencyCollection"
+    type = "types.dependencyCollection"
     optional = true
 
     [types.targetDependencies.dev-dependencies]
-    typeof = "types.dependencyCollection"
+    type = "types.dependencyCollection"
     optional = true
 
     [types.targetDependencies.build-dependencies]
-    typeof = "types.dependencyCollection"
+    type = "types.dependencyCollection"
     optional = true
 
 [types.lintValue]
@@ -294,11 +294,11 @@ type = "table"
 
 [types.lintGroup]
 type = "collection"
-typeof = "types.lintValue"
+itemtype = "types.lintValue"
 
 [types.lints]
 type = "collection"
-typeof = "types.lintGroup"
+itemtype = "types.lintGroup"
 
     [types.lints.workspace]
     type = "boolean"
@@ -324,11 +324,11 @@ type = "table"
     optional = true
 
     [types.profileSettings.opt-level]
-    typeof = "types.profileOptLevel"
+    type = "types.profileOptLevel"
     optional = true
 
     [types.profileSettings.debug]
-    typeof = "types.profileDebug"
+    type = "types.profileDebug"
     optional = true
 
     [types.profileSettings.split-debuginfo]
@@ -336,7 +336,7 @@ type = "table"
     optional = true
 
     [types.profileSettings.strip]
-    typeof = "types.profileStrip"
+    type = "types.profileStrip"
     optional = true
 
     [types.profileSettings.debug-assertions]
@@ -348,7 +348,7 @@ type = "table"
     optional = true
 
     [types.profileSettings.lto]
-    typeof = "types.profileLto"
+    type = "types.profileLto"
     optional = true
 
     [types.profileSettings.panic]
@@ -370,11 +370,11 @@ type = "table"
 
     [types.profileSettings.package]
     type = "collection"
-    typeof = "types.profileSettings"
+    itemtype = "types.profileSettings"
     optional = true
 
     [types.profileSettings.build-override]
-    typeof = "types.profileSettings"
+    type = "types.profileSettings"
     optional = true
 
 [types.badges]
@@ -403,15 +403,15 @@ type = "table"
     optional = true
 
     [types.workspace.package]
-    typeof = "types.packageBase"
+    type = "types.packageBase"
     optional = true
 
     [types.workspace.dependencies]
-    typeof = "types.dependencyCollection"
+    type = "types.dependencyCollection"
     optional = true
 
     [types.workspace.lints]
-    typeof = "types.lints"
+    type = "types.lints"
     optional = true
 
     [types.workspace.metadata]
@@ -426,11 +426,11 @@ arraytype = "string"
 optional = true
 
 [elements.package]
-typeof = "types.package"
+type = "types.package"
 optional = true
 
 [elements.lib]
-typeof = "types.target"
+type = "types.target"
 optional = true
 
 [elements.bin]
@@ -458,33 +458,33 @@ itemtype = "types.target"
 optional = true
 
 [elements.dependencies]
-typeof = "types.dependencyCollection"
+type = "types.dependencyCollection"
 optional = true
 
 [elements.dev-dependencies]
-typeof = "types.dependencyCollection"
+type = "types.dependencyCollection"
 optional = true
 
 [elements.build-dependencies]
-typeof = "types.dependencyCollection"
+type = "types.dependencyCollection"
 optional = true
 
 [elements.target]
 type = "collection"
-typeof = "types.targetDependencies"
+itemtype = "types.targetDependencies"
 optional = true
 
 [elements.badges]
-typeof = "types.badges"
+type = "types.badges"
 optional = true
 
 [elements.features]
 type = "collection"
-typeof = "types.stringArray"
+itemtype = "types.stringArray"
 optional = true
 
 [elements.lints]
-typeof = "types.lints"
+type = "types.lints"
 optional = true
 
 [elements.hints]
@@ -493,18 +493,18 @@ optional = true
 
 [elements.patch]
 type = "collection"
-typeof = "types.dependencyCollection"
+itemtype = "types.dependencyCollection"
 optional = true
 
 [elements.replace]
-typeof = "types.dependencyCollection"
+type = "types.dependencyCollection"
 optional = true
 
 [elements.profile]
 type = "collection"
-typeof = "types.profileSettings"
+itemtype = "types.profileSettings"
 optional = true
 
 [elements.workspace]
-typeof = "types.workspace"
+type = "types.workspace"
 optional = true

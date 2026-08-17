@@ -23,11 +23,11 @@ arraytype = "integer"
 
 [types.stringMap]
 type = "collection"
-typeof = "string"
+itemtype = "string"
 
 [types.anyMap]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
 [types.stringOrStringArray]
 oneof = [ "string", "types.stringArray" ]
@@ -69,14 +69,14 @@ type = "table"
     optional = true
 
     [types.machineShutdownDrain.retry_backoff]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
 [types.machineGlobal]
 type = "table"
 
     [types.machineGlobal.shutdown_drain]
-    typeof = "types.machineShutdownDrain"
+    type = "types.machineShutdownDrain"
     optional = true
 
 [types.sessionServer]
@@ -99,11 +99,11 @@ type = "table"
 type = "table"
 
     [types.runnerArtifact.upload_timeout]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
     [types.runnerArtifact.response_header_timeout]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
 [types.customBuildDir]
@@ -121,7 +121,7 @@ type = "table"
     optional = true
 
     [types.refereeMetrics.query_interval]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
     [types.refereeMetrics.metric_queries]
@@ -149,11 +149,11 @@ type = "table"
 type = "table"
 
     [types.referees.metrics]
-    typeof = "types.refereeMetrics"
+    type = "types.refereeMetrics"
     optional = true
 
     [types.referees.artifact]
-    typeof = "types.refereeArtifact"
+    type = "types.refereeArtifact"
     optional = true
 
 [types.dockerService]
@@ -188,7 +188,7 @@ itemtype = "types.dockerService"
 
 [types.docker]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.docker.host]
     type = "string"
@@ -211,27 +211,27 @@ typeof = "any"
     optional = true
 
     [types.docker.allowed_images]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.allowed_privileged_images]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.allowed_pull_policies]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.allowed_services]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.allowed_privileged_services]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.services]
-    typeof = "types.dockerServices"
+    type = "types.dockerServices"
     optional = true
 
     [types.docker.services_limit]
@@ -271,11 +271,11 @@ typeof = "any"
     optional = true
 
     [types.docker.volumes]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.volumes_from]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.volume_driver]
@@ -287,7 +287,7 @@ typeof = "any"
     optional = true
 
     [types.docker.pull_policy]
-    typeof = "types.stringOrStringArray"
+    type = "types.stringOrStringArray"
     optional = true
 
     [types.docker.runtime]
@@ -363,35 +363,35 @@ typeof = "any"
     optional = true
 
     [types.docker.dns]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.dns_search]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.extra_hosts]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.group_add]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.cap_add]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.cap_drop]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.devices]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.device_cgroup_rules]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.gpus]
@@ -403,36 +403,36 @@ typeof = "any"
     optional = true
 
     [types.docker.tmpfs]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.services_tmpfs]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.links]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.docker.container_labels]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.docker.log_options]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.docker.ulimit]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.docker.sysctls]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
 [types.kubernetes]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.kubernetes.host]
     type = "string"
@@ -471,39 +471,39 @@ typeof = "any"
     optional = true
 
     [types.kubernetes.allowed_images]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.kubernetes.allowed_services]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.kubernetes.allowed_pull_policies]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.kubernetes.image_pull_secrets]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.kubernetes.pull_policy]
-    typeof = "types.stringOrStringArray"
+    type = "types.stringOrStringArray"
     optional = true
 
     [types.kubernetes.node_selector]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.kubernetes.node_tolerations]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.kubernetes.pod_labels]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.kubernetes.pod_annotations]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.kubernetes.service_account]
@@ -543,7 +543,7 @@ type = "table"
     optional = true
 
     [types.ssh.port]
-    typeof = "types.stringOrInteger"
+    type = "types.stringOrInteger"
     optional = true
 
     [types.ssh.user]
@@ -578,7 +578,7 @@ type = "table"
     optional = true
 
     [types.parallels.allowed_images]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
 [types.virtualbox]
@@ -601,7 +601,7 @@ type = "table"
     optional = true
 
     [types.virtualbox.allowed_images]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.virtualbox.start_type]
@@ -613,7 +613,7 @@ type = "table"
 type = "table"
 
     [types.machineAutoscaling.Periods]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.machineAutoscaling.IdleCount]
@@ -622,7 +622,7 @@ type = "table"
     optional = true
 
     [types.machineAutoscaling.IdleScaleFactor]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.machineAutoscaling.IdleCountMin]
@@ -646,7 +646,7 @@ itemtype = "types.machineAutoscaling"
 
 [types.runnerMachine]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.runnerMachine.MaxGrowthRate]
     type = "integer"
@@ -659,7 +659,7 @@ typeof = "any"
     optional = true
 
     [types.runnerMachine.IdleScaleFactor]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.runnerMachine.IdleCountMin]
@@ -686,15 +686,15 @@ typeof = "any"
     optional = true
 
     [types.runnerMachine.MachineOptions]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.runnerMachine.autoscaling]
-    typeof = "types.machineAutoscalings"
+    type = "types.machineAutoscalings"
     optional = true
 
     [types.runnerMachine.OffPeakPeriods]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.runnerMachine.OffPeakTimezone]
@@ -713,7 +713,7 @@ typeof = "any"
 
 [types.autoscalerConnectorConfig]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.autoscalerConnectorConfig.username]
     type = "string"
@@ -732,11 +732,11 @@ typeof = "any"
     optional = true
 
     [types.autoscalerConnectorConfig.keepalive]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
     [types.autoscalerConnectorConfig.timeout]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
 [types.autoscalerScaleThrottle]
@@ -771,7 +771,7 @@ type = "table"
 type = "table"
 
     [types.autoscalerPolicy.periods]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.autoscalerPolicy.timezone]
@@ -784,11 +784,11 @@ type = "table"
     optional = true
 
     [types.autoscalerPolicy.idle_time]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
     [types.autoscalerPolicy.scale_factor]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.autoscalerPolicy.scale_factor_limit]
@@ -807,7 +807,7 @@ itemtype = "types.autoscalerPolicy"
 
 [types.vmIsolation]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.vmIsolation.enabled]
     type = "boolean"
@@ -818,7 +818,7 @@ typeof = "any"
     optional = true
 
     [types.vmIsolation.nesting_config]
-    typeof = "types.anyMap"
+    type = "types.anyMap"
     optional = true
 
     [types.vmIsolation.image]
@@ -826,12 +826,12 @@ typeof = "any"
     optional = true
 
     [types.vmIsolation.connector_config]
-    typeof = "types.autoscalerConnectorConfig"
+    type = "types.autoscalerConnectorConfig"
     optional = true
 
 [types.autoscaler]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.autoscaler.capacity_per_instance]
     type = "integer"
@@ -853,27 +853,27 @@ typeof = "any"
     optional = true
 
     [types.autoscaler.plugin_config]
-    typeof = "types.anyMap"
+    type = "types.anyMap"
     optional = true
 
     [types.autoscaler.connector_config]
-    typeof = "types.autoscalerConnectorConfig"
+    type = "types.autoscalerConnectorConfig"
     optional = true
 
     [types.autoscaler.state_storage]
-    typeof = "types.autoscalerStateStorage"
+    type = "types.autoscalerStateStorage"
     optional = true
 
     [types.autoscaler.scale_throttle]
-    typeof = "types.autoscalerScaleThrottle"
+    type = "types.autoscalerScaleThrottle"
     optional = true
 
     [types.autoscaler.policy]
-    typeof = "types.autoscalerPolicies"
+    type = "types.autoscalerPolicies"
     optional = true
 
     [types.autoscaler.vm_isolation]
-    typeof = "types.vmIsolation"
+    type = "types.vmIsolation"
     optional = true
 
 [types.customExecutor]
@@ -884,7 +884,7 @@ type = "table"
     optional = true
 
     [types.customExecutor.config_args]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.customExecutor.config_exec_timeout]
@@ -897,7 +897,7 @@ type = "table"
     optional = true
 
     [types.customExecutor.prepare_args]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.customExecutor.prepare_exec_timeout]
@@ -910,7 +910,7 @@ type = "table"
     optional = true
 
     [types.customExecutor.run_args]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.customExecutor.cleanup_exec]
@@ -918,7 +918,7 @@ type = "table"
     optional = true
 
     [types.customExecutor.cleanup_args]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.customExecutor.cleanup_exec_timeout]
@@ -1069,20 +1069,20 @@ type = "table"
     optional = true
 
     [types.cache.s3]
-    typeof = "types.cacheS3"
+    type = "types.cacheS3"
     optional = true
 
     [types.cache.gcs]
-    typeof = "types.cacheGCS"
+    type = "types.cacheGCS"
     optional = true
 
     [types.cache.azure]
-    typeof = "types.cacheAzure"
+    type = "types.cacheAzure"
     optional = true
 
 [types.runner]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.runner.name]
     type = "string"
@@ -1114,11 +1114,11 @@ typeof = "any"
     optional = true
 
     [types.runner.executor]
-    typeof = "types.executor"
+    type = "types.executor"
     optional = true
 
     [types.runner.shell]
-    typeof = "types.shell"
+    type = "types.shell"
     optional = true
 
     [types.runner.builds_dir]
@@ -1130,7 +1130,7 @@ typeof = "any"
     optional = true
 
     [types.runner.environment]
-    typeof = "types.stringArray"
+    type = "types.stringArray"
     optional = true
 
     [types.runner.request_concurrency]
@@ -1181,7 +1181,7 @@ typeof = "any"
     optional = true
 
     [types.runner.unhealthy_interval]
-    typeof = "types.durationValue"
+    type = "types.durationValue"
     optional = true
 
     [types.runner.job_status_final_update_retry_limit]
@@ -1195,51 +1195,51 @@ typeof = "any"
     optional = true
 
     [types.runner.custom_build_dir]
-    typeof = "types.customBuildDir"
+    type = "types.customBuildDir"
     optional = true
 
     [types.runner.referees]
-    typeof = "types.referees"
+    type = "types.referees"
     optional = true
 
     [types.runner.artifact]
-    typeof = "types.runnerArtifact"
+    type = "types.runnerArtifact"
     optional = true
 
     [types.runner.docker]
-    typeof = "types.docker"
+    type = "types.docker"
     optional = true
 
     [types.runner.kubernetes]
-    typeof = "types.kubernetes"
+    type = "types.kubernetes"
     optional = true
 
     [types.runner.ssh]
-    typeof = "types.ssh"
+    type = "types.ssh"
     optional = true
 
     [types.runner.parallels]
-    typeof = "types.parallels"
+    type = "types.parallels"
     optional = true
 
     [types.runner.virtualbox]
-    typeof = "types.virtualbox"
+    type = "types.virtualbox"
     optional = true
 
     [types.runner.machine]
-    typeof = "types.runnerMachine"
+    type = "types.runnerMachine"
     optional = true
 
     [types.runner.autoscaler]
-    typeof = "types.autoscaler"
+    type = "types.autoscaler"
     optional = true
 
     [types.runner.custom]
-    typeof = "types.customExecutor"
+    type = "types.customExecutor"
     optional = true
 
     [types.runner.cache]
-    typeof = "types.cache"
+    type = "types.cache"
     optional = true
 
 [types.runners]
@@ -1255,11 +1255,11 @@ min = 1
 optional = true
 
 [elements.log_level]
-typeof = "types.logLevel"
+type = "types.logLevel"
 optional = true
 
 [elements.log_format]
-typeof = "types.logFormat"
+type = "types.logFormat"
 optional = true
 
 [elements.check_interval]
@@ -1272,7 +1272,7 @@ type = "string"
 optional = true
 
 [elements.connection_max_age]
-typeof = "types.durationValue"
+type = "types.durationValue"
 optional = true
 
 [elements.listen_address]
@@ -1285,13 +1285,13 @@ min = 0
 optional = true
 
 [elements.machine]
-typeof = "types.machineGlobal"
+type = "types.machineGlobal"
 optional = true
 
 [elements.session_server]
-typeof = "types.sessionServer"
+type = "types.sessionServer"
 optional = true
 
 [elements.runners]
-typeof = "types.runners"
+type = "types.runners"
 optional = true

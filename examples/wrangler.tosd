@@ -17,11 +17,11 @@ itemtype = "types.numberValue"
 
 [types.stringMap]
 type = "collection"
-typeof = "string"
+itemtype = "string"
 
 [types.anyMap]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
 [types.stringOrStringArray]
 oneof = [ "string", "types.stringArray" ]
@@ -81,7 +81,7 @@ type = "table"
     type = "boolean"
 
     [types.observability.head_sampling_rate]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
 [types.build]
@@ -96,18 +96,18 @@ type = "table"
     optional = true
 
     [types.build.watch_dir]
-    typeof = "types.stringOrStringArray"
+    type = "types.stringOrStringArray"
     optional = true
 
 [types.limits]
 type = "table"
 
     [types.limits.cpu_ms]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.limits.subrequests]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
 [types.placement]
@@ -152,7 +152,7 @@ type = "table"
     optional = true
 
     [types.assets.run_worker_first]
-    typeof = "types.booleanOrStringArray"
+    type = "types.booleanOrStringArray"
     optional = true
 
 [types.moduleRule]
@@ -298,44 +298,44 @@ type = "table"
     type = "string"
 
 [types.idBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.idBinding.id]
     type = "string"
 
 [types.nameBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.nameBinding.name]
     type = "string"
 
 [types.namespaceBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.namespaceBinding.namespace]
     type = "string"
 
 [types.aiSearchInstance]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.aiSearchInstance.instance_name]
     type = "string"
 
 [types.indexBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.indexBinding.index_name]
     type = "string"
 
 [types.datasetBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.datasetBinding.dataset]
     type = "string"
     optional = true
 
 [types.serviceBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.serviceBinding.service]
     type = "string"
@@ -345,13 +345,13 @@ typeof = "types.simpleBinding"
     optional = true
 
 [types.certificateBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.certificateBinding.certificate_id]
     type = "string"
 
 [types.workflowBinding]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.workflowBinding.class_name]
     type = "string"
@@ -375,10 +375,10 @@ type = "table"
     optional = true
 
 [types.dispatchNamespace]
-typeof = "types.namespaceBinding"
+type = "types.namespaceBinding"
 
     [types.dispatchNamespace.outbound]
-    typeof = "types.dispatchOutbound"
+    type = "types.dispatchOutbound"
     optional = true
 
 [types.durableObjectBinding]
@@ -469,10 +469,10 @@ type = "table"
     optional = true
 
 [types.queueProducer]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.queueProducer.delivery_delay]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.queueProducer.queue]
@@ -489,23 +489,23 @@ type = "table"
     optional = true
 
     [types.queueConsumer.max_batch_size]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.queueConsumer.max_batch_timeout]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.queueConsumer.max_concurrency]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.queueConsumer.max_retries]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.queueConsumer.retry_delay]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
 [types.queues]
@@ -532,7 +532,7 @@ type = "table"
     optional = true
 
 [types.secretsStoreSecret]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 
     [types.secretsStoreSecret.store_id]
     type = "string"
@@ -562,15 +562,15 @@ type = "table"
 type = "table"
 
     [types.instanceType.disk_mb]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.instanceType.memory_mib]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.instanceType.vcpu]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
 [types.namedInstanceType]
@@ -631,7 +631,7 @@ type = "table"
     optional = true
 
     [types.container.constraints]
-    typeof = "types.containerConstraints"
+    type = "types.containerConstraints"
     optional = true
 
     [types.container.image_build_context]
@@ -639,15 +639,15 @@ type = "table"
     optional = true
 
     [types.container.image_vars]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.container.instance_type]
-    typeof = "types.containerInstanceType"
+    type = "types.containerInstanceType"
     optional = true
 
     [types.container.max_instances]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.container.name]
@@ -655,19 +655,19 @@ type = "table"
     optional = true
 
     [types.container.rollout_active_grace_period]
-    typeof = "types.numberValue"
+    type = "types.numberValue"
     optional = true
 
     [types.container.rollout_step_percentage]
-    typeof = "types.numberOrNumberArray"
+    type = "types.numberOrNumberArray"
     optional = true
 
     [types.container.ssh]
-    typeof = "types.ssh"
+    type = "types.ssh"
     optional = true
 
     [types.container.wrangler_ssh]
-    typeof = "types.ssh"
+    type = "types.ssh"
     optional = true
 
 [types.containers]
@@ -737,14 +737,14 @@ itemtype = "types.secretsStoreSecret"
 
 [types.workerSettings]
 type = "collection"
-typeof = "any"
+itemtype = "any"
 
     [types.workerSettings.account_id]
     type = "string"
     optional = true
 
     [types.workerSettings.ai]
-    typeof = "types.simpleBinding"
+    type = "types.simpleBinding"
     optional = true
 
     [types.workerSettings.ai_search]
@@ -754,19 +754,19 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.ai_search_namespaces]
-    typeof = "types.arrayOfNamespaceBindings"
+    type = "types.arrayOfNamespaceBindings"
     optional = true
 
     [types.workerSettings.alias]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.workerSettings.analytics_engine_datasets]
-    typeof = "types.arrayOfDatasetBindings"
+    type = "types.arrayOfDatasetBindings"
     optional = true
 
     [types.workerSettings.assets]
-    typeof = "types.assets"
+    type = "types.assets"
     optional = true
 
     [types.workerSettings.base_dir]
@@ -774,15 +774,15 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.browser]
-    typeof = "types.simpleBinding"
+    type = "types.simpleBinding"
     optional = true
 
     [types.workerSettings.build]
-    typeof = "types.build"
+    type = "types.build"
     optional = true
 
     [types.workerSettings.compatibility_date]
-    typeof = "types.compatibilityDate"
+    type = "types.compatibilityDate"
     optional = true
 
     [types.workerSettings.compatibility_flags]
@@ -791,27 +791,27 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.containers]
-    typeof = "types.containers"
+    type = "types.containers"
     optional = true
 
     [types.workerSettings.d1_databases]
-    typeof = "types.d1Databases"
+    type = "types.d1Databases"
     optional = true
 
     [types.workerSettings.define]
-    typeof = "types.stringMap"
+    type = "types.stringMap"
     optional = true
 
     [types.workerSettings.dev]
-    typeof = "types.dev"
+    type = "types.dev"
     optional = true
 
     [types.workerSettings.dispatch_namespaces]
-    typeof = "types.arrayOfDispatchNamespaces"
+    type = "types.arrayOfDispatchNamespaces"
     optional = true
 
     [types.workerSettings.durable_objects]
-    typeof = "types.durableObjects"
+    type = "types.durableObjects"
     optional = true
 
     [types.workerSettings.find_additional_modules]
@@ -819,11 +819,11 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.hyperdrive]
-    typeof = "types.arrayOfIdBindings"
+    type = "types.arrayOfIdBindings"
     optional = true
 
     [types.workerSettings.images]
-    typeof = "types.simpleBinding"
+    type = "types.simpleBinding"
     optional = true
 
     [types.workerSettings.keep_names]
@@ -831,11 +831,11 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.kv_namespaces]
-    typeof = "types.kvNamespaces"
+    type = "types.kvNamespaces"
     optional = true
 
     [types.workerSettings.limits]
-    typeof = "types.limits"
+    type = "types.limits"
     optional = true
 
     [types.workerSettings.logpush]
@@ -851,11 +851,11 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.mtls_certificates]
-    typeof = "types.arrayOfCertificateBindings"
+    type = "types.arrayOfCertificateBindings"
     optional = true
 
     [types.workerSettings.name]
-    typeof = "types.workerName"
+    type = "types.workerName"
     optional = true
 
     [types.workerSettings.no_bundle]
@@ -863,11 +863,11 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.observability]
-    typeof = "types.observability"
+    type = "types.observability"
     optional = true
 
     [types.workerSettings.placement]
-    typeof = "types.placement"
+    type = "types.placement"
     optional = true
 
     [types.workerSettings.preserve_file_names]
@@ -879,51 +879,51 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.python_modules]
-    typeof = "types.pythonModules"
+    type = "types.pythonModules"
     optional = true
 
     [types.workerSettings.queues]
-    typeof = "types.queues"
+    type = "types.queues"
     optional = true
 
     [types.workerSettings.r2_buckets]
-    typeof = "types.r2Buckets"
+    type = "types.r2Buckets"
     optional = true
 
     [types.workerSettings.route]
-    typeof = "types.route"
+    type = "types.route"
     optional = true
 
     [types.workerSettings.routes]
-    typeof = "types.routes"
+    type = "types.routes"
     optional = true
 
     [types.workerSettings.rules]
-    typeof = "types.rules"
+    type = "types.rules"
     optional = true
 
     [types.workerSettings.secrets]
-    typeof = "types.secrets"
+    type = "types.secrets"
     optional = true
 
     [types.workerSettings.secrets_store_secrets]
-    typeof = "types.arrayOfSecretsStoreSecrets"
+    type = "types.arrayOfSecretsStoreSecrets"
     optional = true
 
     [types.workerSettings.send_email]
-    typeof = "types.arrayOfEmailBindings"
+    type = "types.arrayOfEmailBindings"
     optional = true
 
     [types.workerSettings.services]
-    typeof = "types.arrayOfServiceBindings"
+    type = "types.arrayOfServiceBindings"
     optional = true
 
     [types.workerSettings.tail_consumers]
-    typeof = "types.arrayOfServiceBindings"
+    type = "types.arrayOfServiceBindings"
     optional = true
 
     [types.workerSettings.triggers]
-    typeof = "types.triggers"
+    type = "types.triggers"
     optional = true
 
     [types.workerSettings.tsconfig]
@@ -935,11 +935,11 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.vars]
-    typeof = "types.anyMap"
+    type = "types.anyMap"
     optional = true
 
     [types.workerSettings.vectorize]
-    typeof = "types.arrayOfIndexBindings"
+    type = "types.arrayOfIndexBindings"
     optional = true
 
     [types.workerSettings.workers_dev]
@@ -947,30 +947,30 @@ typeof = "any"
     optional = true
 
     [types.workerSettings.workflows]
-    typeof = "types.arrayOfWorkflowBindings"
+    type = "types.arrayOfWorkflowBindings"
     optional = true
 
 [types.env]
 type = "collection"
-typeof = "types.workerSettings"
+itemtype = "types.workerSettings"
 
 [elements]
 
 [elements.name]
-typeof = "types.workerName"
+type = "types.workerName"
 
 [elements.main]
 type = "string"
 
 [elements.compatibility_date]
-typeof = "types.compatibilityDate"
+type = "types.compatibilityDate"
 
 [elements.account_id]
 type = "string"
 optional = true
 
 [elements.ai]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 optional = true
 
 [elements.ai_search]
@@ -980,19 +980,19 @@ itemtype = "types.aiSearchInstance"
 optional = true
 
 [elements.ai_search_namespaces]
-typeof = "types.arrayOfNamespaceBindings"
+type = "types.arrayOfNamespaceBindings"
 optional = true
 
 [elements.alias]
-typeof = "types.stringMap"
+type = "types.stringMap"
 optional = true
 
 [elements.analytics_engine_datasets]
-typeof = "types.arrayOfDatasetBindings"
+type = "types.arrayOfDatasetBindings"
 optional = true
 
 [elements.assets]
-typeof = "types.assets"
+type = "types.assets"
 optional = true
 
 [elements.base_dir]
@@ -1000,11 +1000,11 @@ type = "string"
 optional = true
 
 [elements.browser]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 optional = true
 
 [elements.build]
-typeof = "types.build"
+type = "types.build"
 optional = true
 
 [elements.compatibility_flags]
@@ -1013,31 +1013,31 @@ arraytype = "string"
 optional = true
 
 [elements.containers]
-typeof = "types.containers"
+type = "types.containers"
 optional = true
 
 [elements.d1_databases]
-typeof = "types.d1Databases"
+type = "types.d1Databases"
 optional = true
 
 [elements.define]
-typeof = "types.stringMap"
+type = "types.stringMap"
 optional = true
 
 [elements.dev]
-typeof = "types.dev"
+type = "types.dev"
 optional = true
 
 [elements.dispatch_namespaces]
-typeof = "types.arrayOfDispatchNamespaces"
+type = "types.arrayOfDispatchNamespaces"
 optional = true
 
 [elements.durable_objects]
-typeof = "types.durableObjects"
+type = "types.durableObjects"
 optional = true
 
 [elements.env]
-typeof = "types.env"
+type = "types.env"
 optional = true
 
 [elements.find_additional_modules]
@@ -1045,11 +1045,11 @@ type = "boolean"
 optional = true
 
 [elements.hyperdrive]
-typeof = "types.arrayOfIdBindings"
+type = "types.arrayOfIdBindings"
 optional = true
 
 [elements.images]
-typeof = "types.simpleBinding"
+type = "types.simpleBinding"
 optional = true
 
 [elements.keep_names]
@@ -1061,11 +1061,11 @@ type = "boolean"
 optional = true
 
 [elements.kv_namespaces]
-typeof = "types.kvNamespaces"
+type = "types.kvNamespaces"
 optional = true
 
 [elements.limits]
-typeof = "types.limits"
+type = "types.limits"
 optional = true
 
 [elements.logpush]
@@ -1073,7 +1073,7 @@ type = "boolean"
 optional = true
 
 [elements.migrations]
-typeof = "types.migrations"
+type = "types.migrations"
 optional = true
 
 [elements.minify]
@@ -1081,7 +1081,7 @@ type = "boolean"
 optional = true
 
 [elements.mtls_certificates]
-typeof = "types.arrayOfCertificateBindings"
+type = "types.arrayOfCertificateBindings"
 optional = true
 
 [elements.no_bundle]
@@ -1089,11 +1089,11 @@ type = "boolean"
 optional = true
 
 [elements.observability]
-typeof = "types.observability"
+type = "types.observability"
 optional = true
 
 [elements.placement]
-typeof = "types.placement"
+type = "types.placement"
 optional = true
 
 [elements.preserve_file_names]
@@ -1105,39 +1105,39 @@ type = "boolean"
 optional = true
 
 [elements.python_modules]
-typeof = "types.pythonModules"
+type = "types.pythonModules"
 optional = true
 
 [elements.queues]
-typeof = "types.queues"
+type = "types.queues"
 optional = true
 
 [elements.r2_buckets]
-typeof = "types.r2Buckets"
+type = "types.r2Buckets"
 optional = true
 
 [elements.route]
-typeof = "types.route"
+type = "types.route"
 optional = true
 
 [elements.routes]
-typeof = "types.routes"
+type = "types.routes"
 optional = true
 
 [elements.rules]
-typeof = "types.rules"
+type = "types.rules"
 optional = true
 
 [elements.secrets]
-typeof = "types.secrets"
+type = "types.secrets"
 optional = true
 
 [elements.secrets_store_secrets]
-typeof = "types.arrayOfSecretsStoreSecrets"
+type = "types.arrayOfSecretsStoreSecrets"
 optional = true
 
 [elements.send_email]
-typeof = "types.arrayOfEmailBindings"
+type = "types.arrayOfEmailBindings"
 optional = true
 
 [elements.send_metrics]
@@ -1145,19 +1145,19 @@ type = "boolean"
 optional = true
 
 [elements.services]
-typeof = "types.arrayOfServiceBindings"
+type = "types.arrayOfServiceBindings"
 optional = true
 
 [elements.site]
-typeof = "types.site"
+type = "types.site"
 optional = true
 
 [elements.tail_consumers]
-typeof = "types.arrayOfServiceBindings"
+type = "types.arrayOfServiceBindings"
 optional = true
 
 [elements.triggers]
-typeof = "types.triggers"
+type = "types.triggers"
 optional = true
 
 [elements.tsconfig]
@@ -1169,11 +1169,11 @@ type = "boolean"
 optional = true
 
 [elements.vars]
-typeof = "types.anyMap"
+type = "types.anyMap"
 optional = true
 
 [elements.vectorize]
-typeof = "types.arrayOfIndexBindings"
+type = "types.arrayOfIndexBindings"
 optional = true
 
 [elements.workers_dev]
@@ -1181,5 +1181,5 @@ type = "boolean"
 optional = true
 
 [elements.workflows]
-typeof = "types.arrayOfWorkflowBindings"
+type = "types.arrayOfWorkflowBindings"
 optional = true

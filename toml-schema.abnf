@@ -21,17 +21,16 @@ metadata-table    = toml-table-header-toml-schema-meta *toml-keyval
 
 schema-definition = schema-definition-table *definition-property *schema-definition
 
-schema-key = type / typeof / description / arraytype / itemtype / items / oneof / anyof
+schema-key = type / description / arraytype / itemtype / items / oneof / anyof
            / allowedvalues / pattern / keypattern / optional / default / min / max
            / minlength / maxlength
 
-definition-property = type / typeof / description / arraytype / itemtype / items / oneof / anyof
+definition-property = type / description / arraytype / itemtype / items / oneof / anyof
                     / allowedvalues / pattern / keypattern / optional / default / min / max
                     / minlength / maxlength
 
 version       = "version" keyval-sep semver-string
-type          = "type" keyval-sep built-in-type
-typeof        = "typeof" keyval-sep type-reference
+type          = "type" keyval-sep type-reference
 description   = "description" keyval-sep toml-string
 arraytype     = "arraytype" keyval-sep array-built-in-type
 itemtype      = "itemtype" keyval-sep type-reference
