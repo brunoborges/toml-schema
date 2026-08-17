@@ -425,6 +425,38 @@ class TomlSchemaTest {
     }
 
     @Test
+    void requiresArrayItemsWhenArrayTypeIsArray() throws IOException {
+        Path schema = write("nested-arrays.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.nested]
+                type = "array"
+                arraytype = "array"
+
+                [elements.mixed]
+                type = "array"
+                """);
+        Path valid = write("valid-nested-arrays.toml", """
+                nested = [[1, "two"], [true, false]]
+                mixed = [1, "two", [true]]
+                """);
+        Path invalid = write("invalid-nested-arrays.toml", """
+                nested = [[1], "not-an-array"]
+                mixed = [1, "two", [true]]
+                """);
+
+        TomlSchema loadedSchema = TomlSchema.load(schema);
+
+        ValidationResult validResult = loadedSchema.validate(valid);
+        assertTrue(validResult.isValid(), () -> validResult.errors().toString());
+
+        ValidationResult invalidResult = loadedSchema.validate(invalid);
+        assertFalse(invalidResult.isValid());
+        assertTrue(invalidResult.errors().stream().anyMatch(error -> error.path().equals("$.nested[1]")));
+    }
+
+    @Test
     void validatesArrayOfTablesWithItemSchema() throws IOException {
         Path schema = write("products.tosd", """
                 [toml-schema]

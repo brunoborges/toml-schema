@@ -426,6 +426,55 @@ entries = [
 }
 
 #[test]
+fn requires_array_items_when_arraytype_is_array() {
+    let directory = tempfile_dir("nested-arrays");
+    let schema_path = write_file(
+        &directory,
+        "nested-arrays.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.nested]
+type = "array"
+arraytype = "array"
+
+[elements.mixed]
+type = "array"
+"#,
+    );
+    let valid_path = write_file(
+        &directory,
+        "valid-nested-arrays.toml",
+        r#"
+nested = [[1, "two"], [true, false]]
+mixed = [1, "two", [true]]
+"#,
+    );
+    let invalid_path = write_file(
+        &directory,
+        "invalid-nested-arrays.toml",
+        r#"
+nested = [[1], "not-an-array"]
+mixed = [1, "two", [true]]
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load schema");
+
+    let valid_result = schema.validate_file(&valid_path);
+    assert!(
+        valid_result.valid(),
+        "expected nested arrays and unconstrained mixed items to be valid, got {:#?}",
+        valid_result.errors
+    );
+
+    let invalid_result = schema.validate_file(&invalid_path);
+    assert!(!invalid_result.valid());
+    assert!(has_path(&invalid_result, "$.nested[1]"));
+}
+
+#[test]
 fn supports_built_in_type_references() {
     let directory = tempfile_dir("built-in-references");
     let schema_path = write_file(
