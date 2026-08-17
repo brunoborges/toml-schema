@@ -311,6 +311,47 @@ entries = [
 	}
 }
 
+func TestRequiresArrayItemsWhenArrayTypeIsArray(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "nested-arrays.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.nested]
+type = "array"
+arraytype = "array"
+
+[elements.mixed]
+type = "array"
+`)
+	validPath := write(t, dir, "valid-nested-arrays.toml", `
+nested = [[1, "two"], [true, false]]
+mixed = [1, "two", [true]]
+`)
+	invalidPath := write(t, dir, "invalid-nested-arrays.toml", `
+nested = [[1], "not-an-array"]
+mixed = [1, "two", [true]]
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	validResult := schema.ValidateFile(validPath)
+	if !validResult.Valid() {
+		t.Fatalf("expected nested arrays and unconstrained mixed items to be valid, got %#v", validResult.Errors)
+	}
+
+	invalidResult := schema.ValidateFile(invalidPath)
+	if invalidResult.Valid() {
+		t.Fatal("expected arraytype array to reject a non-array item")
+	}
+	if !hasPath(invalidResult, "$.nested[1]") {
+		t.Fatalf("expected nested item type error, got %#v", invalidResult.Errors)
+	}
+}
+
 func TestSupportsBuiltInTypeReferences(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `

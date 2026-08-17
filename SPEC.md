@@ -403,7 +403,9 @@ If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `m
 
 If `arraytype` is not defined, then the type of array elements is `any`, and any data type can be used and mixed together.
 
-If `type` is `array` and `arraytype` is of type `array`, then automatically any data type can be used and mixed together.
+If `type` is `array` and `arraytype` is `array`, every item MUST be an array. The
+contents of those nested arrays are unconstrained; only omitting `arraytype`
+permits non-array and array items to be mixed in the outer array.
 
 ##### Array Item Schemas and Arrays of Tables
 
