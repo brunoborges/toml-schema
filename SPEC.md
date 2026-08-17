@@ -168,7 +168,7 @@ version = "1.0.0"
 
 ### Supported Properties
 
- - `version`: the version of this schema file. **Type:** string.
+ - `version`: the TOML Schema language version used by this schema document. **Type:** string.
    - **Required**.
  - `toml-schema.meta`: table reserved for any custom user-provided metadata.
    - **Optional**.
@@ -770,11 +770,19 @@ A TOML file can include this indication to reference which schema file to use fo
 
 ```toml
 [toml-schema]
-version = "1.0.0"
 location = "<uri>"
+version = "1.0.0" # optional
 ```
 
-Where `<uri>` can be a remote URL (e.g. https) or a local file.
+`location` identifies the schema document. It is REQUIRED when a validator is asked to discover a schema from the TOML document. Its value MUST be a non-empty string containing either an absolute URI, such as an HTTPS URL, or a relative URI reference, such as a local schema filename.
+
+An absolute `location` MUST be used unchanged. A relative `location` MUST be resolved against the referencing TOML document's location, not against the validator's current working directory or the resolved schema's location. For a TOML document stored in a local file, this means resolving a relative location from the document's parent directory.
+
+A validator that receives a TOML document without a base location, for example through standard input, cannot resolve a relative `location`. It MUST either obtain an explicit base URI from the caller or report that schema discovery failed. An absolute `location` does not require a document base. Implementations MAY limit the URI schemes they can retrieve, but MUST report an unsupported scheme rather than reinterpret its value as a relative local path.
+
+`version` is OPTIONAL. When present, it denotes the expected TOML Schema **language version** in the resolved schema document's `[toml-schema].version`; it is not an application version or an author-defined revision of that schema. Its value MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form, with the same syntax defined by [Schema Versioning](#schema-versioning).
+
+After resolving and loading the schema, a validator MUST compare these two language versions when the referencing document provides `version`. A different major version is incompatible and schema discovery MUST fail. Any other unequal version, including a minor, patch, pre-release, or build metadata difference, MUST produce a warning but MUST NOT by itself cause validation to fail. Compatibility between the resolved schema and the validator remains governed by [Schema Versioning](#schema-versioning).
 
 The root `[toml-schema]` table is reserved for schema metadata. Validators should use it to locate schema information and should not treat it as application data unless the schema explicitly defines `[elements.toml-schema]`.
 

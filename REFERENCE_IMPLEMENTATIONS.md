@@ -45,6 +45,8 @@ Validate using `[toml-schema].location` from the TOML document:
 java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate config.toml
 ```
 
+For document-driven lookup, the Java CLI resolves a relative `[toml-schema].location` from the TOML document's directory. The document's `[toml-schema].version` is optional; when present, the CLI rejects a major-version mismatch with the resolved schema and warns about other unequal versions.
+
 Validate the example schema against the TOML Schema self-schema:
 
 ```shell
@@ -202,7 +204,7 @@ Every reference implementation should:
 
 1. Parse TOML documents with a TOML 1.0-compliant parser rather than reimplementing TOML parsing.
 1. Treat `.tosd` schemas as valid TOML documents.
-1. Require `[toml-schema].version` to be a SemVer string compatible with the implementation's supported TOML Schema version.
+1. Require a schema document's `[toml-schema].version` to be a SemVer string compatible with the implementation's supported TOML Schema version.
 1. Validate the checked-in `config.toml` document against `config.tosd`.
 1. Support schema lookup through `[toml-schema].location`.
 1. Validate `config.tosd` against `toml-schema.tosd`.

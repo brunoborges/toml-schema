@@ -975,10 +975,69 @@ class TomlSchemaTest {
     }
 
     @Test
-    void cliLocatesSchemaFromDocumentMetadata() throws IOException {
+    void cliResolvesRelativeSchemaLocationFromDocumentDirectory() throws IOException {
+        Path schemaDirectory = Files.createDirectories(tempDir.resolve("schemas"));
+        Files.writeString(schemaDirectory.resolve("schema.tosd"), """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.title]
+                type = "string"
+                """, StandardCharsets.UTF_8);
+        Path documentDirectory = Files.createDirectories(tempDir.resolve("documents"));
+        Path document = documentDirectory.resolve("document.toml");
+        Files.writeString(document, """
+                title = "Example"
+
+                [toml-schema]
+                version = "1.0.0"
+                location = "../schemas/schema.tosd"
+                """, StandardCharsets.UTF_8);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"validate", document.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(0, exitCode, err::toString);
+        assertTrue(out.toString(StandardCharsets.UTF_8).contains("is valid"));
+        assertEquals("", err.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void cliAllowsDocumentSchemaVersionToBeOmitted() throws IOException {
         write("schema.tosd", """
                 [toml-schema]
                 version = "1.0.0"
+
+                [elements.title]
+                type = "string"
+                """);
+        Path document = write("document.toml", """
+                title = "Example"
+
+                [toml-schema]
+                location = "schema.tosd"
+                """);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"validate", document.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(0, exitCode, err::toString);
+        assertEquals("", err.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void cliWarnsOnNonMajorDocumentSchemaVersionMismatch() throws IOException {
+        write("schema.tosd", """
+                [toml-schema]
+                version = "1.0.1"
 
                 [elements.title]
                 type = "string"
@@ -999,7 +1058,123 @@ class TomlSchemaTest {
                 new PrintStream(err, true, StandardCharsets.UTF_8));
 
         assertEquals(0, exitCode, err::toString);
-        assertTrue(out.toString(StandardCharsets.UTF_8).contains("is valid"));
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains(
+                "Warning: document expects TOML Schema version 1.0.0, but resolved schema uses 1.0.1"));
+    }
+
+    @Test
+    void cliRejectsMajorDocumentSchemaVersionMismatch() throws IOException {
+        write("schema.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.title]
+                type = "string"
+                """);
+        Path document = write("document.toml", """
+                title = "Example"
+
+                [toml-schema]
+                version = "2.0.0"
+                location = "schema.tosd"
+                """);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"validate", document.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(2, exitCode);
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains(
+                "Document expects TOML Schema major version 2.0.0, but resolved schema uses 1.0.0"));
+    }
+
+    @Test
+    void cliRejectsMalformedDocumentSchemaVersions() throws IOException {
+        write("schema.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.title]
+                type = "string"
+                """);
+        Path shorthandDocument = write("shorthand.toml", """
+                title = "Example"
+
+                [toml-schema]
+                version = "1.0"
+                location = "schema.tosd"
+                """);
+        Path nonStringDocument = write("non-string.toml", """
+                title = "Example"
+
+                [toml-schema]
+                version = 1
+                location = "schema.tosd"
+                """);
+
+        for (Path document : List.of(shorthandDocument, nonStringDocument)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+            int exitCode = TomlSchemaCli.run(
+                    new String[]{"validate", document.toString()},
+                    new PrintStream(out, true, StandardCharsets.UTF_8),
+                    new PrintStream(err, true, StandardCharsets.UTF_8));
+
+            assertEquals(2, exitCode);
+            assertTrue(err.toString(StandardCharsets.UTF_8).contains("Document [toml-schema].version must"));
+        }
+    }
+
+    @Test
+    void cliRejectsMalformedSchemaReferenceMetadata() throws IOException {
+        Path nonTableMetadata = write("non-table-metadata.toml", """
+                title = "Example"
+                toml-schema = "schema.tosd"
+                """);
+        Path nonStringLocation = write("non-string-location.toml", """
+                title = "Example"
+
+                [toml-schema]
+                location = 1
+                """);
+
+        for (Path document : List.of(nonTableMetadata, nonStringLocation)) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+            int exitCode = TomlSchemaCli.run(
+                    new String[]{"validate", document.toString()},
+                    new PrintStream(out, true, StandardCharsets.UTF_8),
+                    new PrintStream(err, true, StandardCharsets.UTF_8));
+
+            assertEquals(2, exitCode);
+            assertTrue(err.toString(StandardCharsets.UTF_8).contains("Document"));
+        }
+    }
+
+    @Test
+    void cliRejectsUnsupportedSchemaLocationUriScheme() throws IOException {
+        Path document = write("document.toml", """
+                title = "Example"
+
+                [toml-schema]
+                location = "https://example.com/schema.tosd"
+                """);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"validate", document.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(2, exitCode);
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains(
+                "Unsupported schema location URI scheme: https"));
     }
 
     @Test

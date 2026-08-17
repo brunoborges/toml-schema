@@ -61,8 +61,8 @@ A TOML document can point to a schema with reserved metadata:
 
 ```toml
 [toml-schema]
-version = "1.0.0"
 location = "config.tosd"
+version = "1.0.0" # optional expected schema-language version
 ```
 
 See [SPEC.md](SPEC.md#toml-reference-of-a-toml-schema) for the full behavior.

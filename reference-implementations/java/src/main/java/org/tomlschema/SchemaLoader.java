@@ -40,13 +40,13 @@ final class SchemaLoader {
         if (parsed.hasErrors()) {
             throw new SchemaException("Unable to parse schema " + schemaPath + ": " + formatParseErrors(parsed.errors()));
         }
-        validateTopLevel(parsed);
+        String version = validateTopLevel(parsed);
         Map<String, SchemaDefinition> types = parseDefinitions("types", parsed.getTable("types"), false);
         Map<String, SchemaDefinition> elements = parseDefinitions("elements", parsed.getTable("elements"), true);
-        return new TomlSchema(schemaPath, types, elements);
+        return new TomlSchema(schemaPath, version, types, elements);
     }
 
-    private void validateTopLevel(TomlTable schema) {
+    private String validateTopLevel(TomlTable schema) {
         if (!schema.isTable("toml-schema")) {
             throw new SchemaException("Schema must contain a [toml-schema] table");
         }
@@ -62,12 +62,13 @@ final class SchemaLoader {
         if (metadata == null || !metadata.contains("version")) {
             throw new SchemaException("[toml-schema] must contain version");
         }
-        TomlSchemaVersion.validate(metadata.get("version"));
+        String version = TomlSchemaVersion.validate(metadata.get("version")).value();
         for (String key : metadata.keySet()) {
             if (!key.equals("version") && !key.equals("meta")) {
                 throw new SchemaException("Unsupported [toml-schema] key: " + key);
             }
         }
+        return version;
     }
 
     private Map<String, SchemaDefinition> parseDefinitions(String prefix, TomlTable table, boolean required) {
