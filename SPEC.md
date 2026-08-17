@@ -33,6 +33,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
     - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
   - [Type Reference](#type-reference)
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
+  - [Description - `description`](#description---description)
   - [Optionality - `optional`](#optionality---optional)
   - [Pattern - `pattern`](#pattern---pattern)
   - [Key Pattern - `keypattern`](#key-pattern---keypattern)
@@ -236,6 +237,7 @@ Built-in type names are reserved and MUST NOT be used as `[types]` definition na
 [types.<typename>]
 type = "<simple-type> | array | table | collection"
 typeof = "<type-reference>"
+description = "<human-readable description>"
 arraytype = "<simple-type> | array | table"
 itemtype = "<type-reference>"
 items = [ "<type-reference>", ... ]
@@ -632,6 +634,26 @@ type = "table"
 
 [types.dependency]
 oneof = [ "types.dependencyVersion", "types.inlineDependency" ]
+```
+
+### Description - `description`
+
+`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Parsers and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation.
+
+```toml
+[types.game]
+type = "table"
+description = "A game object."
+
+    [types.game.id]
+    type = "string"
+    description = "Unique identifier for the game."
+
+[elements.game]
+type = "array"
+description = "A list of games."
+arraytype = "table"
+itemtype = "types.game"
 ```
 
 ### Optionality - `optional`

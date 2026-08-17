@@ -21,6 +21,42 @@ func TestValidatesCheckedInExample(t *testing.T) {
 	}
 }
 
+func TestAcceptsStringDescriptionsAndRejectsOtherValues(t *testing.T) {
+	dir := t.TempDir()
+	describedSchema := write(t, dir, "described.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.game]
+type = "table"
+description = "A game object."
+
+[types.game.id]
+type = "string"
+description = "Unique identifier for the game."
+
+[elements.game]
+type = "array"
+description = "A list of games."
+itemtype = "types.game"
+`)
+	if _, err := LoadSchema(describedSchema); err != nil {
+		t.Fatalf("expected descriptions to load: %v", err)
+	}
+
+	invalidSchema := write(t, dir, "invalid-description.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.game]
+type = "string"
+description = 42
+`)
+	if _, err := LoadSchema(invalidSchema); err == nil {
+		t.Fatal("expected non-string description to be rejected")
+	}
+}
+
 func TestEnforcesSemverSchemaVersions(t *testing.T) {
 	dir := t.TempDir()
 	compatibleSchema := write(t, dir, "compatible-version.tosd", `

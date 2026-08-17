@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "typeof", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
+            "type", "typeof", "description", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
             "keypattern", "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof"
     );
@@ -92,6 +92,7 @@ final class SchemaLoader {
     private SchemaDefinition parseDefinition(String name, TomlTable table) {
         SchemaType type = getSchemaType(table, "type");
         String reference = getString(table, "typeof");
+        String description = getString(table, "description");
         String normalizedReference = normalizeReference(reference);
         SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));
@@ -159,6 +160,7 @@ final class SchemaLoader {
                 name,
                 type,
                 normalizedReference,
+                description,
                 arrayType,
                 itemReference,
                 items,
