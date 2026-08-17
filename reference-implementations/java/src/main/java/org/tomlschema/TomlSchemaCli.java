@@ -7,6 +7,7 @@ import org.tomlj.TomlTable;
 
 import java.io.IOException;
 import java.io.PrintStream;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -69,18 +70,54 @@ public final class TomlSchemaCli {
             document.errors().forEach(error -> err.println(error.toString()));
             return 1;
         }
-        TomlTable metadata = document.getTable("toml-schema");
-        if (metadata == null) {
-            err.println("Document does not contain [toml-schema].location");
+        Object metadataValue = document.get(List.of("toml-schema"));
+        if (!(metadataValue instanceof TomlTable metadata)) {
+            err.println("Document must contain a [toml-schema] table");
             return 2;
         }
-        String location = metadata.getString("location");
-        if (location == null || location.isBlank()) {
-            err.println("Document does not contain [toml-schema].location");
+        Object locationValue = metadata.get("location");
+        if (!(locationValue instanceof String location) || location.isBlank()) {
+            err.println("Document [toml-schema].location must be a non-empty string");
             return 2;
         }
-        Path schemaPath = tomlPath.toAbsolutePath().getParent().resolve(location).normalize();
-        return validate(TomlSchema.load(schemaPath), document, tomlPath, out, err);
+        Path schemaPath = resolveSchemaPath(tomlPath, location);
+        TomlSchema schema = TomlSchema.load(schemaPath);
+        if (metadata.contains("version")) {
+            TomlSchemaVersion.Version expected = TomlSchemaVersion.parseDocumentVersion(metadata.get("version"));
+            TomlSchemaVersion.Version actual = TomlSchemaVersion.validate(schema.version());
+            if (!expected.major().equals(actual.major())) {
+                err.printf(
+                        "Document expects TOML Schema major version %s, but resolved schema uses %s%n",
+                        expected.value(),
+                        actual.value());
+                return 2;
+            }
+            if (!expected.value().equals(actual.value())) {
+                err.printf(
+                        "Warning: document expects TOML Schema version %s, but resolved schema uses %s%n",
+                        expected.value(),
+                        actual.value());
+            }
+        }
+        return validate(schema, document, tomlPath, out, err);
+    }
+
+    private static Path resolveSchemaPath(Path tomlPath, String location) {
+        URI reference;
+        try {
+            reference = URI.create(location);
+        } catch (IllegalArgumentException e) {
+            throw new SchemaException("Invalid [toml-schema].location URI: " + location, e);
+        }
+        URI resolved = tomlPath.toAbsolutePath().toUri().resolve(reference);
+        if (!"file".equalsIgnoreCase(resolved.getScheme())) {
+            throw new SchemaException("Unsupported schema location URI scheme: " + resolved.getScheme());
+        }
+        try {
+            return Path.of(resolved).normalize();
+        } catch (IllegalArgumentException e) {
+            throw new SchemaException("Invalid file schema location: " + location, e);
+        }
     }
 
     private static int validate(Path schemaPath, Path tomlPath, PrintStream out, PrintStream err) throws IOException {

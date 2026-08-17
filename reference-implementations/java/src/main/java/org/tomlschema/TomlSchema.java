@@ -12,11 +12,13 @@ import java.util.stream.Collectors;
 
 public final class TomlSchema {
     private final Path source;
+    private final String version;
     private final Map<String, SchemaDefinition> types;
     private final Map<String, SchemaDefinition> elements;
 
-    TomlSchema(Path source, Map<String, SchemaDefinition> types, Map<String, SchemaDefinition> elements) {
+    TomlSchema(Path source, String version, Map<String, SchemaDefinition> types, Map<String, SchemaDefinition> elements) {
         this.source = source;
+        this.version = version;
         this.types = Map.copyOf(types);
         this.elements = Map.copyOf(elements);
     }
@@ -42,6 +44,10 @@ public final class TomlSchema {
 
     Path source() {
         return source;
+    }
+
+    String version() {
+        return version;
     }
 
     Map<String, SchemaDefinition> types() {
