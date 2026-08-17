@@ -70,9 +70,61 @@ class TomlSchemaTest {
     @Test
     void selfSchemaValidatesSchemaDocuments() throws IOException {
         TomlSchema schemaSchema = TomlSchema.load(fixture("toml-schema.tosd"));
+        Path emptyElementsSchema = write("empty-elements.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types]
+
+                [elements]
+                """);
 
         assertTrue(schemaSchema.validate(fixture("config.tosd")).isValid());
         assertTrue(schemaSchema.validate(fixture("toml-schema.tosd")).isValid());
+        assertTrue(schemaSchema.validate(emptyElementsSchema).isValid());
+    }
+
+    @Test
+    void enforcesClosedRootElementSemantics() throws IOException {
+        Path schemaPath = write("closed-root.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types]
+
+                [elements]
+                """);
+        Path emptyDocument = write("empty.toml", "");
+        Path metadataOnlyDocument = write("metadata-only.toml", """
+                [toml-schema]
+                location = "closed-root.tosd"
+                """);
+        Path applicationDocument = write("application.toml", "extra = true");
+        Path definedRootSchema = write("defined-root.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.allowed]
+                type = "string"
+                """);
+        Path documentWithExtraKey = write("extra-key.toml", """
+                allowed = "value"
+                extra = true
+                """);
+        TomlSchema schema = TomlSchema.load(schemaPath);
+
+        assertTrue(schema.validate(emptyDocument).isValid());
+        assertTrue(schema.validate(metadataOnlyDocument).isValid());
+
+        ValidationResult emptyRootResult = schema.validate(applicationDocument);
+        assertFalse(emptyRootResult.isValid());
+        assertTrue(emptyRootResult.errors().stream()
+                .anyMatch(error -> error.path().equals("$.extra") && error.message().equals("unexpected key")));
+
+        ValidationResult definedRootResult = TomlSchema.load(definedRootSchema).validate(documentWithExtraKey);
+        assertFalse(definedRootResult.isValid());
+        assertTrue(definedRootResult.errors().stream()
+                .anyMatch(error -> error.path().equals("$.extra") && error.message().equals("unexpected key")));
     }
 
     @Test

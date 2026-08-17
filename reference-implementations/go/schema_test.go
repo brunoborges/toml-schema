@@ -31,6 +31,67 @@ func TestLoadsExamplesMigratedFromReferenceSpecialization(t *testing.T) {
 	}
 }
 
+func TestEnforcesClosedRootElementSemantics(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "closed-root.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types]
+
+[elements]
+`)
+	emptyDocument := write(t, dir, "empty.toml", "")
+	metadataOnlyDocument := write(t, dir, "metadata-only.toml", `
+[toml-schema]
+location = "closed-root.tosd"
+`)
+	applicationDocument := write(t, dir, "application.toml", "extra = true")
+	definedRootSchema := write(t, dir, "defined-root.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.allowed]
+type = "string"
+`)
+	documentWithExtraKey := write(t, dir, "extra-key.toml", `
+allowed = "value"
+extra = true
+`)
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, document := range []string{emptyDocument, metadataOnlyDocument} {
+		if result := schema.ValidateFile(document); !result.Valid() {
+			t.Fatalf("expected %s to be valid, got %#v", document, result.Errors)
+		}
+	}
+
+	result := schema.ValidateFile(applicationDocument)
+	if result.Valid() || !hasPath(result, "$.extra") {
+		t.Fatalf("expected an unexpected-key error at $.extra, got %#v", result.Errors)
+	}
+
+	definedSchema, err := LoadSchema(definedRootSchema)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result = definedSchema.ValidateFile(documentWithExtraKey)
+	if result.Valid() || !hasPath(result, "$.extra") {
+		t.Fatalf("expected an unexpected-key error beside a declared root key, got %#v", result.Errors)
+	}
+
+	schemaSchema, err := LoadSchema(fixture("toml-schema.tosd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schemaSchema.ValidateFile(schemaPath); !result.Valid() {
+		t.Fatalf("expected self-schema to accept empty [elements], got %#v", result.Errors)
+	}
+}
+
 func TestAcceptsStringDescriptionsAndRejectsOtherValues(t *testing.T) {
 	dir := t.TempDir()
 	describedSchema := write(t, dir, "described.tosd", `

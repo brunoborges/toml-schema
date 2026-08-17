@@ -196,6 +196,12 @@ The `[elements]` table is the root schema for the TOML document being validated.
 
 Each direct child of `[elements]` defines one top-level TOML key. Nested children define the structure below that key, such as fields inside a table or item definitions inside arrays and collections.
 
+The root is closed: every top-level application-data key MUST be defined by a direct child of `[elements]`. Validators MUST reject any other top-level application-data key. This rule applies even when `[elements]` has no children, so an empty `[elements]` table accepts no application data.
+
+The reserved root `[toml-schema]` metadata table is the only exception. When `[elements.toml-schema]` is omitted, validators ignore that table during application-data validation as described in [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema). Therefore, a document validated by an empty `[elements]` table may contain only the reserved `[toml-schema]` table and no application data.
+
+This root behavior differs from a nested property declared as `type = "table"` with no child definitions. Such a nested table is intentionally open-ended as described in [Tables](#tables); an empty `[elements]` table is not an implicit allow-anything schema.
+
 For example, this schema:
 
 ```toml

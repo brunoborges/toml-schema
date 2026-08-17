@@ -32,4 +32,4 @@ version = "1.0.0"
     [elements.elements]
     type = "collection"
     itemtype = "types.schemaDef"
-    minlength = 1
+    minlength = 0
