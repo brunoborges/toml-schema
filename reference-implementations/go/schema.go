@@ -31,7 +31,7 @@ const (
 )
 
 var definitionKeys = map[string]bool{
-	"type": true, "typeof": true, "arraytype": true, "itemtype": true, "items": true,
+	"type": true, "typeof": true, "description": true, "arraytype": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "keypattern": true, "optional": true, "default": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true,
@@ -82,6 +82,7 @@ type Definition struct {
 	name          string
 	typeName      SchemaType
 	reference     string
+	description   string
 	arrayType     SchemaType
 	itemReference string
 	items         []string
@@ -240,6 +241,10 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	description, err := getString(table, "description")
+	if err != nil {
+		return Definition{}, err
+	}
 	arrayType, err := getSchemaType(table, "arraytype")
 	if err != nil {
 		return Definition{}, err
@@ -341,7 +346,7 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		return Definition{}, err
 	}
 	return Definition{
-		name: name, typeName: typeName, reference: normalizeReference(reference),
+		name: name, typeName: typeName, reference: normalizeReference(reference), description: description,
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
 		items:         normalizeReferences(items),
 		allowedValues: allowedValues, pattern: pattern, keyPattern: keyPattern, min: min, max: max,
@@ -723,6 +728,7 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 	}
 	return Definition{
 		name: definition.name, typeName: typeName, reference: reference,
+		description: definition.description,
 		arrayType:     firstSchemaType(definition.arrayType, referenced.arrayType),
 		itemReference: firstNonEmpty(definition.itemReference, referenced.itemReference),
 		items:         firstStringSlice(definition.items, referenced.items),

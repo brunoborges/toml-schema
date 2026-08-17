@@ -92,6 +92,7 @@ impl fmt::Display for SchemaType {
 pub const DEFINITION_KEYS: &[&str] = &[
     "type",
     "typeof",
+    "description",
     "arraytype",
     "itemtype",
     "items",
@@ -121,6 +122,7 @@ pub struct Definition {
     name: String,
     type_name: Option<SchemaType>,
     reference: Option<String>,
+    description: Option<String>,
     array_type: Option<SchemaType>,
     item_reference: Option<String>,
     items: Vec<String>,
@@ -322,6 +324,7 @@ fn parse_definitions(
 fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let mut type_name = get_schema_type(name, table, "type")?;
     let reference = get_string(name, table, "typeof")?;
+    let description = get_string(name, table, "description")?;
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
     let items = get_string_array_values(name, table, "items")?;
@@ -409,6 +412,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         name: name.to_string(),
         type_name,
         reference,
+        description,
         array_type,
         item_reference: item_reference.map(normalize_reference),
         items: normalize_references(items),
@@ -863,6 +867,7 @@ impl<'schema> Validator<'schema> {
             name: definition.name.clone(),
             type_name,
             reference: merged_reference,
+            description: definition.description.clone(),
             array_type: definition.array_type.or(referenced.array_type),
             item_reference: definition
                 .item_reference

@@ -59,6 +59,47 @@ fn validates_checked_in_example() {
 }
 
 #[test]
+fn accepts_string_descriptions_and_rejects_other_values() {
+    let directory = tempfile_dir("descriptions");
+    let described_schema = write_file(
+        &directory,
+        "described.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.game]
+type = "table"
+description = "A game object."
+
+[types.game.id]
+type = "string"
+description = "Unique identifier for the game."
+
+[elements.game]
+type = "array"
+description = "A list of games."
+itemtype = "types.game"
+"#,
+    );
+    Schema::load(&described_schema).expect("descriptions should load");
+
+    let invalid_schema = write_file(
+        &directory,
+        "invalid-description.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.game]
+type = "string"
+description = 42
+"#,
+    );
+    Schema::load(&invalid_schema).expect_err("non-string description should be rejected");
+}
+
+#[test]
 fn enforces_semver_schema_versions() {
     let directory = tempfile_dir("schema-versions");
     let compatible_schema = write_file(

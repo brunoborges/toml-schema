@@ -8,6 +8,7 @@ record SchemaDefinition(
         String name,
         SchemaType type,
         String reference,
+        String description,
         SchemaType arrayType,
         String itemReference,
         List<String> items,
