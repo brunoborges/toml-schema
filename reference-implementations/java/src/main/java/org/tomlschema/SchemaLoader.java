@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
+            "type", "description", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
             "keypattern", "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof"
     );
@@ -97,6 +97,7 @@ final class SchemaLoader {
         String normalizedReference = typeSelector != null && type == null
                 ? normalizeReference(typeSelector)
                 : null;
+        String description = getString(table, "description");
         SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
@@ -169,6 +170,7 @@ final class SchemaLoader {
                 name,
                 type,
                 normalizedReference,
+                description,
                 arrayType,
                 itemReference,
                 items,

@@ -1,6 +1,6 @@
 # TOML Schema — Rust reference implementation
 
-Rust reference implementation of [TOML Schema](../../SPEC.md). It parses TOML with the [`toml`](https://crates.io/crates/toml) crate (`0.8`, TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+Rust reference implementation of [TOML Schema](../../SPEC.md). It parses TOML with the [`toml`](https://crates.io/crates/toml) crate (`1`, TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
 
 - Crate: `toml-schema`
 - Library name: `toml_schema`

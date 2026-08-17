@@ -278,6 +278,7 @@ final class TomlSchemaValidator {
                 definition.name(),
                 type,
                 null,
+                definition.description(),
                 definition.arrayType() == null ? referenced.arrayType() : definition.arrayType(),
                 definition.itemReference() == null ? referenced.itemReference() : definition.itemReference(),
                 definition.items().isEmpty() ? referenced.items() : definition.items(),
@@ -315,6 +316,7 @@ final class TomlSchemaValidator {
         return new SchemaDefinition(
                 reference,
                 type,
+                null,
                 null,
                 null,
                 null,

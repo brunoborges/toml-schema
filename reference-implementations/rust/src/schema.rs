@@ -91,6 +91,7 @@ impl fmt::Display for SchemaType {
 /// keys are checked against the ABNF grammar in tests.
 pub const DEFINITION_KEYS: &[&str] = &[
     "type",
+    "description",
     "arraytype",
     "itemtype",
     "items",
@@ -120,6 +121,7 @@ pub struct Definition {
     name: String,
     type_name: Option<SchemaType>,
     reference: Option<String>,
+    description: Option<String>,
     array_type: Option<SchemaType>,
     item_reference: Option<String>,
     items: Vec<String>,
@@ -325,6 +327,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         .as_deref()
         .filter(|_| type_name.is_none())
         .map(|selector| normalize_reference(selector.to_string()));
+    let description = get_string(name, table, "description")?;
     let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
     let items = get_string_array_values(name, table, "items")?;
@@ -423,6 +426,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         name: name.to_string(),
         type_name,
         reference,
+        description,
         array_type,
         item_reference: item_reference.map(normalize_reference),
         items: normalize_references(items),
@@ -872,6 +876,7 @@ impl<'schema> Validator<'schema> {
             name: definition.name.clone(),
             type_name,
             reference: None,
+            description: definition.description.clone(),
             array_type: definition.array_type.or(referenced.array_type),
             item_reference: definition
                 .item_reference
@@ -1039,7 +1044,12 @@ fn datetime_tuple(value: &Datetime) -> (u16, u8, u8, u8, u8, u8, u32) {
         None => (0, 0, 0),
     };
     let (hour, minute, second, nanosecond) = match value.time {
-        Some(time) => (time.hour, time.minute, time.second, time.nanosecond),
+        Some(time) => (
+            time.hour,
+            time.minute,
+            time.second.unwrap_or(0),
+            time.nanosecond.unwrap_or(0),
+        ),
         None => (0, 0, 0, 0),
     };
     (year, month, day, hour, minute, second, nanosecond)
@@ -1052,7 +1062,7 @@ fn datetime_to_utc_minutes(value: &Datetime, offset: Offset) -> Option<i64> {
     let seconds = (days * 86_400)
         + (time.hour as i64) * 3600
         + (time.minute as i64) * 60
-        + (time.second as i64);
+        + (time.second.unwrap_or(0) as i64);
     let offset_minutes = match offset {
         Offset::Z => 0i64,
         Offset::Custom { minutes } => minutes as i64,

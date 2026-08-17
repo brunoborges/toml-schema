@@ -29,6 +29,38 @@ class TomlSchemaTest {
     }
 
     @Test
+    void acceptsStringDescriptionsAndRejectsOtherValues() throws IOException {
+        Path describedSchema = write("described.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.game]
+                type = "table"
+                description = "A game object."
+
+                    [types.game.id]
+                    type = "string"
+                    description = "Unique identifier for the game."
+
+                [elements.game]
+                type = "array"
+                description = "A list of games."
+                itemtype = "types.game"
+                """);
+        Path invalidSchema = write("invalid-description.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.game]
+                type = "string"
+                description = 42
+                """);
+
+        assertDoesNotThrow(() -> TomlSchema.load(describedSchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(invalidSchema));
+    }
+
+    @Test
     void selfSchemaValidatesSchemaDocuments() throws IOException {
         TomlSchema schemaSchema = TomlSchema.load(fixture("toml-schema.tosd"));
 

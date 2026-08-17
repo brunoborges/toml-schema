@@ -17,5 +17,5 @@ name = "toml-schema"
 path = "src/main.rs"
 
 [dependencies]
-toml = "0.8"
+toml = "1"
 regex = "1"
