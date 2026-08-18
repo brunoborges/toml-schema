@@ -29,10 +29,35 @@ class TomlSchemaTest {
     }
 
     @Test
-    void loadsExamplesMigratedFromReferenceSpecialization() {
-        for (String schema : List.of("examples/hugo.tosd", "examples/netlify.tosd")) {
+    void loadsCheckedInExamples() {
+        for (String schema : List.of(
+                "examples/gitlab-runner.tosd",
+                "examples/hugo.tosd",
+                "examples/netlify.tosd",
+                "examples/pyproject.tosd",
+                "examples/wrangler.tosd")) {
             assertDoesNotThrow(() -> TomlSchema.load(fixture(schema)), schema);
         }
+    }
+
+    @Test
+    void treatsDefaultAsAnAdvisoryHint() throws IOException {
+        Path schemaPath = write("default-hint.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.port]
+                type = "integer"
+                default = 8080
+                """);
+        Path missing = write("missing-default.toml", "");
+        Path invalid = write("invalid-default.toml", "port = \"8080\"");
+        Path valid = write("valid-default.toml", "port = 8081");
+        TomlSchema schema = TomlSchema.load(schemaPath);
+
+        assertFalse(schema.validate(missing).isValid());
+        assertFalse(schema.validate(invalid).isValid());
+        assertTrue(schema.validate(valid).isValid());
     }
 
     @Test
@@ -1486,6 +1511,26 @@ class TomlSchemaTest {
         assertEquals(2, exitCode);
         assertTrue(err.toString(StandardCharsets.UTF_8).contains(
                 "Unsupported schema location URI scheme: https"));
+    }
+
+    @Test
+    void cliRejectsOpaqueFileSchemaLocationUri() throws IOException {
+        Path document = write("document.toml", """
+                title = "Example"
+
+                [toml-schema]
+                location = "file:schema.tosd"
+                """);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"validate", document.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(2, exitCode);
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains("Invalid file schema location"));
     }
 
     @Test

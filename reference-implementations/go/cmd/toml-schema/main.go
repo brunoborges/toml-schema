@@ -42,12 +42,15 @@ func run(args []string, out, errOut io.Writer) int {
 }
 
 func validateWithEmbeddedSchema(documentPath string, out, errOut io.Writer) int {
-	schema, document, err := tomlschema.SchemaFromDocument(documentPath)
+	resolution, err := tomlschema.ResolveSchemaFromDocument(documentPath)
 	if err != nil {
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
-	return report(schema.Validate(document), documentPath, out, errOut)
+	for _, warning := range resolution.Warnings {
+		fmt.Fprintln(errOut, warning)
+	}
+	return report(resolution.Schema.Validate(resolution.Document), documentPath, out, errOut)
 }
 
 func validate(schemaPath, documentPath string, out, errOut io.Writer) int {

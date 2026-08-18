@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 
 use crate::extract::generate_schema;
-use crate::schema::{schema_from_document, Schema, ValidationResult};
+use crate::schema::{resolve_schema_from_document, Schema, ValidationResult};
 
 /// Executes a single CLI invocation. Returns the desired process exit code
 /// (`0` on success, `1` for validation failures, `2` for usage/IO errors).
@@ -43,8 +43,18 @@ fn validate_with_embedded_schema(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
-    match schema_from_document(document_path) {
-        Ok((schema, document)) => report(schema.validate(&document), document_path, out, err),
+    match resolve_schema_from_document(document_path) {
+        Ok(resolution) => {
+            for warning in resolution.warnings {
+                let _ = writeln!(err, "{warning}");
+            }
+            report(
+                resolution.schema.validate(&resolution.document),
+                document_path,
+                out,
+                err,
+            )
+        }
         Err(error) => {
             let _ = writeln!(err, "{error}");
             2
@@ -67,12 +77,7 @@ fn validate_explicit(
     }
 }
 
-fn extract(
-    document_path: &str,
-    schema_path: &str,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> u8 {
+fn extract(document_path: &str, schema_path: &str, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let path = Path::new(document_path);
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
@@ -116,7 +121,13 @@ fn report(
 
 fn usage(stream: &mut dyn Write) {
     let _ = writeln!(stream, "Usage:");
-    let _ = writeln!(stream, "  toml-schema validate <schema.tosd> <document.toml>");
+    let _ = writeln!(
+        stream,
+        "  toml-schema validate <schema.tosd> <document.toml>"
+    );
     let _ = writeln!(stream, "  toml-schema validate <document.toml>");
-    let _ = writeln!(stream, "  toml-schema extract <document.toml> <schema.tosd>");
+    let _ = writeln!(
+        stream,
+        "  toml-schema extract <document.toml> <schema.tosd>"
+    );
 }

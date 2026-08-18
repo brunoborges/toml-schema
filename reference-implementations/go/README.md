@@ -72,6 +72,11 @@ func main() {
 }
 ```
 
+For schema discovery through a document's `[toml-schema].location`, use
+`ResolveSchemaFromDocument`. Its `SchemaResolution` exposes the parsed document,
+resolved schema language version, and non-major version mismatch warnings.
+`SchemaFromDocument` remains available when callers do not need warning details.
+
 ## Conformance
 
 The test suite includes `abnf_conformance_test.go`, which reads [`toml-schema.abnf`](../../toml-schema.abnf) and asserts that the implementation's supported schema keys and built-in type names match the grammar.

@@ -2,6 +2,7 @@ package tomlschema
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,10 +22,17 @@ func TestValidatesCheckedInExample(t *testing.T) {
 	}
 }
 
-func TestLoadsExamplesMigratedFromReferenceSpecialization(t *testing.T) {
-	for _, name := range []string{"hugo.tosd", "netlify.tosd"} {
-		t.Run(name, func(t *testing.T) {
-			if _, err := LoadSchema(filepath.Join(fixture("examples"), name)); err != nil {
+func TestLoadsAllCheckedInExamples(t *testing.T) {
+	examples, err := filepath.Glob(filepath.Join(fixture("examples"), "*.tosd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(examples) == 0 {
+		t.Fatal("expected checked-in schema examples")
+	}
+	for _, example := range examples {
+		t.Run(filepath.Base(example), func(t *testing.T) {
+			if _, err := LoadSchema(example); err != nil {
 				t.Fatal(err)
 			}
 		})
@@ -89,6 +97,33 @@ extra = true
 	}
 	if result := schemaSchema.ValidateFile(schemaPath); !result.Valid() {
 		t.Fatalf("expected self-schema to accept empty [elements], got %#v", result.Errors)
+	}
+}
+
+func TestValidatesReservedTomlSchemaElementWhenDefined(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "metadata-schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.toml-schema]
+type = "table"
+
+[elements.toml-schema.location]
+type = "string"
+`)
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	valid := map[string]any{"toml-schema": map[string]any{"location": "schema.tosd"}}
+	if result := schema.Validate(valid); !result.Valid() {
+		t.Fatalf("expected defined reserved metadata to validate, got %#v", result.Errors)
+	}
+	invalid := map[string]any{"toml-schema": map[string]any{"location": int64(1)}}
+	result := schema.Validate(invalid)
+	if result.Valid() || !hasPath(result, "$.toml-schema.location") {
+		t.Fatalf("expected defined reserved metadata to be validated, got %#v", result.Errors)
 	}
 }
 
@@ -803,6 +838,33 @@ optional = true
 	}
 }
 
+func TestDefaultIsAdvisoryAndDoesNotAffectValidation(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "advisory-default.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.port]
+type = "integer"
+default = 8080
+min = 1
+`)
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatalf("expected definition with default to load: %v", err)
+	}
+
+	if result := schema.Validate(map[string]any{}); result.Valid() || !hasPath(result, "$.port") {
+		t.Fatalf("expected omitted required field to remain invalid, got %#v", result.Errors)
+	}
+	if result := schema.Validate(map[string]any{"port": int64(0)}); result.Valid() || !hasPath(result, "$.port") {
+		t.Fatalf("expected present value to be validated rather than replaced by default, got %#v", result.Errors)
+	}
+	if result := schema.Validate(map[string]any{"port": int64(42)}); !result.Valid() {
+		t.Fatalf("expected valid present value to remain unchanged, got %#v", result.Errors)
+	}
+}
+
 func TestRejectsConstraintsAndChildrenOnNamedTypeReference(t *testing.T) {
 	invalidSiblings := []string{
 		`itemtype = "string"`,
@@ -1237,18 +1299,127 @@ type = "string"
 title = "Example"
 
 [toml-schema]
-version = "1.0.0"
 location = "schema.tosd"
 `)
 
-	schema, document, err := SchemaFromDocument(documentPath)
+	resolution, err := ResolveSchemaFromDocument(documentPath)
 
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.Validate(document)
+	if resolution.DocumentVersion != "" || resolution.SchemaVersion != "1.0.0" ||
+		resolution.Schema.Version() != "1.0.0" || len(resolution.Warnings) != 0 {
+		t.Fatalf("unexpected resolution metadata: %#v", resolution)
+	}
+	result := resolution.Schema.Validate(resolution.Document)
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
+	}
+	if _, _, err := SchemaFromDocument(documentPath); err != nil {
+		t.Fatalf("expected compatibility resolver to accept omitted version: %v", err)
+	}
+}
+
+func TestResolvesAbsolutePathAndFileURILocations(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.title]
+type = "string"
+`)
+	fileURI := (&url.URL{Scheme: "file", Path: filepath.ToSlash(schemaPath)}).String()
+	for name, location := range map[string]string{
+		"absolute-path": schemaPath,
+		"file-uri":      fileURI,
+	} {
+		t.Run(name, func(t *testing.T) {
+			documentPath := write(t, dir, name+".toml", fmt.Sprintf(`
+title = "Example"
+
+[toml-schema]
+location = %q
+`, location))
+			if _, _, err := SchemaFromDocument(documentPath); err != nil {
+				t.Fatalf("expected %s to resolve: %v", location, err)
+			}
+		})
+	}
+}
+
+func TestEnforcesDocumentSchemaVersionDuringLibraryDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.1"
+
+[elements.title]
+type = "string"
+`)
+	document := func(name, version string) string {
+		return write(t, dir, name+".toml", fmt.Sprintf(`
+title = "Example"
+
+[toml-schema]
+version = %s
+location = "schema.tosd"
+`, version))
+	}
+
+	warningResolution, err := ResolveSchemaFromDocument(document("warning", `"1.0.0"`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	const warning = "Warning: document expects TOML Schema version 1.0.0, but resolved schema uses 1.0.1"
+	if warningResolution.DocumentVersion != "1.0.0" ||
+		len(warningResolution.Warnings) != 1 || warningResolution.Warnings[0] != warning {
+		t.Fatalf("unexpected warning resolution: %#v", warningResolution)
+	}
+	if _, _, err := SchemaFromDocument(document("warning-compatibility", `"1.0.0"`)); err != nil {
+		t.Fatalf("expected compatibility resolver to continue after a non-major mismatch: %v", err)
+	}
+
+	for _, test := range []struct {
+		name     string
+		version  string
+		expected string
+	}{
+		{"major-mismatch", `"2.0.0"`, "Document expects TOML Schema major version 2.0.0, but resolved schema uses 1.0.1"},
+		{"shorthand", `"1.0"`, "Document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax"},
+		{"non-string", "1", "Document [toml-schema].version must be a SemVer string"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			documentPath := document(test.name, test.version)
+			if _, _, err := SchemaFromDocument(documentPath); err == nil || !strings.Contains(err.Error(), test.expected) {
+				t.Fatalf("expected %q, got %v", test.expected, err)
+			}
+		})
+	}
+}
+
+func TestRejectsInvalidSchemaLocationURIsDuringLibraryDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	for _, test := range []struct {
+		name     string
+		location string
+		expected string
+	}{
+		{"unsupported-scheme", "https://example.com/schema.tosd", "Unsupported schema location URI scheme: https"},
+		{"malformed-reference", "schema%zz.tosd", "Invalid [toml-schema].location URI"},
+		{"opaque-file-uri", "file:schema.tosd", "Invalid file schema location"},
+		{"remote-file-host", "file://example.com/schema.tosd", "Invalid file schema location"},
+		{"file-uri-query", "file:///schema.tosd?version=1", "Invalid file schema location"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			documentPath := write(t, dir, test.name+".toml", fmt.Sprintf(`
+[toml-schema]
+location = %q
+`, test.location))
+			if _, _, err := SchemaFromDocument(documentPath); err == nil || !strings.Contains(err.Error(), test.expected) {
+				t.Fatalf("expected %q, got %v", test.expected, err)
+			}
+		})
 	}
 }
 

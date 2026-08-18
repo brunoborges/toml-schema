@@ -35,6 +35,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
   - [Description - `description`](#description---description)
   - [Optionality - `optional`](#optionality---optional)
+  - [Default Value Hint - `default`](#default-value-hint---default)
   - [Pattern - `pattern`](#pattern---pattern)
   - [Key Pattern - `keypattern`](#key-pattern---keypattern)
 - [Parsers](#parsers)
@@ -267,6 +268,7 @@ allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
 keypattern = "<string-regex-for-collection-key-validation>"
 optional = true|false
+default = <toml-value>
 min = <integer | float | offset-date-time | local-date-time | local-date | local-time>
 max = <integer | float | offset-date-time | local-date-time | local-date | local-time>
 minlength = <integer>
@@ -758,6 +760,14 @@ Properties may be defined as optional in the schema. By default, optional equals
 
 Parsers must only skip a structure validation if the structure is optional in the TOML Schema and does not exist in the TOML document. For any other condition, the parser must validate the input against the schema.
 
+### Default Value Hint - `default`
+
+`default` is an optional advisory value for documentation, editors, and other authoring tools. It MAY contain any TOML value.
+
+`default` does not make a definition optional and does not affect validation. Validators MUST NOT insert the default when a value is absent, replace an invalid value, or otherwise modify the parsed TOML document. An absent required value remains invalid, and a present value is validated against the definition normally.
+
+Tools MAY offer the value to users when creating or editing a document, but applying it requires an explicit authoring action outside validation.
+
 ### Pattern - `pattern`
 
 This property is only used for validating `string` input. Parsers must validate the input with the provided regular expression.
@@ -833,6 +843,8 @@ version = "1.0.0" # optional
 An absolute `location` MUST be used unchanged. A relative `location` MUST be resolved against the referencing TOML document's location, not against the validator's current working directory or the resolved schema's location. For a TOML document stored in a local file, this means resolving a relative location from the document's parent directory.
 
 A validator that receives a TOML document without a base location, for example through standard input, cannot resolve a relative `location`. It MUST either obtain an explicit base URI from the caller or report that schema discovery failed. An absolute `location` does not require a document base. Implementations MAY limit the URI schemes they can retrieve, but MUST report an unsupported scheme rather than reinterpret its value as a relative local path.
+
+An implementation that supports the `file` scheme MUST require a hierarchical file URI that can be converted to a local path, such as `file:///schemas/config.tosd`. It MUST reject an opaque URI such as `file:schema.tosd` rather than reinterpret it as a path relative to the TOML document.
 
 `version` is OPTIONAL. When present, it denotes the expected TOML Schema **language version** in the resolved schema document's `[toml-schema].version`; it is not an application version or an author-defined revision of that schema. Its value MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form, with the same syntax defined by [Schema Versioning](#schema-versioning).
 

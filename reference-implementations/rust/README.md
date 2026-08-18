@@ -64,6 +64,11 @@ let result = schema.validate_file("config.toml");
 assert!(result.valid());
 ```
 
+For schema discovery through a document's `[toml-schema].location`, use
+`resolve_schema_from_document`. Its `DocumentSchemaResolution` exposes the parsed
+document, resolved schema, and non-major version mismatch warnings.
+`schema_from_document` remains available when callers do not need warning details.
+
 ## Conformance
 
 The test suite includes an ABNF conformance test (`tests/abnf_conformance.rs`) that reads [`toml-schema.abnf`](../../toml-schema.abnf) and asserts that the implementation's supported schema keys and built-in type names match the grammar.

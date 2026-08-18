@@ -7,7 +7,9 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use toml_schema::cli::run;
-use toml_schema::schema::{Schema, ValidationResult};
+use toml_schema::schema::{
+    resolve_schema_from_document, schema_from_document, Schema, ValidationResult,
+};
 
 fn repository_root() -> PathBuf {
     // Tests run from `reference-implementations/rust`.
@@ -60,8 +62,18 @@ fn validates_checked_in_example() {
 
 #[test]
 fn loads_examples_migrated_from_reference_specialization() {
-    for name in ["hugo.tosd", "netlify.tosd"] {
-        let path = fixture("examples").join(name);
+    let examples = fixture("examples");
+    let mut paths: Vec<PathBuf> = fs::read_dir(&examples)
+        .expect("read examples directory")
+        .map(|entry| entry.expect("read example entry").path())
+        .filter(|path| {
+            path.extension()
+                .is_some_and(|extension| extension == "tosd")
+        })
+        .collect();
+    paths.sort();
+    assert!(!paths.is_empty(), "expected checked-in schema examples");
+    for path in paths {
         Schema::load(&path)
             .unwrap_or_else(|error| panic!("failed to load {}: {error}", path.display()));
     }
@@ -148,6 +160,42 @@ extra = true
 }
 
 #[test]
+fn validates_reserved_metadata_when_the_schema_defines_it() {
+    let directory = tempfile_dir("defined-metadata");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.toml-schema]
+type = "table"
+
+[elements.toml-schema.location]
+type = "string"
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+[toml-schema]
+location = 42
+"#,
+    );
+
+    let schema = Schema::load(schema_path).expect("load metadata schema");
+    let result = schema.validate_file(document_path);
+
+    assert!(
+        has_path(&result, "$.toml-schema.location"),
+        "expected reserved metadata to be validated, got {:#?}",
+        result.errors
+    );
+}
+
+#[test]
 fn accepts_string_descriptions_and_rejects_other_values() {
     let directory = tempfile_dir("descriptions");
     let described_schema = write_file(
@@ -186,6 +234,44 @@ description = 42
 "#,
     );
     Schema::load(&invalid_schema).expect_err("non-string description should be rejected");
+}
+
+#[test]
+fn treats_default_as_advisory_without_changing_validation() {
+    let directory = tempfile_dir("advisory-default");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.port]
+type = "integer"
+default = 8080
+"#,
+    );
+    let omitted = write_file(&directory, "omitted.toml", "");
+    let invalid_present = write_file(&directory, "invalid-present.toml", r#"port = "8080""#);
+    let valid_present = write_file(&directory, "valid-present.toml", "port = 9000");
+
+    let schema = Schema::load(schema_path).expect("schema with default should load");
+    let omitted_result = schema.validate_file(omitted);
+    assert!(
+        has_path(&omitted_result, "$.port"),
+        "default must not insert an omitted required value: {:#?}",
+        omitted_result.errors
+    );
+    let invalid_result = schema.validate_file(invalid_present);
+    assert!(
+        has_path(&invalid_result, "$.port"),
+        "default must not replace an invalid present value: {:#?}",
+        invalid_result.errors
+    );
+    assert!(
+        schema.validate_file(valid_present).valid(),
+        "a valid present value should be validated normally"
+    );
 }
 
 #[test]
@@ -1585,6 +1671,257 @@ location = "schema.tosd"
 }
 
 #[test]
+fn schema_discovery_accepts_relative_absolute_and_file_uri_locations() {
+    let directory = tempfile_dir("schema-location-forms");
+    let schemas = directory.join("schemas");
+    let documents = directory.join("documents");
+    fs::create_dir_all(&schemas).expect("create schemas directory");
+    fs::create_dir_all(&documents).expect("create documents directory");
+    let schema_path = write_file(
+        &schemas,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.title]
+type = "string"
+"#,
+    );
+    let file_uri = url::Url::from_file_path(&schema_path).expect("schema file URI");
+    let locations = [
+        "../schemas/schema.tosd".to_string(),
+        "%2e%2e/schemas/schema.tosd".to_string(),
+        schema_path.display().to_string(),
+        file_uri.to_string(),
+    ];
+
+    for (index, location) in locations.iter().enumerate() {
+        let document_path = write_file(
+            &documents,
+            &format!("document-{index}.toml"),
+            &format!(
+                r#"
+title = "Example"
+
+[toml-schema]
+location = "{location}"
+"#
+            ),
+        );
+        let (schema, document) =
+            schema_from_document(&document_path).expect("discover schema from document");
+        assert_eq!(schema.version(), "1.0.0");
+        assert!(schema.validate(&document).valid());
+    }
+}
+
+#[test]
+fn cli_allows_document_schema_version_to_be_omitted() {
+    let directory = tempfile_dir("omitted-document-version");
+    write_simple_schema(&directory, "1.0.0");
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+title = "Example"
+
+[toml-schema]
+location = "schema.tosd"
+"#,
+    );
+
+    let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+
+    assert_eq!(exit_code, 0, "{stderr}");
+    assert_eq!(stderr, "");
+}
+
+#[test]
+fn schema_discovery_exposes_non_major_version_warning_to_the_cli() {
+    let directory = tempfile_dir("document-version-warning");
+    write_simple_schema(&directory, "1.0.1");
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+title = "Example"
+
+[toml-schema]
+version = "1.0.0"
+location = "schema.tosd"
+"#,
+    );
+
+    let resolution =
+        resolve_schema_from_document(&document_path).expect("resolve schema with warning");
+    assert_eq!(resolution.schema.version(), "1.0.1");
+    assert_eq!(
+        resolution.warnings,
+        ["Warning: document expects TOML Schema version 1.0.0, but resolved schema uses 1.0.1"]
+    );
+    schema_from_document(&document_path).expect("legacy discovery API remains successful");
+
+    let (exit_code, stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+    assert_eq!(exit_code, 0, "{stderr}");
+    assert!(stdout.contains("is valid"));
+    assert!(stderr.contains(
+        "Warning: document expects TOML Schema version 1.0.0, but resolved schema uses 1.0.1"
+    ));
+}
+
+#[test]
+fn schema_discovery_rejects_major_version_mismatch() {
+    let directory = tempfile_dir("document-major-version");
+    write_simple_schema(&directory, "1.0.0");
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+title = "Example"
+
+[toml-schema]
+version = "2.0.0"
+location = "schema.tosd"
+"#,
+    );
+
+    let error = schema_from_document(&document_path).expect_err("reject major mismatch");
+    assert!(error.contains(
+        "Document expects TOML Schema major version 2.0.0, but resolved schema uses 1.0.0"
+    ));
+
+    let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+    assert_eq!(exit_code, 2);
+    assert!(stderr.contains(&error));
+}
+
+#[test]
+fn schema_discovery_rejects_malformed_document_versions() {
+    let directory = tempfile_dir("malformed-document-version");
+    write_simple_schema(&directory, "1.0.0");
+    for (name, version) in [("shorthand", "\"1.0\""), ("non-string", "1")] {
+        let document_path = write_file(
+            &directory,
+            &format!("{name}.toml"),
+            &format!(
+                r#"
+title = "Example"
+
+[toml-schema]
+version = {version}
+location = "schema.tosd"
+"#
+            ),
+        );
+
+        let error = schema_from_document(&document_path).expect_err("reject invalid version");
+        assert!(
+            error.starts_with("Document [toml-schema].version must"),
+            "{error}"
+        );
+        let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+        assert_eq!(exit_code, 2);
+        assert!(stderr.contains("Document [toml-schema].version must"));
+    }
+}
+
+#[test]
+fn schema_discovery_rejects_unsupported_and_malformed_location_uris() {
+    let directory = tempfile_dir("invalid-location-uri");
+    for (name, location, expected) in [
+        (
+            "unsupported",
+            "https://example.com/schema.tosd",
+            "Unsupported schema location URI scheme: https",
+        ),
+        (
+            "malformed",
+            "http://[invalid/schema.tosd",
+            "Invalid [toml-schema].location URI",
+        ),
+    ] {
+        let document_path = write_file(
+            &directory,
+            &format!("{name}.toml"),
+            &format!(
+                r#"
+[toml-schema]
+location = "{location}"
+"#
+            ),
+        );
+
+        let error = schema_from_document(&document_path).expect_err("reject invalid location");
+        assert!(error.contains(expected), "{error}");
+        let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+        assert_eq!(exit_code, 2);
+        assert!(stderr.contains(expected), "{stderr}");
+    }
+}
+
+#[test]
+fn schema_discovery_rejects_unsafe_schema_location_separators() {
+    let directory = tempfile_dir("unsafe-location-separators");
+    for (name, document, expected) in [
+        (
+            "backslash",
+            "[toml-schema]\nlocation = 'schemas\\schema.tosd'\n",
+            "Invalid [toml-schema].location URI",
+        ),
+        (
+            "encoded-slash",
+            "[toml-schema]\nlocation = \"schemas%2Fschema.tosd\"\n",
+            "Invalid file schema location",
+        ),
+        (
+            "encoded-backslash",
+            "[toml-schema]\nlocation = \"schemas%5cschema.tosd\"\n",
+            "Invalid file schema location",
+        ),
+    ] {
+        let document_path = write_file(&directory, &format!("{name}.toml"), document);
+
+        let error = schema_from_document(&document_path).expect_err("reject unsafe separator");
+        assert!(error.contains(expected), "{error}");
+        let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+        assert_eq!(exit_code, 2);
+        assert!(stderr.contains(expected), "{stderr}");
+    }
+}
+
+#[test]
+fn schema_discovery_rejects_non_hierarchical_file_locations() {
+    let directory = tempfile_dir("non-hierarchical-file-location");
+    for (index, location) in [
+        "file:schema.tosd",
+        "file:../schema.tosd",
+        "FiLe:schema.tosd",
+    ]
+    .iter()
+    .enumerate()
+    {
+        let document_path = write_file(
+            &directory,
+            &format!("document-{index}.toml"),
+            &format!(
+                r#"
+[toml-schema]
+location = "{location}"
+"#
+            ),
+        );
+
+        let error =
+            schema_from_document(&document_path).expect_err("reject non-hierarchical file URI");
+        assert!(error.contains("Invalid file schema location"), "{error}");
+        let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+        assert_eq!(exit_code, 2);
+        assert!(stderr.contains("Invalid file schema location"), "{stderr}");
+    }
+}
+
+#[test]
 fn cli_extracts_schema_from_toml_document() {
     let directory = tempfile_dir("cli-extracts-schema");
     let document_path = write_file(
@@ -1665,6 +2002,22 @@ fn cli_reports_unknown_command() {
     let (exit_code, _stdout, stderr) = capture(&["wat"]);
     assert_eq!(exit_code, 2);
     assert!(stderr.contains("Unknown command"));
+}
+
+fn write_simple_schema(directory: &Path, version: &str) -> PathBuf {
+    write_file(
+        directory,
+        "schema.tosd",
+        &format!(
+            r#"
+[toml-schema]
+version = "{version}"
+
+[elements.title]
+type = "string"
+"#
+        ),
+    )
 }
 
 fn tempfile_dir(name: &str) -> PathBuf {

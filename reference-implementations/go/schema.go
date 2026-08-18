@@ -3,9 +3,11 @@ package tomlschema
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -76,6 +78,7 @@ func parseSchemaType(value string) (SchemaType, bool) {
 
 type Schema struct {
 	source   string
+	version  string
 	types    map[string]Definition
 	elements map[string]Definition
 }
@@ -134,7 +137,8 @@ func LoadSchema(path string) (*Schema, error) {
 	if !ok {
 		return nil, fmt.Errorf("[toml-schema] must contain version")
 	}
-	if err := validateSchemaVersion(version); err != nil {
+	parsedVersion, err := validateSchemaVersion(version)
+	if err != nil {
 		return nil, err
 	}
 	for key := range metadata {
@@ -150,7 +154,7 @@ func LoadSchema(path string) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	schema := &Schema{source: path, types: types, elements: elements}
+	schema := &Schema{source: path, version: parsedVersion.value, types: types, elements: elements}
 	if err := schema.validateArrayRanges(); err != nil {
 		return nil, err
 	}
@@ -161,22 +165,40 @@ func LoadDocument(path string) (map[string]any, error) {
 	return parseTOMLFile(path)
 }
 
-func validateSchemaVersion(value any) error {
+type schemaVersion struct {
+	value string
+	major string
+	minor string
+}
+
+func parseVersion(value any, property string) (schemaVersion, error) {
 	version, ok := value.(string)
 	if !ok {
-		return fmt.Errorf("[toml-schema].version must be a SemVer string")
+		return schemaVersion{}, fmt.Errorf("%s must be a SemVer string", property)
 	}
 	matches := semverPattern.FindStringSubmatch(version)
 	if matches == nil {
-		return fmt.Errorf("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
+		return schemaVersion{}, fmt.Errorf("%s must use SemVer MAJOR.MINOR.PATCH syntax", property)
 	}
-	if matches[1] != "1" {
-		return fmt.Errorf("unsupported TOML Schema major version: %s", version)
+	return schemaVersion{value: version, major: matches[1], minor: matches[2]}, nil
+}
+
+func validateSchemaVersion(value any) (schemaVersion, error) {
+	version, err := parseVersion(value, "[toml-schema].version")
+	if err != nil {
+		return schemaVersion{}, err
 	}
-	if matches[2] != "0" {
-		return fmt.Errorf("unsupported TOML Schema minor version: %s", version)
+	if version.major != "1" {
+		return schemaVersion{}, fmt.Errorf("unsupported TOML Schema major version: %s", version.value)
 	}
-	return nil
+	if version.minor != "0" {
+		return schemaVersion{}, fmt.Errorf("unsupported TOML Schema minor version: %s", version.value)
+	}
+	return version, nil
+}
+
+func (s *Schema) Version() string {
+	return s.version
 }
 
 func (s *Schema) ValidateFile(path string) ValidationResult {
@@ -926,25 +948,135 @@ func (v *validator) add(path, message string) {
 	v.errors = append(v.errors, ValidationError{Path: path, Message: message})
 }
 
-func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
+type SchemaResolution struct {
+	Schema          *Schema
+	Document        map[string]any
+	DocumentVersion string
+	SchemaVersion   string
+	Warnings        []string
+}
+
+func ResolveSchemaFromDocument(documentPath string) (*SchemaResolution, error) {
 	document, err := parseTOMLFile(documentPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	metadata, ok := asMap(document["toml-schema"])
 	if !ok {
-		return nil, nil, fmt.Errorf("document does not contain [toml-schema].location")
+		return nil, fmt.Errorf("Document must contain a [toml-schema] table")
 	}
 	location, ok := metadata["location"].(string)
 	if !ok || strings.TrimSpace(location) == "" {
-		return nil, nil, fmt.Errorf("document does not contain [toml-schema].location")
+		return nil, fmt.Errorf("Document [toml-schema].location must be a non-empty string")
 	}
-	schemaPath := filepath.Clean(filepath.Join(filepath.Dir(documentPath), location))
+	schemaPath, err := resolveSchemaPath(documentPath, location)
+	if err != nil {
+		return nil, err
+	}
 	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		return nil, err
+	}
+	resolution := &SchemaResolution{
+		Schema:        schema,
+		Document:      document,
+		SchemaVersion: schema.Version(),
+	}
+	if value, present := metadata["version"]; present {
+		expected, err := parseVersion(value, "Document [toml-schema].version")
+		if err != nil {
+			return nil, err
+		}
+		resolution.DocumentVersion = expected.value
+		actual, err := parseVersion(schema.Version(), "[toml-schema].version")
+		if err != nil {
+			return nil, err
+		}
+		if expected.major != actual.major {
+			return nil, fmt.Errorf(
+				"Document expects TOML Schema major version %s, but resolved schema uses %s",
+				expected.value, actual.value)
+		}
+		if expected.value != actual.value {
+			resolution.Warnings = append(resolution.Warnings, fmt.Sprintf(
+				"Warning: document expects TOML Schema version %s, but resolved schema uses %s",
+				expected.value, actual.value))
+		}
+	}
+	return resolution, nil
+}
+
+func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
+	resolution, err := ResolveSchemaFromDocument(documentPath)
 	if err != nil {
 		return nil, nil, err
 	}
-	return schema, document, nil
+	return resolution.Schema, resolution.Document, nil
+}
+
+func resolveSchemaPath(documentPath, location string) (string, error) {
+	if filepath.IsAbs(location) {
+		return filepath.Clean(location), nil
+	}
+	if hasInvalidURIReferenceCharacter(location) {
+		return "", fmt.Errorf("Invalid [toml-schema].location URI: %s", location)
+	}
+	reference, err := url.Parse(location)
+	if err != nil {
+		return "", fmt.Errorf("Invalid [toml-schema].location URI: %s: %w", location, err)
+	}
+	documentAbsolute, err := filepath.Abs(documentPath)
+	if err != nil {
+		return "", fmt.Errorf("unable to resolve document path %s: %w", documentPath, err)
+	}
+	documentURI := &url.URL{Scheme: "file", Path: filepath.ToSlash(documentAbsolute)}
+	resolved := documentURI.ResolveReference(reference)
+	if !strings.EqualFold(resolved.Scheme, "file") {
+		return "", fmt.Errorf("Unsupported schema location URI scheme: %s", resolved.Scheme)
+	}
+	path, err := localPathFromFileURI(resolved)
+	if err != nil {
+		return "", fmt.Errorf("Invalid file schema location: %s: %w", location, err)
+	}
+	return filepath.Clean(path), nil
+}
+
+func hasInvalidURIReferenceCharacter(reference string) bool {
+	for _, character := range reference {
+		if character <= ' ' || character == 0x7f {
+			return true
+		}
+		switch character {
+		case '\\', '"', '<', '>', '^', '`', '{', '|', '}':
+			return true
+		}
+	}
+	return false
+}
+
+func localPathFromFileURI(uri *url.URL) (string, error) {
+	if uri.Opaque != "" || uri.User != nil || uri.RawQuery != "" || uri.ForceQuery || uri.Fragment != "" {
+		return "", fmt.Errorf("file URI contains unsupported components")
+	}
+	if uri.Host != "" && !strings.EqualFold(uri.Host, "localhost") {
+		return "", fmt.Errorf("file URI has a non-local host")
+	}
+	escapedPath := strings.ToLower(uri.EscapedPath())
+	if strings.Contains(escapedPath, "%2f") || strings.Contains(escapedPath, "%5c") {
+		return "", fmt.Errorf("file URI contains an encoded path separator")
+	}
+	path := uri.Path
+	if path == "" || strings.ContainsRune(path, 0) {
+		return "", fmt.Errorf("file URI does not contain a safe path")
+	}
+	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+		path = path[1:]
+	}
+	path = filepath.FromSlash(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("file URI path is not absolute")
+	}
+	return path, nil
 }
 
 func propertyValue(table map[string]any, key string) any {

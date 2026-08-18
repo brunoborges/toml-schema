@@ -9,5 +9,6 @@ pub mod extract;
 pub mod schema;
 
 pub use schema::{
-    Definition, Schema, SchemaType, ValidationError, ValidationResult, DEFINITION_KEYS,
+    resolve_schema_from_document, schema_from_document, Definition, DocumentSchemaResolution,
+    Schema, SchemaType, ValidationError, ValidationResult, DEFINITION_KEYS,
 };

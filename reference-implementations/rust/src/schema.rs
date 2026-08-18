@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use toml::value::{Datetime, Offset};
 use toml::{Table, Value};
+use url::Url;
 
 /// Built-in TOML Schema types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -159,8 +160,25 @@ impl ValidationResult {
 #[derive(Debug, Clone)]
 pub struct Schema {
     source: PathBuf,
+    version: String,
     types: BTreeMap<String, Definition>,
     elements: BTreeMap<String, Definition>,
+}
+
+#[derive(Debug, Clone)]
+struct LanguageVersion {
+    value: String,
+    major: String,
+    minor: String,
+}
+
+/// A schema resolved from a data document, including diagnostics that do not
+/// prevent validation.
+#[derive(Debug, Clone)]
+pub struct DocumentSchemaResolution {
+    pub schema: Schema,
+    pub document: Table,
+    pub warnings: Vec<String>,
 }
 
 impl Schema {
@@ -192,7 +210,7 @@ impl Schema {
         let version = metadata
             .get("version")
             .ok_or_else(|| "[toml-schema] must contain version".to_string())?;
-        Self::validate_schema_version(version)?;
+        let version = Self::validate_schema_version(version)?;
         for key in metadata.keys() {
             if key != "version" && key != "meta" {
                 return Err(format!("unsupported [toml-schema] key: {key}"));
@@ -204,6 +222,7 @@ impl Schema {
         let elements = parse_definitions("elements", elements_table, true)?;
         let schema = Schema {
             source,
+            version: version.value,
             types,
             elements,
         };
@@ -216,26 +235,34 @@ impl Schema {
         &self.source
     }
 
-    fn validate_schema_version(value: &Value) -> Result<(), String> {
-        let Some(version) = value.as_str() else {
-            return Err("[toml-schema].version must be a SemVer string".to_string());
-        };
-        let semver = Regex::new(
-            r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$",
+    /// Returns the TOML Schema language version declared by this schema.
+    pub fn version(&self) -> &str {
+        &self.version
+    }
+
+    fn validate_schema_version(value: &Value) -> Result<LanguageVersion, String> {
+        let version = parse_language_version(value, "[toml-schema].version")?;
+        if version.major != "1" {
+            return Err(format!(
+                "unsupported TOML Schema major version: {}",
+                version.value
+            ));
+        }
+        if version.minor != "0" {
+            return Err(format!(
+                "unsupported TOML Schema minor version: {}",
+                version.value
+            ));
+        }
+        Ok(version)
+    }
+
+    fn language_version(&self) -> LanguageVersion {
+        parse_language_version(
+            &Value::String(self.version.clone()),
+            "[toml-schema].version",
         )
-        .expect("valid SemVer regex");
-        let Some(captures) = semver.captures(version) else {
-            return Err(
-                "[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax".to_string(),
-            );
-        };
-        if captures.get(1).map(|major| major.as_str()) != Some("1") {
-            return Err(format!("unsupported TOML Schema major version: {version}"));
-        }
-        if captures.get(2).map(|minor| minor.as_str()) != Some("0") {
-            return Err(format!("unsupported TOML Schema minor version: {version}"));
-        }
-        Ok(())
+        .expect("schema version was validated during loading")
     }
 
     fn validate_array_range_definitions(&self) -> Result<(), String> {
@@ -354,26 +381,157 @@ impl Schema {
     }
 }
 
+fn parse_language_version(value: &Value, property: &str) -> Result<LanguageVersion, String> {
+    let Some(version) = value.as_str() else {
+        return Err(format!("{property} must be a SemVer string"));
+    };
+    let semver = Regex::new(
+        r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$",
+    )
+    .expect("valid SemVer regex");
+    let Some(captures) = semver.captures(version) else {
+        return Err(format!(
+            "{property} must use SemVer MAJOR.MINOR.PATCH syntax"
+        ));
+    };
+    Ok(LanguageVersion {
+        value: version.to_string(),
+        major: captures
+            .get(1)
+            .expect("SemVer major capture")
+            .as_str()
+            .to_string(),
+        minor: captures
+            .get(2)
+            .expect("SemVer minor capture")
+            .as_str()
+            .to_string(),
+    })
+}
+
 /// Loads a TOML Schema document referenced by a TOML document via
 /// `[toml-schema].location` and returns the schema together with the parsed
 /// document.
 pub fn schema_from_document<P: AsRef<Path>>(document_path: P) -> Result<(Schema, Table), String> {
+    let resolution = resolve_schema_from_document(document_path)?;
+    Ok((resolution.schema, resolution.document))
+}
+
+/// Resolves a document's schema and returns non-fatal version diagnostics for
+/// callers, such as the CLI, that can surface warnings.
+pub fn resolve_schema_from_document<P: AsRef<Path>>(
+    document_path: P,
+) -> Result<DocumentSchemaResolution, String> {
     let document_path = document_path.as_ref();
     let document = parse_toml_file(document_path)?;
     let metadata = document
         .get("toml-schema")
         .and_then(Value::as_table)
-        .ok_or_else(|| "document does not contain [toml-schema].location".to_string())?;
+        .ok_or_else(|| "Document must contain a [toml-schema] table".to_string())?;
     let location = metadata
         .get("location")
         .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|location| !location.is_empty())
-        .ok_or_else(|| "document does not contain [toml-schema].location".to_string())?;
-    let directory = document_path.parent().unwrap_or_else(|| Path::new("."));
-    let schema_path = directory.join(location);
+        .filter(|location| !location.trim().is_empty())
+        .ok_or_else(|| "Document [toml-schema].location must be a non-empty string".to_string())?;
+    let schema_path = resolve_schema_path(document_path, location)?;
     let schema = Schema::load(&schema_path)?;
-    Ok((schema, document))
+    let mut warnings = Vec::new();
+    if let Some(expected_value) = metadata.get("version") {
+        let expected = parse_language_version(expected_value, "Document [toml-schema].version")?;
+        let actual = schema.language_version();
+        if expected.major != actual.major {
+            return Err(format!(
+                "Document expects TOML Schema major version {}, but resolved schema uses {}",
+                expected.value, actual.value
+            ));
+        }
+        if expected.value != actual.value {
+            warnings.push(format!(
+                "Warning: document expects TOML Schema version {}, but resolved schema uses {}",
+                expected.value, actual.value
+            ));
+        }
+    }
+    Ok(DocumentSchemaResolution {
+        schema,
+        document,
+        warnings,
+    })
+}
+
+fn resolve_schema_path(document_path: &Path, location: &str) -> Result<PathBuf, String> {
+    let location_is_absolute_path = Path::new(location).is_absolute();
+    if !location_is_absolute_path && has_invalid_uri_reference_character(location) {
+        return Err(format!("Invalid [toml-schema].location URI: {location}"));
+    }
+    if !location_is_absolute_path && has_non_hierarchical_file_scheme(location) {
+        return Err(format!("Invalid file schema location: {location}"));
+    }
+    let absolute_document = if document_path.is_absolute() {
+        document_path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("Unable to resolve document path: {error}"))?
+            .join(document_path)
+    };
+    let document_uri = Url::from_file_path(&absolute_document)
+        .map_err(|_| format!("Invalid document file path: {}", document_path.display()))?;
+    let resolved = if location_is_absolute_path {
+        Url::from_file_path(location)
+            .map_err(|_| format!("Invalid file schema location: {location}"))?
+    } else {
+        document_uri
+            .join(location)
+            .map_err(|_| format!("Invalid [toml-schema].location URI: {location}"))?
+    };
+    if resolved.scheme() != "file" {
+        return Err(format!(
+            "Unsupported schema location URI scheme: {}",
+            resolved.scheme()
+        ));
+    }
+    if resolved.query().is_some() || resolved.fragment().is_some() {
+        return Err(format!("Invalid file schema location: {location}"));
+    }
+    if contains_percent_encoded_separator(resolved.path()) {
+        return Err(format!("Invalid file schema location: {location}"));
+    }
+    resolved
+        .to_file_path()
+        .map_err(|_| format!("Invalid file schema location: {location}"))
+}
+
+fn has_non_hierarchical_file_scheme(reference: &str) -> bool {
+    match Url::parse(reference) {
+        Ok(url) if url.scheme().eq_ignore_ascii_case("file") => {
+            !reference[url.scheme().len() + 1..].starts_with('/')
+        }
+        _ => false,
+    }
+}
+
+fn has_invalid_uri_reference_character(reference: &str) -> bool {
+    reference.chars().any(|character| {
+        character <= ' '
+            || character == '\u{7f}'
+            || matches!(
+                character,
+                '\\' | '"' | '<' | '>' | '^' | '`' | '{' | '|' | '}'
+            )
+    })
+}
+
+fn contains_percent_encoded_separator(path: &str) -> bool {
+    path.as_bytes().windows(3).any(|window| {
+        window[0] == b'%'
+            && matches!(
+                (
+                    window[1].to_ascii_lowercase(),
+                    window[2].to_ascii_lowercase()
+                ),
+                (b'2', b'f') | (b'5', b'c')
+            )
+    })
 }
 
 fn parse_toml_file(path: &Path) -> Result<Table, String> {
