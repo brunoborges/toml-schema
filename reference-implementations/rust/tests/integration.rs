@@ -394,6 +394,80 @@ maxlength = 2
 }
 
 #[test]
+fn enforces_constraints_on_scalar_allowed_values_at_schema_load_time() {
+    let directory = tempfile_dir("scalar-allowedvalues");
+    let malformed_definitions = [
+        r#"
+type = "string"
+allowedvalues = [ "valid", "INVALID" ]
+pattern = "^[a-z]+$"
+"#,
+        r#"
+type = "integer"
+allowedvalues = [ 1, 2 ]
+min = 2
+"#,
+        r#"
+type = "integer"
+allowedvalues = [ 2, 3 ]
+max = 2
+"#,
+        r#"
+type = "string"
+allowedvalues = [ "a", "ok" ]
+minlength = 2
+"#,
+        r#"
+type = "string"
+allowedvalues = [ "ok", "long" ]
+maxlength = 2
+"#,
+    ];
+
+    for (index, definition) in malformed_definitions.iter().enumerate() {
+        let content = format!(
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{definition}
+"#
+        );
+        let schema_path = write_file(
+            &directory,
+            &format!("invalid-allowedvalues-{index}.tosd"),
+            &content,
+        );
+        Schema::load(&schema_path).expect_err("expected malformed allowedvalues schema");
+    }
+
+    let schema_path = write_file(
+        &directory,
+        "valid-allowedvalues.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+allowedvalues = [ "ab", "cd" ]
+pattern = "^[a-z]+$"
+minlength = 2
+maxlength = 2
+"#,
+    );
+    let valid_document = write_file(&directory, "valid-allowedvalues.toml", r#"value = "ab""#);
+    let invalid_document = write_file(&directory, "invalid-allowedvalues.toml", r#"value = "ef""#);
+    let schema = Schema::load(&schema_path).expect("load conforming allowedvalues schema");
+
+    assert!(schema.validate_file(valid_document).valid());
+    let result = schema.validate_file(invalid_document);
+    assert_eq!(result.errors.len(), 1);
+    assert_eq!(result.errors[0].message, "value is not in allowedvalues");
+}
+
+#[test]
 fn pattern_matches_unanchored() {
     let directory = tempfile_dir("pattern-unanchored");
     let schema_path = write_file(

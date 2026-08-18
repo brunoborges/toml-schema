@@ -311,6 +311,12 @@ List of considered simple types:
 
 `allowedvalues` provides a mechanism to set an enumeration of allowed values to be used in any given simple type.
 
+For a non-array simple type, when `allowedvalues` is combined with `pattern`, `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST satisfy every applicable constraint. A schema containing an entry that violates one of those constraints is malformed, and parsers MUST reject it at schema-load time.
+
+After a schema with `allowedvalues` has been loaded successfully, a document value is valid when it is a member of `allowedvalues`. Parsers do not need to re-evaluate the other constraints for that document value because every enumerated value has already been checked against them while loading the schema.
+
+The rules for applying `allowedvalues` to array items are defined separately under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
+
 Example:
 ```toml
 [types.colorType]

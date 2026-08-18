@@ -372,6 +372,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), min, max); err != nil {
 		return Definition{}, err
 	}
+	if err := validateAllowedValuesConstraints(name, typeName, allowedValues, pattern, min, max, minLength, maxLength); err != nil {
+		return Definition{}, err
+	}
 	return Definition{
 		name: name, typeName: typeName, reference: reference, description: description,
 		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
@@ -477,6 +480,63 @@ func boundaryMatchesType(value any, typeName SchemaType) bool {
 	default:
 		return false
 	}
+}
+
+func validateAllowedValuesConstraints(
+	name string,
+	typeName SchemaType,
+	allowedValues []any,
+	pattern *regexp.Regexp,
+	min, max any,
+	minLength, maxLength *int,
+) error {
+	if len(allowedValues) == 0 || typeName == TypeArray {
+		return nil
+	}
+	for index, allowed := range allowedValues {
+		entry := fmt.Sprintf("%s allowedvalues[%d]", name, index)
+		if pattern != nil {
+			stringValue, ok := allowed.(string)
+			if !ok || !matchesPattern(pattern, stringValue) {
+				return fmt.Errorf("%s does not satisfy pattern", entry)
+			}
+		}
+		if (min != nil || max != nil) && isNaN(allowed) {
+			return fmt.Errorf("%s does not satisfy min or max", entry)
+		}
+		if min != nil {
+			comparison, err := compare(allowed, min)
+			if err != nil {
+				return fmt.Errorf("%s cannot be compared with min: %w", entry, err)
+			}
+			if comparison < 0 {
+				return fmt.Errorf("%s is less than min", entry)
+			}
+		}
+		if max != nil {
+			comparison, err := compare(allowed, max)
+			if err != nil {
+				return fmt.Errorf("%s cannot be compared with max: %w", entry, err)
+			}
+			if comparison > 0 {
+				return fmt.Errorf("%s is greater than max", entry)
+			}
+		}
+		if minLength != nil || maxLength != nil {
+			stringValue, ok := allowed.(string)
+			if !ok {
+				return fmt.Errorf("%s does not satisfy string length constraints", entry)
+			}
+			length := utf8.RuneCountInString(stringValue)
+			if minLength != nil && length < *minLength {
+				return fmt.Errorf("%s is shorter than minlength", entry)
+			}
+			if maxLength != nil && length > *maxLength {
+				return fmt.Errorf("%s is longer than maxlength", entry)
+			}
+		}
+	}
+	return nil
 }
 
 type validator struct {
@@ -678,6 +738,9 @@ func (v *validator) validateCommonConstraints(path string, value any, definition
 		return
 	}
 	v.validateAllowedValues(path, value, definition)
+	if len(definition.allowedValues) > 0 {
+		return
+	}
 	v.validateRange(path, value, definition)
 	if stringValue, ok := value.(string); ok {
 		v.validateLength(path, utf8.RuneCountInString(stringValue), definition)

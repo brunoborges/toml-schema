@@ -972,6 +972,67 @@ class TomlSchemaTest {
     }
 
     @Test
+    void enforcesConstraintsOnScalarAllowedValuesAtSchemaLoadTime() throws IOException {
+        List<String> malformedDefinitions = List.of(
+                """
+                type = "string"
+                allowedvalues = [ "valid", "INVALID" ]
+                pattern = "^[a-z]+$"
+                """,
+                """
+                type = "integer"
+                allowedvalues = [ 1, 2 ]
+                min = 2
+                """,
+                """
+                type = "integer"
+                allowedvalues = [ 2, 3 ]
+                max = 2
+                """,
+                """
+                type = "string"
+                allowedvalues = [ "a", "ok" ]
+                minlength = 2
+                """,
+                """
+                type = "string"
+                allowedvalues = [ "ok", "long" ]
+                maxlength = 2
+                """
+        );
+
+        for (int i = 0; i < malformedDefinitions.size(); i++) {
+            Path schema = write("invalid-allowedvalues-" + i + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [elements.value]
+                    """ + malformedDefinitions.get(i));
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+
+        Path schema = write("valid-allowedvalues.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "string"
+                allowedvalues = [ "ab", "cd" ]
+                pattern = "^[a-z]+$"
+                minlength = 2
+                maxlength = 2
+                """);
+        Path validDocument = write("valid-allowedvalues.toml", "value = \"ab\"");
+        Path invalidDocument = write("invalid-allowedvalues.toml", "value = \"ef\"");
+        TomlSchema loaded = assertDoesNotThrow(() -> TomlSchema.load(schema));
+
+        assertTrue(loaded.validate(validDocument).isValid());
+        ValidationResult invalid = loaded.validate(invalidDocument);
+        assertEquals(1, invalid.errors().size());
+        assertEquals("value is not in allowedvalues", invalid.errors().getFirst().message());
+    }
+
+    @Test
     void ignoresReservedTomlSchemaMetadataUnlessSchemaDefinesIt() throws IOException {
         Path schema = write("metadata-ignored.tosd", """
                 [toml-schema]

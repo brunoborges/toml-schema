@@ -209,6 +209,9 @@ final class TomlSchemaValidator {
             return;
         }
         validateAllowedValues(path, value, definition);
+        if (!definition.allowedValues().isEmpty()) {
+            return;
+        }
         validateRange(path, value, definition);
         if (value instanceof String stringValue) {
             validateLength(path, stringLength(stringValue), definition);
