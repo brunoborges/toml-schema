@@ -17,10 +17,6 @@ oneof = [ "string", "types.stringArray" ]
 type = "collection"
 itemtype = "any"
 
-[types.stringMap]
-type = "collection"
-itemtype = "string"
-
 [types.buildStats]
 type = "table"
 

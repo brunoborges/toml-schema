@@ -10,16 +10,9 @@ oneof = [ "integer", "float" ]
 type = "string"
 pattern = '^(?:[0-9]+(?:\.[0-9]+)?(?:ns|us|ms|s|m|h))+$'
 
-[types.durationOrInteger]
-oneof = [ "types.durationValue", "integer" ]
-
 [types.stringArray]
 type = "array"
 itemtype = "string"
-
-[types.integerArray]
-type = "array"
-itemtype = "integer"
 
 [types.stringMap]
 type = "collection"
