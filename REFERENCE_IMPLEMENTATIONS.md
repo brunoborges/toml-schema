@@ -1,15 +1,24 @@
 # Reference Implementations
 
-This document tracks TOML Schema reference implementations and the expected validation surface for each implementation.
+Build and use the TOML Schema reference implementations as libraries or command-line
+tools. Each implementation validates TOML documents, resolves schemas declared with
+`[toml-schema].location`, and can extract a starter schema from an existing document.
+
+All implementations currently build from source. Choose the language that best fits
+your project, then follow its section for test, build, validation, extraction, and
+library examples.
 
 ## Status
 
-| Language | Location | Status | Notes |
+| Language | Location | Requires | Interfaces |
 | --- | --- | --- | --- |
-| Java | [`reference-implementations/java`](reference-implementations/java) | Active reference implementation | Java 25 library and CLI using `org.tomlschema:toml-schema` and Tomlj for TOML 1.0 parsing. |
-| Go | [`reference-implementations/go`](reference-implementations/go) | Active reference implementation | Go module `tomlschema.org/go` using go-toml for TOML 1.0 parsing. |
-| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Active reference implementation | Rust crate `toml-schema` with tomlschema.org package metadata, using the `toml` crate for TOML 1.0 parsing. |
-| Other languages | `reference-implementations/<language>` | Not started | Future implementations should follow the same conformance expectations below. |
+| Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, CLI validation, schema extraction |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.23 | Library, CLI validation, schema extraction |
+| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, CLI validation, schema extraction |
+
+The implementations use TOML 1.0 parsers and share the same conformance expectations.
+They are reference-quality implementations rather than separately versioned,
+package-registry releases.
 
 ## Java
 
