@@ -874,6 +874,94 @@ port = 8080
 	}
 }
 
+func TestRejectsBareCollectionAndAnyAlternativeReferences(t *testing.T) {
+	dir := t.TempDir()
+	invalidDefinitions := map[string]string{
+		"collection-without-itemtype": `
+type = "collection"
+`,
+		"prefixed-collection": `
+type = "types.collection"
+`,
+		"collection-itemtype": `
+type = "array"
+itemtype = "collection"
+`,
+		"collection-items": `
+type = "array"
+items = [ "collection" ]
+`,
+		"collection-oneof": `
+oneof = [ "collection", "string" ]
+`,
+		"collection-anyof": `
+anyof = [ "collection", "string" ]
+`,
+		"any-oneof": `
+oneof = [ "any", "string" ]
+`,
+		"any-anyof": `
+anyof = [ "any", "string" ]
+`,
+	}
+
+	for name, definition := range invalidDefinitions {
+		t.Run(name, func(t *testing.T) {
+			schemaPath := write(t, dir, name+".tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+`+definition)
+
+			if _, err := LoadSchema(schemaPath); err == nil {
+				t.Fatal("expected bare reference to be rejected")
+			}
+		})
+	}
+}
+
+func TestAllowsAnyOutsideAlternativesAndNamedCollections(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "valid-special-references.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.stringMap]
+type = "collection"
+itemtype = "string"
+
+[elements.direct]
+type = "any"
+
+[elements.values]
+type = "array"
+itemtype = "any"
+
+[elements.tuple]
+type = "array"
+items = [ "any" ]
+
+[elements.maps]
+type = "array"
+itemtype = "types.stringMap"
+`)
+	documentPath := write(t, dir, "valid-special-references.toml", `
+direct = { key = 1 }
+values = [ 1, "two" ]
+tuple = [ true ]
+maps = [ { one = "1", two = "2" } ]
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(documentPath); !result.Valid() {
+		t.Fatalf("expected valid special references, got %#v", result.Errors)
+	}
+}
+
 func TestRejectsInvalidTypeSelectorCardinality(t *testing.T) {
 	dir := t.TempDir()
 	invalidDefinitions := map[string]string{

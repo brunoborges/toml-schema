@@ -1120,6 +1120,131 @@ port = 8080
 }
 
 #[test]
+fn rejects_bare_collection_and_any_alternative_references() {
+    let directory = tempfile_dir("invalid-bare-references");
+    let invalid_definitions = [
+        (
+            "collection-without-itemtype.tosd",
+            r#"
+type = "collection"
+"#,
+        ),
+        (
+            "prefixed-collection.tosd",
+            r#"
+type = "types.collection"
+"#,
+        ),
+        (
+            "collection-itemtype.tosd",
+            r#"
+type = "array"
+itemtype = "collection"
+"#,
+        ),
+        (
+            "collection-items.tosd",
+            r#"
+type = "array"
+items = [ "collection" ]
+"#,
+        ),
+        (
+            "collection-oneof.tosd",
+            r#"
+oneof = [ "collection", "string" ]
+"#,
+        ),
+        (
+            "collection-anyof.tosd",
+            r#"
+anyof = [ "collection", "string" ]
+"#,
+        ),
+        (
+            "any-oneof.tosd",
+            r#"
+oneof = [ "any", "string" ]
+"#,
+        ),
+        (
+            "any-anyof.tosd",
+            r#"
+anyof = [ "any", "string" ]
+"#,
+        ),
+    ];
+
+    for (file_name, definition) in invalid_definitions {
+        let schema_path = write_file(
+            &directory,
+            file_name,
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{definition}
+"#
+            ),
+        );
+
+        Schema::load(&schema_path).expect_err("expected bare reference rejection");
+    }
+}
+
+#[test]
+fn allows_any_outside_alternatives_and_named_collections() {
+    let directory = tempfile_dir("valid-special-references");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.stringMap]
+type = "collection"
+itemtype = "string"
+
+[elements.direct]
+type = "any"
+
+[elements.values]
+type = "array"
+itemtype = "any"
+
+[elements.tuple]
+type = "array"
+items = [ "any" ]
+
+[elements.maps]
+type = "array"
+itemtype = "types.stringMap"
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+direct = { key = 1 }
+values = [ 1, "two" ]
+tuple = [ true ]
+maps = [ { one = "1", two = "2" } ]
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("expected valid special references");
+    let result = schema.validate_file(&document_path);
+    assert!(
+        result.valid(),
+        "expected valid special references, got {:?}",
+        result.errors
+    );
+}
+
+#[test]
 fn rejects_invalid_type_selector_cardinality() {
     let directory = tempfile_dir("invalid-type-selectors");
     let invalid_definitions = [

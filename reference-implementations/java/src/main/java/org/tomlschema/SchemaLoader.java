@@ -123,6 +123,15 @@ final class SchemaLoader {
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
         List<String> oneOf = getStringArrayValues(table, "oneof");
         List<String> anyOf = getStringArrayValues(table, "anyof");
+        rejectBareCollectionReference(name, "itemtype", itemReference);
+        rejectBareCollectionReferences(name, "items", items);
+        validateAlternativeReferences(name, "oneof", oneOf);
+        validateAlternativeReferences(name, "anyof", anyOf);
+        if (typeSelector != null
+                && type != SchemaType.COLLECTION
+                && normalizeReference(typeSelector).equals(SchemaType.COLLECTION.schemaName())) {
+            throw new SchemaException(name + " cannot use collection as a bare type reference");
+        }
         int typeSelectors = (typeSelector == null ? 0 : 1)
                 + (oneOf.isEmpty() ? 0 : 1)
                 + (anyOf.isEmpty() ? 0 : 1);
@@ -194,6 +203,28 @@ final class SchemaLoader {
                 anyOf.stream().map(this::normalizeReference).toList(),
                 children
         );
+    }
+
+    private void rejectBareCollectionReferences(String name, String property, List<String> references) {
+        for (String reference : references) {
+            rejectBareCollectionReference(name, property, normalizeReference(reference));
+        }
+    }
+
+    private void rejectBareCollectionReference(String name, String property, String reference) {
+        if (SchemaType.COLLECTION.schemaName().equals(reference)) {
+            throw new SchemaException(name + " cannot use collection as a bare " + property + " reference");
+        }
+    }
+
+    private void validateAlternativeReferences(String name, String property, List<String> references) {
+        for (String reference : references) {
+            String normalizedReference = normalizeReference(reference);
+            rejectBareCollectionReference(name, property, normalizedReference);
+            if (SchemaType.ANY.schemaName().equals(normalizedReference)) {
+                throw new SchemaException(name + " cannot use any directly in " + property);
+            }
+        }
     }
 
     private Object getPropertyValue(TomlTable table, String key) {
