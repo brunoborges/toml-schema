@@ -21,8 +21,14 @@ func TestValidatesCheckedInExample(t *testing.T) {
 	}
 }
 
-func TestLoadsExamplesMigratedFromReferenceSpecialization(t *testing.T) {
-	for _, name := range []string{"hugo.tosd", "netlify.tosd"} {
+func TestLoadsCheckedInExamples(t *testing.T) {
+	for _, name := range []string{
+		"gitlab-runner.tosd",
+		"hugo.tosd",
+		"netlify.tosd",
+		"pyproject.tosd",
+		"wrangler.tosd",
+	} {
 		t.Run(name, func(t *testing.T) {
 			if _, err := LoadSchema(filepath.Join(fixture("examples"), name)); err != nil {
 				t.Fatal(err)

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -1104,23 +1105,68 @@ func isSchemaReferenceScalar(value any) bool {
 }
 
 func resolveSchemaLocation(documentPath, location string) (string, error) {
+	if filepath.IsAbs(location) {
+		return filepath.Clean(location), nil
+	}
+	if hasInvalidURIReferenceCharacter(location) {
+		return "", fmt.Errorf("invalid [toml-schema].location URI: %s", location)
+	}
+	reference, err := url.Parse(location)
+	if err != nil {
+		return "", fmt.Errorf("invalid [toml-schema].location URI: %s: %w", location, err)
+	}
 	absoluteDocumentPath, err := filepath.Abs(documentPath)
 	if err != nil {
 		return "", fmt.Errorf("invalid document path: %w", err)
 	}
 	base := &url.URL{Scheme: "file", Path: filepath.ToSlash(absoluteDocumentPath)}
-	reference, err := url.Parse(location)
-	if err != nil {
-		return "", fmt.Errorf("invalid [toml-schema].location URI: %s: %w", location, err)
-	}
 	resolved := base.ResolveReference(reference)
 	if !strings.EqualFold(resolved.Scheme, "file") {
 		return "", fmt.Errorf("unsupported schema location URI scheme: %s", resolved.Scheme)
 	}
-	if resolved.Host != "" && !strings.EqualFold(resolved.Host, "localhost") {
-		return "", fmt.Errorf("unsupported file schema location host: %s", resolved.Host)
+	path, err := localPathFromFileURI(resolved)
+	if err != nil {
+		return "", fmt.Errorf("invalid file schema location: %s: %w", location, err)
 	}
-	return filepath.Clean(filepath.FromSlash(resolved.Path)), nil
+	return filepath.Clean(path), nil
+}
+
+func hasInvalidURIReferenceCharacter(reference string) bool {
+	for _, character := range reference {
+		if character <= ' ' || character == 0x7f {
+			return true
+		}
+		switch character {
+		case '\\', '"', '<', '>', '^', '`', '{', '|', '}':
+			return true
+		}
+	}
+	return false
+}
+
+func localPathFromFileURI(uri *url.URL) (string, error) {
+	if uri.Opaque != "" || uri.User != nil || uri.RawQuery != "" || uri.ForceQuery || uri.Fragment != "" {
+		return "", fmt.Errorf("file URI contains unsupported components")
+	}
+	if uri.Host != "" && !strings.EqualFold(uri.Host, "localhost") {
+		return "", fmt.Errorf("file URI has a non-local host")
+	}
+	escapedPath := strings.ToLower(uri.EscapedPath())
+	if strings.Contains(escapedPath, "%2f") || strings.Contains(escapedPath, "%5c") {
+		return "", fmt.Errorf("file URI contains an encoded path separator")
+	}
+	path := uri.Path
+	if path == "" || strings.ContainsRune(path, 0) {
+		return "", fmt.Errorf("file URI does not contain a safe path")
+	}
+	if runtime.GOOS == "windows" && len(path) >= 3 && path[0] == '/' && path[2] == ':' {
+		path = path[1:]
+	}
+	path = filepath.FromSlash(path)
+	if !filepath.IsAbs(path) {
+		return "", fmt.Errorf("file URI path is not absolute")
+	}
+	return path, nil
 }
 
 func compareDocumentSchemaVersion(value any, actual string) (string, error) {

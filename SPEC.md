@@ -980,6 +980,13 @@ An absolute `location` MUST be used unchanged. A relative `location` MUST be res
 
 A validator that receives a TOML document without a base location, for example through standard input, cannot resolve a relative `location`. It MUST either obtain an explicit base URI from the caller or report that schema discovery failed. An absolute `location` does not require a document base. Implementations MAY limit the URI schemes they can retrieve, but MUST report an unsupported scheme rather than reinterpret its value as a relative local path.
 
+An implementation that supports the `file` scheme MUST require a hierarchical
+file URI that can be converted to a local path, such as
+`file:///schemas/config.tosd`. It MUST reject an opaque URI such as
+`file:schema.tosd` rather than reinterpret it as a path relative to the TOML
+document. A file URI with a query or fragment MUST also be rejected because
+those components are not part of the local filesystem path.
+
 `version` is OPTIONAL. When present, it denotes the expected TOML Schema **language version** in the resolved schema document's `[toml-schema].version`; it is not an application version or an author-defined revision of that schema. Its value MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form, with the same syntax defined by [Schema Versioning](#schema-versioning).
 
 After resolving and loading the schema, a validator MUST compare these two language versions when the referencing document provides `version`. A different major version is incompatible and schema discovery MUST fail. Any other unequal version, including a minor, patch, pre-release, or build metadata difference, MUST produce a warning but MUST NOT by itself cause validation to fail. Compatibility between the resolved schema and the validator remains governed by [Schema Versioning](#schema-versioning).

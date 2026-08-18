@@ -31,8 +31,13 @@ class TomlSchemaTest {
     }
 
     @Test
-    void loadsExamplesMigratedFromReferenceSpecialization() {
-        for (String schema : List.of("examples/hugo.tosd", "examples/netlify.tosd")) {
+    void loadsCheckedInExamples() {
+        for (String schema : List.of(
+                "examples/gitlab-runner.tosd",
+                "examples/hugo.tosd",
+                "examples/netlify.tosd",
+                "examples/pyproject.tosd",
+                "examples/wrangler.tosd")) {
             assertDoesNotThrow(() -> TomlSchema.load(fixture(schema)), schema);
         }
     }
@@ -1809,6 +1814,30 @@ class TomlSchemaTest {
         assertEquals(2, exitCode);
         assertTrue(err.toString(StandardCharsets.UTF_8).contains(
                 "Unsupported schema location URI scheme: https"));
+    }
+
+    @Test
+    void cliRejectsOpaqueFileSchemaLocationUri() throws IOException {
+        for (String location : List.of(
+                "file:schema.tosd",
+                tempDir.resolve("schema.tosd").toUri() + "?version=1")) {
+            Path document = write("invalid-file-uri.toml", """
+                    title = "Example"
+
+                    [toml-schema]
+                    location = "%s"
+                    """.formatted(location));
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+            int exitCode = TomlSchemaCli.run(
+                    new String[]{"validate", document.toString()},
+                    new PrintStream(out, true, StandardCharsets.UTF_8),
+                    new PrintStream(err, true, StandardCharsets.UTF_8));
+
+            assertEquals(2, exitCode);
+            assertTrue(err.toString(StandardCharsets.UTF_8).contains("Invalid file schema location"));
+        }
     }
 
     @Test

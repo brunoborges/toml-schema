@@ -60,8 +60,14 @@ fn validates_checked_in_example() {
 }
 
 #[test]
-fn loads_examples_migrated_from_reference_specialization() {
-    for name in ["hugo.tosd", "netlify.tosd"] {
+fn loads_checked_in_examples() {
+    for name in [
+        "gitlab-runner.tosd",
+        "hugo.tosd",
+        "netlify.tosd",
+        "pyproject.tosd",
+        "wrangler.tosd",
+    ] {
         let path = fixture("examples").join(name);
         Schema::load(&path)
             .unwrap_or_else(|error| panic!("failed to load {}: {error}", path.display()));
@@ -1948,6 +1954,20 @@ type = "string"
             2,
             "unsupported schema location URI scheme: https",
         ),
+        (
+            "opaque-file-uri",
+            "",
+            "file:schema.tosd",
+            2,
+            "invalid file schema location",
+        ),
+        (
+            "file-uri-query",
+            "",
+            "file:///schema.tosd?version=1",
+            2,
+            "invalid file schema location",
+        ),
     ];
 
     for (name, version, location, expected_code, expected_error) in cases {
@@ -1966,7 +1986,7 @@ location = {location:?}
         );
         let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
 
-        assert_eq!(exit_code, expected_code, "{stderr}");
+        assert_eq!(exit_code, expected_code, "{name}: {stderr}");
         assert!(
             stderr.contains(expected_error),
             "expected {expected_error:?}, got {stderr:?}"
