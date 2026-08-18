@@ -14,10 +14,12 @@
 ;; reference-implementation parser profile.
 
 toml-schema-document = toml-document
-; A conforming document contains exactly one required [toml-schema] table,
-; zero or one [types] table, and exactly one required [elements] table.
-; No other top-level members are allowed. Their lexical order is governed by
-; TOML rather than by the order of the productions below.
+; The productions below are an unordered semantic inventory layered on the
+; parsed TOML document; they are not a second, order-sensitive serialization
+; grammar. A conforming document contains exactly one required [toml-schema]
+; table, zero or one [types] table, and exactly one required [elements] table.
+; No other top-level members are allowed. Schema loaders enforce those
+; cardinality and membership constraints after TOML parsing.
 
 toml-schema-table = toml-table-header-toml-schema version [ metadata-table ]
 types-table       = toml-table-header-types *schema-definition

@@ -62,6 +62,7 @@ fn validates_checked_in_example() {
 #[test]
 fn loads_checked_in_examples() {
     for name in [
+        "cargo.tosd",
         "gitlab-runner.tosd",
         "hugo.tosd",
         "netlify.tosd",
@@ -72,6 +73,17 @@ fn loads_checked_in_examples() {
         Schema::load(&path)
             .unwrap_or_else(|error| panic!("failed to load {}: {error}", path.display()));
     }
+}
+
+#[test]
+fn validates_cargo_manifest_example() {
+    let schema = Schema::load(fixture("examples/cargo.tosd")).expect("load cargo.tosd");
+    let result = schema.validate_file(fixture("reference-implementations/rust/Cargo.toml"));
+    assert!(
+        result.valid(),
+        "expected valid Cargo.toml, got {:#?}",
+        result.errors
+    );
 }
 
 #[test]

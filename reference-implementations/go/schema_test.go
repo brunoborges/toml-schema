@@ -23,6 +23,7 @@ func TestValidatesCheckedInExample(t *testing.T) {
 
 func TestLoadsCheckedInExamples(t *testing.T) {
 	for _, name := range []string{
+		"cargo.tosd",
 		"gitlab-runner.tosd",
 		"hugo.tosd",
 		"netlify.tosd",
@@ -34,6 +35,18 @@ func TestLoadsCheckedInExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestValidatesCargoManifestExample(t *testing.T) {
+	schema, err := LoadSchema(filepath.Join(fixture("examples"), "cargo.tosd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result := schema.ValidateFile(fixture("reference-implementations/rust/Cargo.toml"))
+	if !result.Valid() {
+		t.Fatalf("expected valid Cargo.toml, got %#v", result.Errors)
 	}
 }
 

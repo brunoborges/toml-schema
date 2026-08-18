@@ -33,6 +33,7 @@ class TomlSchemaTest {
     @Test
     void loadsCheckedInExamples() {
         for (String schema : List.of(
+                "examples/cargo.tosd",
                 "examples/gitlab-runner.tosd",
                 "examples/hugo.tosd",
                 "examples/netlify.tosd",
@@ -40,6 +41,14 @@ class TomlSchemaTest {
                 "examples/wrangler.tosd")) {
             assertDoesNotThrow(() -> TomlSchema.load(fixture(schema)), schema);
         }
+    }
+
+    @Test
+    void validatesCargoManifestExample() throws IOException {
+        ValidationResult result = TomlSchema.load(fixture("examples/cargo.tosd"))
+                .validate(fixture("reference-implementations/rust/Cargo.toml"));
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
     }
 
     @Test
@@ -87,6 +96,16 @@ class TomlSchemaTest {
         assertTrue(schemaSchema.validate(fixture("config.tosd")).isValid());
         assertTrue(schemaSchema.validate(fixture("toml-schema.tosd")).isValid());
         assertTrue(schemaSchema.validate(emptyElementsSchema).isValid());
+        for (String schema : List.of(
+                "examples/cargo.tosd",
+                "examples/gitlab-runner.tosd",
+                "examples/hugo.tosd",
+                "examples/netlify.tosd",
+                "examples/pyproject.tosd",
+                "examples/wrangler.tosd")) {
+            ValidationResult result = schemaSchema.validate(fixture(schema));
+            assertTrue(result.isValid(), () -> schema + ": " + result.errors());
+        }
     }
 
     @Test
