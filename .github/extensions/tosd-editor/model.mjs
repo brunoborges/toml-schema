@@ -11,7 +11,7 @@
 // node = { name, props: { <prop>: <editorValue> }, children: [ node, ... ] }
 //
 // Editor value encoding per property:
-//   type/itemtype/pattern/keypattern : plain string
+//   type/itemtype/description/pattern/keypattern : plain string
 //   optional                               : boolean
 //   minlength/maxlength                    : number
 //   items/oneof/anyof                      : string[]  (type references)
@@ -28,6 +28,7 @@ import {
 
 export const PROP_ORDER = [
     "type",
+    "description",
     "itemtype",
     "items",
     "oneof",
@@ -42,7 +43,7 @@ export const PROP_ORDER = [
     "optional",
 ];
 
-const STRING_PROPS = new Set(["type", "itemtype", "pattern", "keypattern"]);
+const STRING_PROPS = new Set(["type", "description", "itemtype", "pattern", "keypattern"]);
 const INT_PROPS = new Set(["minlength", "maxlength"]);
 const BOOL_PROPS = new Set(["optional"]);
 const REFLIST_PROPS = new Set(["items", "oneof", "anyof"]);
@@ -199,7 +200,7 @@ function encodeProp(key, raw) {
     if (INT_PROPS.has(key)) return Math.trunc(Number(raw));
     if (REFLIST_PROPS.has(key)) {
         const arr = (Array.isArray(raw) ? raw : []).map(String).filter((s) => s !== "");
-        return arr.length ? arr : undefined;
+        return arr;
     }
     if (VALUELIST_PROPS.has(key)) {
         const arr = (Array.isArray(raw) ? raw : [])
@@ -268,6 +269,7 @@ export function validateModel(model) {
         if (BUILTIN_TYPES.includes(name)) return true;
         return typeNames.has(name);
     };
+    const normalizeRef = (ref) => ref?.startsWith("types.") ? ref.slice(6) : ref;
 
     const resolvedKinds = (ref, seen = new Set()) => {
         if (!ref) return new Set();
@@ -298,12 +300,33 @@ export function validateModel(model) {
             issues.push({ level: "error", path: label, message: "`default` is not a TOML Schema property." });
         }
 
-        const exclusivity = ["type", "oneof", "anyof"].filter((k) => p[k] != null && p[k] !== "" && !(Array.isArray(p[k]) && p[k].length === 0));
+        const exclusivity = ["type", "oneof", "anyof"].filter((k) => Object.prototype.hasOwnProperty.call(p, k));
+        for (const key of ["type", "itemtype"]) {
+            if (Object.prototype.hasOwnProperty.call(p, key) && !String(p[key]).trim()) {
+                issues.push({ level: "error", path: label, message: `\`${key}\` must not be blank.` });
+            }
+        }
         if (exclusivity.length > 1) {
             issues.push({ level: "error", path: label, message: "`type`, `oneof`, and `anyof` are mutually exclusive." });
         }
         if (exclusivity.length === 0 && (!node.children || node.children.length === 0)) {
-            issues.push({ level: "warning", path: label, message: "No type, oneof, anyof, or children - defaults to an open table." });
+            issues.push({ level: "error", path: label, message: "A definition must select a type or contain child definitions." });
+        }
+        for (const unionKey of ["oneof", "anyof"]) {
+            if (Object.prototype.hasOwnProperty.call(p, unionKey) && (!Array.isArray(p[unionKey]) || p[unionKey].length === 0)) {
+                issues.push({ level: "error", path: label, message: `\`${unionKey}\` must contain at least one type reference.` });
+            }
+        }
+        if (Object.prototype.hasOwnProperty.call(p, "oneof") || Object.prototype.hasOwnProperty.call(p, "anyof")) {
+            const allowed = new Set(["oneof", "anyof", "description", "optional"]);
+            for (const key of Object.keys(p)) {
+                if (!allowed.has(key)) {
+                    issues.push({ level: "error", path: label, message: `A union cannot define \`${key}\`.` });
+                }
+            }
+        }
+        if ((node.children || []).length > 0 && !["table", "collection"].includes(p.type) && exclusivity.length > 0) {
+            issues.push({ level: "error", path: label, message: "Child definitions require the built-in type `table` or `collection`." });
         }
 
         if (p.items && p.itemtype) {
@@ -355,7 +378,9 @@ export function validateModel(model) {
         }
         for (const listKey of ["items", "oneof", "anyof"]) {
             for (const ref of p[listKey] || []) {
-                if (ref && !refExists(ref)) {
+                if (!String(ref).trim()) {
+                    issues.push({ level: "error", path: label, message: `Type references in ${listKey} must not be blank.` });
+                } else if (!refExists(ref)) {
                     issues.push({ level: "error", path: label, message: `Unknown type reference in ${listKey}: "${ref}".` });
                 }
             }
@@ -368,6 +393,24 @@ export function validateModel(model) {
 
     for (const t of model.types || []) walk(t, `types.${t.name}`);
     for (const e of model.elements || []) walk(e, `elements.${e.name}`);
+
+    const visited = new Set();
+    const visitSelector = (name, visiting = new Set()) => {
+        name = normalizeRef(name);
+        if (!name || BUILTIN_TYPES.includes(name) || visited.has(name) || !typesByName.has(name)) return;
+        if (visiting.has(name)) {
+            issues.push({ level: "error", path: `types.${name}`, message: "Cyclic type selector reference." });
+            return;
+        }
+        const nextVisiting = new Set(visiting).add(name);
+        const props = typesByName.get(name).props || {};
+        if (props.type) visitSelector(props.type, nextVisiting);
+        for (const ref of [...(props.oneof || []), ...(props.anyof || [])]) {
+            visitSelector(ref, nextVisiting);
+        }
+        visited.add(name);
+    };
+    for (const name of typeNames) visitSelector(name);
 
     if (!/^\d+\.\d+\.\d+/.test(model.version || "")) {
         issues.push({ level: "error", path: "toml-schema.version", message: "version must be a full SemVer string (e.g. 1.0.0)." });

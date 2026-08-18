@@ -215,6 +215,9 @@ impl Schema {
             types,
             elements,
         };
+        schema.validate_references(&schema.types)?;
+        schema.validate_references(&schema.elements)?;
+        schema.validate_selector_cycles()?;
         schema.validate_array_range_definitions()?;
         Ok(schema)
     }
@@ -255,6 +258,67 @@ impl Schema {
         for definition in self.types.values().chain(self.elements.values()) {
             self.validate_array_range_definition(definition)?;
         }
+        Ok(())
+    }
+
+    fn validate_references(
+        &self,
+        definitions: &BTreeMap<String, Definition>,
+    ) -> Result<(), String> {
+        for definition in definitions.values() {
+            for reference in definition
+                .reference
+                .iter()
+                .chain(definition.item_reference.iter())
+                .chain(definition.items.iter())
+                .chain(definition.one_of.iter())
+                .chain(definition.any_of.iter())
+            {
+                if SchemaType::parse(reference).is_none() && !self.types.contains_key(reference) {
+                    return Err(format!(
+                        "{} contains unknown type reference: {reference}",
+                        definition.name
+                    ));
+                }
+            }
+            self.validate_references(&definition.children)?;
+        }
+        Ok(())
+    }
+
+    fn validate_selector_cycles(&self) -> Result<(), String> {
+        let mut visited = HashSet::new();
+        for type_name in self.types.keys() {
+            self.validate_selector_cycle(type_name, &mut HashSet::new(), &mut visited)?;
+        }
+        Ok(())
+    }
+
+    fn validate_selector_cycle(
+        &self,
+        type_name: &str,
+        visiting: &mut HashSet<String>,
+        visited: &mut HashSet<String>,
+    ) -> Result<(), String> {
+        if SchemaType::parse(type_name).is_some() || visited.contains(type_name) {
+            return Ok(());
+        }
+        if !visiting.insert(type_name.to_string()) {
+            return Err(format!(
+                "cyclic type selector reference involving types.{type_name}"
+            ));
+        }
+        let Some(definition) = self.types.get(type_name) else {
+            return Ok(());
+        };
+        if let Some(reference) = definition.reference.as_deref() {
+            self.validate_selector_cycle(reference, visiting, visited)?;
+        }
+        for reference in definition.one_of.iter().chain(definition.any_of.iter()) {
+            self.validate_selector_cycle(reference, visiting, visited)?;
+        }
+        visiting.remove(type_name);
+        visited.insert(type_name.to_string());
         Ok(())
     }
 
@@ -503,8 +567,20 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let min_length = get_unsigned_integer(name, table, "minlength")?;
     let max_length = get_unsigned_integer(name, table, "maxlength")?;
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
+    let has_one_of = property_value(table, "oneof").is_some();
+    let has_any_of = property_value(table, "anyof").is_some();
     let one_of = get_string_array_values(name, table, "oneof")?;
     let any_of = get_string_array_values(name, table, "anyof")?;
+    if has_one_of && one_of.is_empty() {
+        return Err(format!(
+            "{name} oneof must contain at least one type reference"
+        ));
+    }
+    if has_any_of && any_of.is_empty() {
+        return Err(format!(
+            "{name} anyof must contain at least one type reference"
+        ));
+    }
     reject_bare_collection_reference(name, "itemtype", item_reference.as_deref())?;
     reject_bare_collection_references(name, "items", &items)?;
     validate_alternative_references(name, "oneof", &one_of)?;
@@ -517,9 +593,8 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             "{name} cannot use collection as a bare type reference"
         ));
     }
-    let type_selectors = usize::from(type_selector.is_some())
-        + usize::from(!one_of.is_empty())
-        + usize::from(!any_of.is_empty());
+    let type_selectors =
+        usize::from(type_selector.is_some()) + usize::from(has_one_of) + usize::from(has_any_of);
     if type_selectors > 1 {
         return Err(format!(
             "{name} cannot define more than one of type, oneof, and anyof"
@@ -537,13 +612,27 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             return Err(format!("{name} contains unsupported property: {key}"));
         }
     }
-    if type_name.is_none() && reference.is_none() && one_of.is_empty() && any_of.is_empty() {
+    if has_one_of || has_any_of {
+        for key in table.keys() {
+            if !matches!(key.as_str(), "oneof" | "anyof" | "description" | "optional") {
+                return Err(format!("{name} union cannot define {key}"));
+            }
+        }
+    }
+    if type_name.is_none() && reference.is_none() && !has_one_of && !has_any_of {
         if children.is_empty() {
             return Err(format!(
                 "{name} must define type, oneof, anyof, or child definitions"
             ));
         }
         type_name = Some(SchemaType::Table);
+    }
+    if !children.is_empty()
+        && !matches!(type_name, Some(SchemaType::Table | SchemaType::Collection))
+    {
+        return Err(format!(
+            "{name} can only define children when type is table or collection"
+        ));
     }
     if !matches!(type_name, Some(SchemaType::Array | SchemaType::Collection))
         && item_reference.is_some()

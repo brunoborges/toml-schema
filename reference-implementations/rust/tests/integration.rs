@@ -863,6 +863,115 @@ flex = "abc"
 }
 
 #[test]
+fn rejects_invalid_union_structure_and_child_placement() {
+    let invalid_definitions = [
+        "oneof = []",
+        "anyof = []",
+        "oneof = [ \"string\" ]\npattern = \"x\"",
+        "oneof = [ \"string\" ]\n\n[elements.value.child]\ntype = \"string\"",
+        "type = \"string\"\n\n[elements.value.child]\ntype = \"string\"",
+        "type = \"array\"\n\n[elements.value.child]\ntype = \"string\"",
+    ];
+
+    for (index, definition) in invalid_definitions.iter().enumerate() {
+        let directory = tempfile_dir(&format!("invalid-structure-{index}"));
+        let schema_path = write_file(
+            &directory,
+            "schema.tosd",
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{definition}
+"#
+            ),
+        );
+        Schema::load(&schema_path).expect_err("invalid structure must be rejected");
+    }
+}
+
+#[test]
+fn validates_reference_graph_at_schema_load_time() {
+    let invalid_references = [
+        "type = \"\"",
+        "type = \"types.missing\"",
+        "type = \"array\"\nitemtype = \"\"",
+        "type = \"array\"\nitemtype = \"types.missing\"",
+        "type = \"array\"\nitems = [ \"\" ]",
+        "type = \"array\"\nitems = [ \"types.missing\" ]",
+        "oneof = [ \"\" ]",
+        "oneof = [ \"types.missing\" ]",
+        "anyof = [ \"\" ]",
+        "anyof = [ \"types.missing\" ]",
+        "type = \"table\"\n\n[elements.value.child]\ntype = \"types.missing\"",
+    ];
+    for (index, definition) in invalid_references.iter().enumerate() {
+        let directory = tempfile_dir(&format!("dangling-reference-{index}"));
+        let schema_path = write_file(
+            &directory,
+            "schema.tosd",
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{definition}
+"#
+            ),
+        );
+        Schema::load(&schema_path).expect_err("dangling reference must be rejected");
+    }
+
+    let cycles = [
+        "[types.first]\ntype = \"types.second\"\n\n[types.second]\ntype = \"types.first\"",
+        "[types.first]\noneof = [ \"types.second\" ]\n\n[types.second]\nanyof = [ \"types.first\" ]",
+    ];
+    for (index, cycle) in cycles.iter().enumerate() {
+        let directory = tempfile_dir(&format!("selector-cycle-{index}"));
+        let schema_path = write_file(
+            &directory,
+            "schema.tosd",
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+{cycle}
+
+[elements.value]
+type = "string"
+"#
+            ),
+        );
+        Schema::load(&schema_path).expect_err("selector cycle must be rejected");
+    }
+
+    let directory = tempfile_dir("recursive-structure");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.node]
+type = "table"
+
+    [types.node.children]
+    type = "array"
+    itemtype = "types.node"
+
+[elements.root]
+type = "types.node"
+"#,
+    );
+    Schema::load(&schema_path).expect("structural recursion should load");
+}
+
+#[test]
 fn rejects_types_named_after_built_ins() {
     let directory = tempfile_dir("reserved-built-in");
     let schema_path = write_file(
@@ -898,21 +1007,7 @@ version = "1.0.0"
 type = "table-collection"
 "#,
     );
-    let document_path = write_file(
-        &directory,
-        "document.toml",
-        r#"
-[items]
-name = "example"
-"#,
-    );
-
-    let schema = Schema::load(&schema_path).expect("schema should parse the named reference");
-    let result = schema.validate_file(&document_path);
-    assert!(result
-        .errors
-        .iter()
-        .any(|error| error.message.contains("unknown type reference")));
+    Schema::load(&schema_path).expect_err("unknown reference must fail at schema load time");
 }
 
 #[test]

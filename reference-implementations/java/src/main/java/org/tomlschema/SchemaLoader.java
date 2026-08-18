@@ -30,6 +30,7 @@ final class SchemaLoader {
             "oneof", "anyof"
     );
     private static final Set<String> NAMED_REFERENCE_KEYS = Set.of("type", "description", "optional");
+    private static final Set<String> UNION_KEYS = Set.of("oneof", "anyof", "description", "optional");
 
     TomlSchema load(Path schemaPath) {
         TomlParseResult parsed;
@@ -44,6 +45,9 @@ final class SchemaLoader {
         String version = validateTopLevel(parsed);
         Map<String, SchemaDefinition> types = parseDefinitions("types", parsed.getTable("types"), false);
         Map<String, SchemaDefinition> elements = parseDefinitions("elements", parsed.getTable("elements"), true);
+        validateReferences(types, types);
+        validateReferences(types, elements);
+        validateSelectorCycles(types);
         validateArrayRangeConstraints(types, types);
         validateArrayRangeConstraints(types, elements);
         return new TomlSchema(schemaPath, version, types, elements);
@@ -121,8 +125,16 @@ final class SchemaLoader {
         Integer minLength = getInteger(table, "minlength");
         Integer maxLength = getInteger(table, "maxlength");
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
+        boolean hasOneOf = getPropertyValue(table, "oneof") != null;
+        boolean hasAnyOf = getPropertyValue(table, "anyof") != null;
         List<String> oneOf = getStringArrayValues(table, "oneof");
         List<String> anyOf = getStringArrayValues(table, "anyof");
+        if (hasOneOf && oneOf.isEmpty()) {
+            throw new SchemaException(name + " oneof must contain at least one type reference");
+        }
+        if (hasAnyOf && anyOf.isEmpty()) {
+            throw new SchemaException(name + " anyof must contain at least one type reference");
+        }
         rejectBareCollectionReference(name, "itemtype", itemReference);
         rejectBareCollectionReferences(name, "items", items);
         validateAlternativeReferences(name, "oneof", oneOf);
@@ -133,8 +145,8 @@ final class SchemaLoader {
             throw new SchemaException(name + " cannot use collection as a bare type reference");
         }
         int typeSelectors = (typeSelector == null ? 0 : 1)
-                + (oneOf.isEmpty() ? 0 : 1)
-                + (anyOf.isEmpty() ? 0 : 1);
+                + (hasOneOf ? 1 : 0)
+                + (hasAnyOf ? 1 : 0);
         if (typeSelectors > 1) {
             throw new SchemaException(name + " cannot define more than one of type, oneof, and anyof");
         }
@@ -151,11 +163,21 @@ final class SchemaLoader {
                 throw new SchemaException(name + " contains unsupported property: " + key);
             }
         }
-        if (type == null && normalizedReference == null && oneOf.isEmpty() && anyOf.isEmpty()) {
+        if (hasOneOf || hasAnyOf) {
+            for (String key : table.keySet()) {
+                if (!UNION_KEYS.contains(key)) {
+                    throw new SchemaException(name + " union cannot define " + key);
+                }
+            }
+        }
+        if (type == null && normalizedReference == null && !hasOneOf && !hasAnyOf) {
             if (children.isEmpty()) {
                 throw new SchemaException(name + " must define type, oneof, anyof, or child definitions");
             }
             type = SchemaType.TABLE;
+        }
+        if (!children.isEmpty() && type != SchemaType.TABLE && type != SchemaType.COLLECTION) {
+            throw new SchemaException(name + " can only define children when type is table or collection");
         }
         if (type != SchemaType.ARRAY && type != SchemaType.COLLECTION && itemReference != null) {
             throw new SchemaException(name + " can only define itemtype when type is array or collection");
@@ -213,6 +235,75 @@ final class SchemaLoader {
                 anyOf.stream().map(this::normalizeReference).toList(),
                 children
         );
+    }
+
+    private void validateReferences(
+            Map<String, SchemaDefinition> types,
+            Map<String, SchemaDefinition> definitions
+    ) {
+        for (SchemaDefinition definition : definitions.values()) {
+            validateReference(types, definition.name(), definition.reference());
+            validateReference(types, definition.name(), definition.itemReference());
+            for (String reference : definition.items()) {
+                validateReference(types, definition.name(), reference);
+            }
+            for (String reference : definition.oneOf()) {
+                validateReference(types, definition.name(), reference);
+            }
+            for (String reference : definition.anyOf()) {
+                validateReference(types, definition.name(), reference);
+            }
+            validateReferences(types, definition.children());
+        }
+    }
+
+    private void validateReference(
+            Map<String, SchemaDefinition> types,
+            String definitionName,
+            String reference
+    ) {
+        if (reference == null || SchemaType.fromSchemaNameOptional(reference).isPresent()) {
+            return;
+        }
+        if (!types.containsKey(reference)) {
+            throw new SchemaException(definitionName + " contains unknown type reference: " + reference);
+        }
+    }
+
+    private void validateSelectorCycles(Map<String, SchemaDefinition> types) {
+        Set<String> visited = new HashSet<>();
+        for (String typeName : types.keySet()) {
+            validateSelectorCycle(typeName, types, new HashSet<>(), visited);
+        }
+    }
+
+    private void validateSelectorCycle(
+            String typeName,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting,
+            Set<String> visited
+    ) {
+        if (SchemaType.fromSchemaNameOptional(typeName).isPresent() || visited.contains(typeName)) {
+            return;
+        }
+        if (!visiting.add(typeName)) {
+            throw new SchemaException("Cyclic type selector reference involving types." + typeName);
+        }
+        SchemaDefinition definition = types.get(typeName);
+        if (definition == null) {
+            return;
+        }
+        if (definition.reference() != null) {
+            validateSelectorCycle(definition.reference(), types, visiting, visited);
+        }
+        for (String reference : definition.oneOf()) {
+            validateSelectorCycle(reference, types, visiting, visited);
+        }
+        for (String reference : definition.anyOf()) {
+            validateSelectorCycle(reference, types, visiting, visited);
+        }
+        visiting.remove(typeName);
+        visited.add(typeName);
     }
 
     private void rejectBareCollectionReferences(String name, String property, List<String> references) {

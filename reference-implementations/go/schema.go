@@ -39,6 +39,7 @@ var definitionKeys = map[string]bool{
 }
 
 var namedReferenceKeys = map[string]bool{"type": true, "description": true, "optional": true}
+var unionKeys = map[string]bool{"oneof": true, "anyof": true, "description": true, "optional": true}
 
 const currentTomlSchemaVersion = "1.0.0"
 
@@ -154,6 +155,15 @@ func LoadSchema(path string) (*Schema, error) {
 		return nil, err
 	}
 	schema := &Schema{source: path, version: version.(string), types: types, elements: elements}
+	if err := schema.validateReferences(types); err != nil {
+		return nil, err
+	}
+	if err := schema.validateReferences(elements); err != nil {
+		return nil, err
+	}
+	if err := schema.validateSelectorCycles(); err != nil {
+		return nil, err
+	}
 	if err := schema.validateArrayRanges(); err != nil {
 		return nil, err
 	}
@@ -250,6 +260,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	if propertyValue(table, "type") != nil && typeSelector == "" {
+		return Definition{}, fmt.Errorf("%s type must not be blank", name)
+	}
 	var typeName SchemaType
 	var reference string
 	if typeSelector != "" {
@@ -273,6 +286,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	itemReference, err := getString(table, "itemtype")
 	if err != nil {
 		return Definition{}, err
+	}
+	if propertyValue(table, "itemtype") != nil && itemReference == "" {
+		return Definition{}, fmt.Errorf("%s itemtype must not be blank", name)
 	}
 	items, err := getStringArrayValues(table, "items")
 	if err != nil {
@@ -302,6 +318,8 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	hasOneOf := propertyValue(table, "oneof") != nil
+	hasAnyOf := propertyValue(table, "anyof") != nil
 	oneOf, err := getStringArrayValues(table, "oneof")
 	if err != nil {
 		return Definition{}, err
@@ -309,6 +327,21 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	anyOf, err := getStringArrayValues(table, "anyof")
 	if err != nil {
 		return Definition{}, err
+	}
+	for property, references := range map[string][]string{
+		"items": items, "oneof": oneOf, "anyof": anyOf,
+	} {
+		for _, reference := range references {
+			if reference == "" {
+				return Definition{}, fmt.Errorf("%s %s references must not be blank", name, property)
+			}
+		}
+	}
+	if hasOneOf && len(oneOf) == 0 {
+		return Definition{}, fmt.Errorf("%s oneof must contain at least one type reference", name)
+	}
+	if hasAnyOf && len(anyOf) == 0 {
+		return Definition{}, fmt.Errorf("%s anyof must contain at least one type reference", name)
 	}
 	if err := rejectBareCollectionReference(name, "itemtype", itemReference); err != nil {
 		return Definition{}, err
@@ -329,10 +362,10 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if typeSelector != "" {
 		typeSelectors++
 	}
-	if len(oneOf) > 0 {
+	if hasOneOf {
 		typeSelectors++
 	}
-	if len(anyOf) > 0 {
+	if hasAnyOf {
 		typeSelectors++
 	}
 	if typeSelectors > 1 {
@@ -354,11 +387,21 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 			return Definition{}, fmt.Errorf("%s contains unsupported property: %s", name, key)
 		}
 	}
-	if typeName == "" && reference == "" && len(oneOf) == 0 && len(anyOf) == 0 {
+	if hasOneOf || hasAnyOf {
+		for key := range table {
+			if !unionKeys[key] {
+				return Definition{}, fmt.Errorf("%s union cannot define %s", name, key)
+			}
+		}
+	}
+	if typeName == "" && reference == "" && !hasOneOf && !hasAnyOf {
 		if len(children) == 0 {
 			return Definition{}, fmt.Errorf("%s must define type, oneof, anyof, or child definitions", name)
 		}
 		typeName = TypeTable
+	}
+	if len(children) > 0 && typeName != TypeTable && typeName != TypeCollection {
+		return Definition{}, fmt.Errorf("%s can only define children when type is table or collection", name)
 	}
 	if typeName != TypeArray && typeName != TypeCollection && itemReference != "" {
 		return Definition{}, fmt.Errorf("%s can only define itemtype when type is array or collection", name)
@@ -409,6 +452,67 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
 		children: children,
 	}, nil
+}
+
+func (s *Schema) validateReferences(definitions map[string]Definition) error {
+	for _, definition := range definitions {
+		references := []string{definition.reference, definition.itemReference}
+		references = append(references, definition.items...)
+		references = append(references, definition.oneOf...)
+		references = append(references, definition.anyOf...)
+		for _, reference := range references {
+			if reference == "" {
+				continue
+			}
+			if _, builtIn := parseSchemaType(reference); builtIn {
+				continue
+			}
+			if _, exists := s.types[reference]; !exists {
+				return fmt.Errorf("%s contains unknown type reference: %s", definition.name, reference)
+			}
+		}
+		if err := s.validateReferences(definition.children); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Schema) validateSelectorCycles() error {
+	visited := map[string]bool{}
+	for typeName := range s.types {
+		if err := s.validateSelectorCycle(typeName, map[string]bool{}, visited); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *Schema) validateSelectorCycle(typeName string, visiting, visited map[string]bool) error {
+	if _, builtIn := parseSchemaType(typeName); builtIn || visited[typeName] {
+		return nil
+	}
+	if visiting[typeName] {
+		return fmt.Errorf("cyclic type selector reference involving types.%s", typeName)
+	}
+	definition, exists := s.types[typeName]
+	if !exists {
+		return nil
+	}
+	visiting[typeName] = true
+	references := []string{definition.reference}
+	references = append(references, definition.oneOf...)
+	references = append(references, definition.anyOf...)
+	for _, reference := range references {
+		if reference != "" {
+			if err := s.validateSelectorCycle(reference, visiting, visited); err != nil {
+				return err
+			}
+		}
+	}
+	delete(visiting, typeName)
+	visited[typeName] = true
+	return nil
 }
 
 func rejectBareCollectionReferences(name, property string, references []string) error {
