@@ -32,7 +32,10 @@ fn rule_expression(rule: &str, abnf: &str) -> String {
     let mut in_rule = false;
     for line in abnf.lines() {
         if line.starts_with(&format!("{rule} =")) {
-            let value = line.split_once('=').map(|(_, right)| right.trim()).unwrap_or("");
+            let value = line
+                .split_once('=')
+                .map(|(_, right)| right.trim())
+                .unwrap_or("");
             expression.push_str(value);
             in_rule = true;
             continue;
@@ -61,7 +64,11 @@ fn alternatives_for(rule: &str, abnf: &str) -> BTreeSet<String> {
 fn built_in_type_tokens(abnf: &str) -> BTreeSet<String> {
     let pattern = Regex::new(r#";\s*"([^"]+)""#).expect("compile token pattern");
     abnf.lines()
-        .filter_map(|line| pattern.captures(line).map(|captures| captures[1].to_string()))
+        .filter_map(|line| {
+            pattern
+                .captures(line)
+                .map(|captures| captures[1].to_string())
+        })
         .filter(|token| {
             DEFINITION_KEYS
                 .iter()

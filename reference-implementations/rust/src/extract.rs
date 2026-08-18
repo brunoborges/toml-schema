@@ -96,9 +96,9 @@ fn infer_item_type(array: &[Value]) -> SchemaType {
 
 fn encode_toml_key(key: &str) -> String {
     if !key.is_empty()
-        && key
-            .chars()
-            .all(|character| character.is_ascii_alphanumeric() || character == '_' || character == '-')
+        && key.chars().all(|character| {
+            character.is_ascii_alphanumeric() || character == '_' || character == '-'
+        })
     {
         return key.to_string();
     }

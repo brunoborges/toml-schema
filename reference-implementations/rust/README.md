@@ -1,6 +1,6 @@
 # TOML Schema — Rust reference implementation
 
-Rust reference implementation of [TOML Schema](../../SPEC.md). It parses TOML with the [`toml`](https://crates.io/crates/toml) crate (`1`, TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+Rust reference implementation targeting the current, unreleased [TOML Schema 1.0.0](../../SPEC.md). It parses TOML with the [`toml`](https://crates.io/crates/toml) crate (`1`, TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
 
 - Crate: `toml-schema`
 - Library name: `toml_schema`
@@ -51,7 +51,7 @@ cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- v
 Extract a starter schema from a sample TOML document:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- extract config.toml /tmp/config.generated.tosd
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- extract config.toml config.generated.tosd
 ```
 
 ## Library usage
@@ -62,7 +62,20 @@ use toml_schema::schema::Schema;
 let schema = Schema::load("config.tosd").unwrap();
 let result = schema.validate_file("config.toml");
 assert!(result.valid());
+for warning in result.warnings() {
+    eprintln!("{} {}: {}", warning.code, warning.path, warning.message);
+}
+
+if let Some(definition) = schema.element_definition("port") {
+    let effective_default = schema.effective_default(definition).unwrap();
+    // Defaults are annotations only; validation never inserts them.
+    println!("{effective_default:?}");
+}
 ```
+
+Validation warnings (currently `deprecated`) are structured and never make
+`valid()` false. The CLI prints them while retaining a successful exit status.
+Schema extraction emits version 1.0.0 and never invents defaults.
 
 ## Conformance
 
