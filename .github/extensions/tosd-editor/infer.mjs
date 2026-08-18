@@ -151,6 +151,8 @@ function representativeScalarType(values) {
 function scalarType(value) {
     if (typeof value === "boolean") return "boolean";
     if (typeof value === "number") return Number.isInteger(value) ? "integer" : "float";
+    if (value && value.__integer) return "integer";
+    if (value && value.__float) return "float";
     if (value && value.__datetime) return value.__datetime;
     return "string";
 }

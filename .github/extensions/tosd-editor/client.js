@@ -162,9 +162,21 @@ function markDirty() {
 const history = { undo: [], redo: [], base: null, saved: null, timer: null, pending: false };
 
 function snapshot() {
+    const transientKeys = new Set(["__x", "__cy", "__root"]);
+    const schemaNodes = new WeakSet();
+    const collect = (nodes) => {
+        for (const node of nodes || []) {
+            schemaNodes.add(node);
+            collect(node.children);
+        }
+    };
+    collect(state.model.types);
+    collect(state.model.elements);
     return JSON.stringify(
         { version: state.model.version, meta: state.model.meta, types: state.model.types, elements: state.model.elements },
-        (k, v) => (k.startsWith("__") && k !== "__collapsed" ? undefined : v),
+        function replacer(k, v) {
+            return schemaNodes.has(this) && transientKeys.has(k) ? undefined : v;
+        },
     );
 }
 
@@ -797,6 +809,9 @@ function renderEditor() {
     actions.append(el("button", { class: "danger", text: "Delete", onclick: () => deleteNode(node) }));
     box.append(actions);
 
+    box.append(textField("description", "Description", p.description || "", (v) => setProp(p, "description", v),
+        false, "Human-readable documentation for this schema definition."));
+
     // Current-node type selector
     box.append(
         refField("type", "Type", p.type || "", (v) => setProp(p, "type", v),
@@ -912,7 +927,7 @@ function setNumProp(p, key, v) {
 }
 function setListProp(p, key, arr) {
     const clean = arr.filter((s) => s !== "");
-    if (clean.length === 0) delete p[key];
+    if (clean.length === 0 && key !== "allowedvalues") delete p[key];
     else p[key] = clean;
     markDirty();
     renderTree();
@@ -1095,11 +1110,32 @@ function renderMetaEditor(box) {
 
     box.append(el("div", { class: "section-title", text: "[toml-schema.meta] (custom metadata)" }));
     const meta = state.model.meta || {};
-    const entries = Object.entries(meta).filter(([, v]) => typeof v !== "object" || v.__datetime || v.__inline || Array.isArray(v));
+    const entries = Object.entries(meta).filter(([, v]) => typeof v === "string");
+    const preserved = Object.fromEntries(Object.entries(meta).filter(([, v]) => typeof v !== "string"));
     const container = el("div");
-    const arr = entries.map(([k, v]) => [k, typeof v === "string" ? v : JSON.stringify(v)]);
+    const conflictMessage = el("div", { class: "field-err", role: "alert" });
+    const arr = entries.map(([k, v]) => [k, v]);
+    const keyConflict = (key, index) => !!key && (
+        Object.prototype.hasOwnProperty.call(preserved, key)
+        || arr.some((pair, otherIndex) => otherIndex !== index && pair[0] === key)
+    );
+    const validateKeys = () => {
+        let hasConflict = false;
+        [...container.querySelectorAll(".meta-key")].forEach((input, index) => {
+            const conflict = keyConflict(arr[index][0], index);
+            hasConflict ||= conflict;
+            input.classList.toggle("invalid", conflict);
+            input.setAttribute("aria-invalid", conflict ? "true" : "false");
+            input.title = conflict ? "Metadata keys must be unique and cannot replace preserved typed metadata." : "";
+        });
+        conflictMessage.textContent = hasConflict
+            ? "Metadata keys must be unique and cannot replace preserved typed metadata."
+            : "";
+        return !hasConflict;
+    };
     const commit = () => {
-        const obj = {};
+        if (!validateKeys()) return;
+        const obj = { ...preserved };
         for (const [k, v] of arr) {
             if (k === "") continue;
             obj[k] = v;
@@ -1111,19 +1147,27 @@ function renderMetaEditor(box) {
         container.textContent = "";
         arr.forEach((pair, idx) => {
             const row = el("div", { class: "list-row" });
-            row.append(el("input", { type: "text", class: "mono", value: pair[0], placeholder: "key", "aria-label": "Metadata key " + (idx + 1),
-                oninput: (e) => { arr[idx][0] = e.target.value; commit(); } }));
+            row.append(el("input", { type: "text", class: "mono meta-key", value: pair[0], placeholder: "key", "aria-label": "Metadata key " + (idx + 1),
+                oninput: (e) => { arr[idx][0] = e.target.value; validateKeys(); commit(); } }));
             row.append(el("input", { type: "text", class: "mono", value: pair[1], placeholder: "value", "aria-label": "Metadata value " + (idx + 1),
                 oninput: (e) => { arr[idx][1] = e.target.value; commit(); } }));
             row.append(el("button", { class: "icon danger", text: "\u2715", "aria-label": "Remove metadata " + (idx + 1), title: "Remove",
                 onclick: () => { arr.splice(idx, 1); commit(); rerender(); } }));
             container.append(row);
         });
+        validateKeys();
     };
     rerender();
     box.append(container);
+    box.append(conflictMessage);
     box.append(el("button", { class: "icon", text: "+ add metadata", onclick: () => { arr.push(["", ""]); rerender(); } }));
-    box.append(el("div", { class: "field hint", text: "Values are stored as strings. Use the preview to confirm output." }));
+    const preservedCount = Object.keys(preserved).length;
+    box.append(el("div", {
+        class: "field hint",
+        text: preservedCount
+            ? `${preservedCount} typed or nested metadata entr${preservedCount === 1 ? "y is" : "ies are"} preserved read-only. New values are stored as strings.`
+            : "New values are stored as strings. Use the preview to confirm output.",
+    }));
 }
 
 // --- Issues -------------------------------------------------------------

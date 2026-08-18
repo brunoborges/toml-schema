@@ -69,14 +69,10 @@ async function findDefaultTosd() {
     return join(base, "untitled.tosd");
 }
 
-async function loadModelForPath(filePath) {    if (filePath && existsSync(filePath)) {
+async function loadModelForPath(filePath) {
+    if (filePath && existsSync(filePath)) {
         const text = await readFile(filePath, "utf8");
-        try {
-            return parseDocument(text);
-        } catch (e) {
-            // Surface a parse failure as a blank model rather than crashing.
-            return blankModel();
-        }
+        return parseDocument(text);
     }
     return blankModel();
 }
@@ -252,6 +248,13 @@ async function startServer(instanceId, entry) {
                 entry.model = model;
                 if (!entry.path) return sendJson(res, 200, { ok: false, error: "no file path for this schema" });
                 try {
+                    const errors = validateModel(model).filter((issue) => issue.level === "error");
+                    if (errors.length) {
+                        return sendJson(res, 200, {
+                            ok: false,
+                            error: `Schema has ${errors.length} validation error${errors.length === 1 ? "" : "s"}. Resolve them before saving.`,
+                        });
+                    }
                     const toml = serializeDocument(model);
                     await writeFile(entry.path, toml, "utf8");
                     return sendJson(res, 200, { ok: true, path: entry.path });
