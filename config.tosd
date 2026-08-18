@@ -13,7 +13,7 @@ version = "1.0.0"
 
         [types.databaseType.ports]
         type = "array"
-        arraytype = "integer"
+        itemtype = "integer"
 
         [types.databaseType.connection_max]
         type = "integer"
@@ -135,15 +135,14 @@ version = "1.0.0"
 
         [elements.clients.data]
         type = "array"
-        arraytype = "array"
+        itemtype = "array"
 
         [elements.clients.hosts]
         type = "array"
-        arraytype = "string"
+        itemtype = "string"
 
         [elements.clients.points]
         type = "array"
-        arraytype = "table"
         itemtype = "types.pointType"
 
     [elements.libraries]
@@ -152,6 +151,5 @@ version = "1.0.0"
 
     [elements.products]
     type = "array"
-    arraytype = "table"
     itemtype = "types.productType"
     minlength = 1

@@ -5,7 +5,7 @@ version = "1.0.0"
 
 [types.stringArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 
 [types.workspaceInherited]
 type = "table"
@@ -189,12 +189,12 @@ type = "table"
 
     [types.target.crate-type]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.target.required-features]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.target.edition]
@@ -245,7 +245,7 @@ type = "table"
 
     [types.dependencyTable.features]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.dependencyTable.workspace]
@@ -389,17 +389,17 @@ type = "table"
 
     [types.workspace.members]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.workspace.exclude]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.workspace.default-members]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.workspace.package]
@@ -422,7 +422,7 @@ type = "table"
 
 [elements.cargo-features]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 optional = true
 
 [elements.package]
@@ -435,25 +435,21 @@ optional = true
 
 [elements.bin]
 type = "array"
-arraytype = "table"
 itemtype = "types.target"
 optional = true
 
 [elements.example]
 type = "array"
-arraytype = "table"
 itemtype = "types.target"
 optional = true
 
 [elements.test]
 type = "array"
-arraytype = "table"
 itemtype = "types.target"
 optional = true
 
 [elements.bench]
 type = "array"
-arraytype = "table"
 itemtype = "types.target"
 optional = true
 

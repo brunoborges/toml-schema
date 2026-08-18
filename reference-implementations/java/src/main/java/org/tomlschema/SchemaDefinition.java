@@ -9,7 +9,6 @@ record SchemaDefinition(
         SchemaType type,
         String reference,
         String description,
-        SchemaType arrayType,
         String itemReference,
         List<String> items,
         boolean optional,

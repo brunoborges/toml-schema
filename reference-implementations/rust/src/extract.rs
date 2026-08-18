@@ -40,8 +40,8 @@ fn append_definition(schema: &mut String, path: &[&str], value: &Value) {
         if let Value::Array(array) = value {
             writeln!(
                 schema,
-                "arraytype = \"{}\"",
-                infer_array_type(array).schema_name()
+                "itemtype = \"{}\"",
+                infer_item_type(array).schema_name()
             )
             .expect("write to String");
         }
@@ -81,7 +81,7 @@ fn schema_type_of_datetime(datetime: &Datetime) -> SchemaType {
     }
 }
 
-fn infer_array_type(array: &[Value]) -> SchemaType {
+fn infer_item_type(array: &[Value]) -> SchemaType {
     let Some(first) = array.first() else {
         return SchemaType::Any;
     };

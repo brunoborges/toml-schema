@@ -239,6 +239,97 @@ min = 2026-01-01T00:00:00Z
 	}
 }
 
+func TestValidatesArrayRangesThroughItemtype(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "array-ranges.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.boundedInteger]
+type = "integer"
+min = 10
+max = 20
+
+[types.smallInteger]
+type = "integer"
+max = 5
+
+[types.largeInteger]
+type = "integer"
+min = 6
+
+[types.integerAlternative]
+oneof = [ "types.smallInteger", "types.largeInteger" ]
+
+[elements.direct]
+type = "array"
+itemtype = "integer"
+min = 2
+max = 4
+
+[elements.named]
+type = "array"
+itemtype = "types.boundedInteger"
+min = 5
+max = 25
+
+[elements.alternatives]
+type = "array"
+itemtype = "types.integerAlternative"
+min = 1
+max = 10
+`)
+	validPath := write(t, dir, "valid-array-ranges.toml", `
+direct = [2, 3, 4]
+named = [10, 20]
+alternatives = [2, 8]
+`)
+	invalidPath := write(t, dir, "invalid-array-ranges.toml", `
+direct = [1, 5]
+named = [7, 21]
+alternatives = [0, 11]
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(validPath); !result.Valid() {
+		t.Fatalf("expected comparable itemtype ranges to validate, got %#v", result.Errors)
+	}
+	result := schema.ValidateFile(invalidPath)
+	for _, path := range []string{
+		"$.direct[0]", "$.direct[1]",
+		"$.named[0]", "$.named[1]",
+		"$.alternatives[0]", "$.alternatives[1]",
+	} {
+		if !hasPath(result, path) {
+			t.Fatalf("expected range error at %s, got %#v", path, result.Errors)
+		}
+	}
+}
+
+func TestRejectsArrayRangesForMixedItemtypeAlternatives(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "mixed-array-range.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.mixed]
+oneof = [ "integer", "string" ]
+
+[elements.values]
+type = "array"
+itemtype = "types.mixed"
+min = 1
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil ||
+		!strings.Contains(err.Error(), "one comparable built-in type") {
+		t.Fatalf("expected mixed itemtype alternatives to reject array min, got %v", err)
+	}
+}
+
 func TestRejectsMalformedLengthSchemas(t *testing.T) {
 	dir := t.TempDir()
 	cases := map[string]string{
@@ -418,7 +509,6 @@ anyof = [ "types.stringId", "types.intId" ]
 
 [elements.entries]
 type = "array"
-arraytype = "table"
 itemtype = "types.namedOrNumbered"
 `)
 	documentPath := write(t, dir, "document.toml", `
@@ -440,7 +530,7 @@ entries = [
 	}
 }
 
-func TestRequiresArrayItemsWhenArrayTypeIsArray(t *testing.T) {
+func TestValidatesNestedArraysThroughItemtype(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "nested-arrays.tosd", `
 [toml-schema]
@@ -448,7 +538,7 @@ version = "1.0.0"
 
 [elements.nested]
 type = "array"
-arraytype = "array"
+itemtype = "array"
 
 [elements.mixed]
 type = "array"
@@ -474,7 +564,7 @@ mixed = [1, "two", [true]]
 
 	invalidResult := schema.ValidateFile(invalidPath)
 	if invalidResult.Valid() {
-		t.Fatal("expected arraytype array to reject a non-array item")
+		t.Fatal("expected array itemtype to reject a non-array item")
 	}
 	if !hasPath(invalidResult, "$.nested[1]") {
 		t.Fatalf("expected nested item type error, got %#v", invalidResult.Errors)
@@ -520,6 +610,59 @@ flex = "abc"
 
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
+	}
+}
+
+func TestValidatesAllowedValuesForArrayWithoutItemtype(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "array-allowedvalues.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.colors]
+type = "array"
+allowedvalues = [ "red", "blue" ]
+
+[elements.unrestricted]
+type = "array"
+allowedvalues = []
+`)
+	validPath := write(t, dir, "valid-array-allowedvalues.toml", `
+colors = [ "red", "blue" ]
+unrestricted = [ 1, 2 ]
+`)
+	invalidPath := write(t, dir, "invalid-array-allowedvalues.toml", `
+colors = [ "red", "green" ]
+unrestricted = [ 1, 2 ]
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(validPath); !result.Valid() {
+		t.Fatalf("expected array items in allowedvalues to validate, got %#v", result.Errors)
+	}
+	result := schema.ValidateFile(invalidPath)
+	if result.Valid() || !hasPath(result, "$.colors[1]") {
+		t.Fatalf("expected disallowed array item error, got %#v", result.Errors)
+	}
+}
+
+func TestRejectsRemovedArraytypeProperty(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "arraytype.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.values]
+type = "array"
+arraytype = "string"
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil ||
+		!strings.Contains(err.Error(), "unsupported property: arraytype") {
+		t.Fatalf("expected arraytype to be rejected as unsupported, got %v", err)
 	}
 }
 
@@ -662,7 +805,6 @@ optional = true
 
 func TestRejectsConstraintsAndChildrenOnNamedTypeReference(t *testing.T) {
 	invalidSiblings := []string{
-		`arraytype = "string"`,
 		`itemtype = "string"`,
 		`items = [ "string" ]`,
 		`allowedvalues = [ "name" ]`,
@@ -797,7 +939,7 @@ version = "1.0.0"
 
 [elements.values]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 %s = 1
 `, alias))
 		if _, err := LoadSchema(schemaPath); err == nil {
@@ -897,7 +1039,7 @@ version = "1.0.0"
 [elements.value]
 type = "array"
 items = [ "types.coordinate", "types.label" ]
-arraytype = "string"
+itemtype = "string"
 `,
 		`
 [toml-schema]
@@ -1020,7 +1162,7 @@ location = "ignored.tosd"
 		"[elements.owner]",
 		"[elements.owner.name]",
 		`[elements.site."google.com"]`,
-		`arraytype = "integer"`,
+		`itemtype = "integer"`,
 	} {
 		if !strings.Contains(schemaText, expected) {
 			t.Fatalf("expected extracted schema to contain %q:\n%s", expected, schemaText)
@@ -1028,6 +1170,9 @@ location = "ignored.tosd"
 	}
 	if strings.Contains(schemaText, "[elements.toml-schema]") {
 		t.Fatalf("extracted schema should not include reserved metadata:\n%s", schemaText)
+	}
+	if strings.Contains(schemaText, "arraytype") {
+		t.Fatalf("extracted schema should not contain removed arraytype:\n%s", schemaText)
 	}
 
 	schema, err := LoadSchema(extractedSchema)

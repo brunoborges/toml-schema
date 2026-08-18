@@ -177,7 +177,7 @@ public final class TomlSchemaCli {
         String type = schemaType(value);
         schema.append("type = \"").append(type).append("\"\n");
         if ("array".equals(type) && value instanceof TomlArray array) {
-            schema.append("arraytype = \"").append(inferArrayType(array)).append("\"\n");
+            schema.append("itemtype = \"").append(inferArrayType(array)).append("\"\n");
         }
         if (value instanceof TomlTable table) {
             for (String childKey : table.keySet()) {

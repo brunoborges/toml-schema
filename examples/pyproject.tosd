@@ -7,11 +7,11 @@ version = "1.0.0"
 
 [types.stringArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 
 [types.dependencyArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 
 [types.stringMap]
 type = "collection"
@@ -78,7 +78,6 @@ type = "table"
 
 [types.people]
 type = "array"
-arraytype = "table"
 itemtype = "types.person"
 
 [types.projectName]
@@ -95,17 +94,15 @@ pattern = '^$|^([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)*(\s*;\s*privat
 
 [types.importNames]
 type = "array"
-arraytype = "any"
 itemtype = "types.pythonImportNameOrEmpty"
 
 [types.importNamespaces]
 type = "array"
-arraytype = "any"
 itemtype = "types.pythonImportName"
 
 [types.dynamicMetadata]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 allowedvalues = [
     "version",
     "description",
@@ -228,7 +225,6 @@ oneof = [ "string", "types.dependencyGroupInclude" ]
 
 [types.dependencyGroup]
 type = "array"
-arraytype = "any"
 itemtype = "types.dependencyGroupItem"
 
 [types.dependencyGroups]

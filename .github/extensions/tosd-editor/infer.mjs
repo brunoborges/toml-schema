@@ -50,17 +50,17 @@ function inferArrayProps(name, arr, ctx) {
     const allTables = arr.every(isTableLike);
     if (allTables) {
         const typeName = synthTableType(name, arr.map(tableObject), ctx);
-        return { type: "array", arraytype: "table", itemtype: `types.${typeName}` };
+        return { type: "array", itemtype: `types.${typeName}` };
     }
 
     const anyArray = arr.some((v) => Array.isArray(v));
-    if (anyArray) return { type: "array", arraytype: "array" };
+    if (anyArray) return { type: "array", itemtype: "array" };
 
     const kinds = new Set(arr.map((v) => (isTableLike(v) ? "table" : Array.isArray(v) ? "array" : scalarType(v))));
     if (kinds.size === 1) {
-        return { type: "array", arraytype: [...kinds][0] };
+        return { type: "array", itemtype: [...kinds][0] };
     }
-    // Mixed scalar types: leave arraytype unset (items default to `any`).
+    // Mixed scalar types: leave itemtype unset (items default to `any`).
     return { type: "array" };
 }
 

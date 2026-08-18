@@ -342,7 +342,6 @@ class TomlSchemaTest {
     @Test
     void rejectsConstraintsAndChildrenOnNamedTypeReference() throws IOException {
         List<String> invalidSiblings = List.of(
-                "arraytype = \"string\"",
                 "itemtype = \"string\"",
                 "items = [ \"string\" ]",
                 "allowedvalues = [ \"name\" ]",
@@ -372,6 +371,21 @@ class TomlSchemaTest {
             SchemaException error = assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
             assertTrue(error.getMessage().contains("named type reference"), error::getMessage);
         }
+    }
+
+    @Test
+    void rejectsRemovedArraytypeAsUnsupported() throws IOException {
+        Path schema = write("removed-arraytype.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.values]
+                type = "array"
+                arraytype = "string"
+                """);
+
+        SchemaException error = assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        assertTrue(error.getMessage().contains("unsupported property: arraytype"), error::getMessage);
     }
 
     @Test
@@ -459,7 +473,7 @@ class TomlSchemaTest {
 
                 [elements.values]
                 type = "array"
-                arraytype = "string"
+                itemtype = "string"
                 minoccurs = 1
                 """);
         Path maxOccurs = write("maxoccurs-alias.tosd", """
@@ -468,7 +482,7 @@ class TomlSchemaTest {
 
                 [elements.values]
                 type = "array"
-                arraytype = "string"
+                itemtype = "string"
                 maxoccurs = 2
                 """);
 
@@ -477,14 +491,14 @@ class TomlSchemaTest {
     }
 
     @Test
-    void requiresArrayItemsWhenArrayTypeIsArray() throws IOException {
+    void requiresArrayItemsWhenItemtypeIsArray() throws IOException {
         Path schema = write("nested-arrays.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
                 [elements.nested]
                 type = "array"
-                arraytype = "array"
+                itemtype = "array"
 
                 [elements.mixed]
                 type = "array"
@@ -525,7 +539,6 @@ class TomlSchemaTest {
 
                 [elements.products]
                 type = "array"
-                arraytype = "table"
                 itemtype = "types.product"
                 minlength = 2
                 """);
@@ -561,7 +574,6 @@ class TomlSchemaTest {
 
                 [elements.points]
                 type = "array"
-                arraytype = "table"
                 itemtype = "types.point"
                 """);
         Path document = write("points.toml", """
@@ -653,14 +665,14 @@ class TomlSchemaTest {
 
     @Test
     void rejectsTupleArraySchemaWithConflictingProperties() throws IOException {
-        Path withArrayType = write("tuple-arraytype-conflict.tosd", """
+        Path withItemtype = write("tuple-itemtype-conflict.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
                 [elements.value]
                 type = "array"
                 items = [ "types.coordinate", "types.label" ]
-                arraytype = "string"
+                itemtype = "string"
                 """);
         Path withLength = write("tuple-length-conflict.tosd", """
                 [toml-schema]
@@ -672,7 +684,7 @@ class TomlSchemaTest {
                 minlength = 2
                 """);
 
-        assertThrows(SchemaException.class, () -> TomlSchema.load(withArrayType));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(withItemtype));
         assertThrows(SchemaException.class, () -> TomlSchema.load(withLength));
     }
 
@@ -761,7 +773,6 @@ class TomlSchemaTest {
 
                 [elements.entries]
                 type = "array"
-                arraytype = "table"
                 itemtype = "types.namedOrNumbered"
 
                 [types.namedOrNumbered]
@@ -882,7 +893,7 @@ class TomlSchemaTest {
 
                 [elements.thresholds]
                 type = "array"
-                arraytype = "float"
+                itemtype = "float"
                 min = -inf
                 max = inf
                 """);
@@ -895,6 +906,80 @@ class TomlSchemaTest {
         ValidationResult result = TomlSchema.load(schema).validate(document);
 
         assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void appliesArrayRangesAndNamedItemConstraints() throws IOException {
+        Path schema = write("array-member-boundaries.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.constrainedInteger]
+                type = "integer"
+                min = 0
+                max = 100
+
+                [elements.values]
+                type = "array"
+                itemtype = "types.constrainedInteger"
+                min = -10
+                max = 10
+                """);
+        Path validDocument = write("array-member-boundaries-valid.toml", "values = [ 0, 10 ]");
+        Path invalidDocument = write("array-member-boundaries-invalid.toml", "values = [ -1, 11 ]");
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        assertTrue(loaded.validate(validDocument).isValid());
+        ValidationResult invalid = loaded.validate(invalidDocument);
+        assertTrue(invalid.errors().stream().anyMatch(error ->
+                error.path().equals("$.values[0]") && error.message().equals("value is less than min")));
+        assertTrue(invalid.errors().stream().anyMatch(error ->
+                error.path().equals("$.values[1]") && error.message().equals("value is greater than max")));
+    }
+
+    @Test
+    void appliesArrayAllowedValuesWithoutItemtype() throws IOException {
+        Path schema = write("array-allowedvalues.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.values]
+                type = "array"
+                allowedvalues = [ "red", "green", "blue" ]
+                """);
+        Path validDocument = write("array-allowedvalues-valid.toml", """
+                values = [ "red", "blue" ]
+                """);
+        Path invalidDocument = write("array-allowedvalues-invalid.toml", """
+                values = [ "red", "yellow" ]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        assertTrue(loaded.validate(validDocument).isValid());
+        ValidationResult invalid = loaded.validate(invalidDocument);
+        assertEquals(1, invalid.errors().size());
+        assertEquals("$.values[1]", invalid.errors().getFirst().path());
+        assertEquals("value is not in allowedvalues", invalid.errors().getFirst().message());
+    }
+
+    @Test
+    void rejectsArrayRangesForMixedItemAlternatives() throws IOException {
+        Path schema = write("mixed-array-member-boundaries.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.numeric]
+                oneof = [ "integer", "float" ]
+
+                [elements.values]
+                type = "array"
+                itemtype = "types.numeric"
+                min = 0
+                """);
+
+        SchemaException error = assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        assertTrue(error.getMessage().contains("itemtype resolves to one comparable built-in type"),
+                error::getMessage);
     }
 
     @Test
@@ -1320,6 +1405,8 @@ class TomlSchemaTest {
         assertTrue(schemaText.contains("version = \"1.0.0\""));
         assertTrue(schemaText.contains("[elements.title]"));
         assertTrue(schemaText.contains("type = \"string\""));
+        assertTrue(schemaText.contains("itemtype = \"integer\""));
+        assertFalse(schemaText.contains("arraytype"));
         assertTrue(schemaText.contains("[elements.owner]"));
         assertTrue(schemaText.contains("[elements.owner.name]"));
         assertFalse(schemaText.contains("[elements.toml-schema]"));

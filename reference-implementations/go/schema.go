@@ -31,7 +31,7 @@ const (
 )
 
 var definitionKeys = map[string]bool{
-	"type": true, "description": true, "arraytype": true, "itemtype": true, "items": true,
+	"type": true, "description": true, "itemtype": true, "items": true,
 	"allowedvalues": true, "pattern": true, "keypattern": true, "optional": true, "default": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true,
@@ -85,7 +85,6 @@ type Definition struct {
 	typeName      SchemaType
 	reference     string
 	description   string
-	arrayType     SchemaType
 	itemReference string
 	items         []string
 	optional      bool
@@ -151,7 +150,11 @@ func LoadSchema(path string) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Schema{source: path, types: types, elements: elements}, nil
+	schema := &Schema{source: path, types: types, elements: elements}
+	if err := schema.validateArrayRanges(); err != nil {
+		return nil, err
+	}
+	return schema, nil
 }
 
 func LoadDocument(path string) (map[string]any, error) {
@@ -259,10 +262,6 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
-	arrayType, err := getSchemaType(table, "arraytype")
-	if err != nil {
-		return Definition{}, err
-	}
 	itemReference, err := getString(table, "itemtype")
 	if err != nil {
 		return Definition{}, err
@@ -338,9 +337,6 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		}
 		typeName = TypeTable
 	}
-	if typeName != TypeArray && arrayType != "" {
-		return Definition{}, fmt.Errorf("%s can only define arraytype when type is array", name)
-	}
 	if typeName != TypeArray && typeName != TypeCollection && itemReference != "" {
 		return Definition{}, fmt.Errorf("%s can only define itemtype when type is array or collection", name)
 	}
@@ -348,9 +344,6 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		return Definition{}, fmt.Errorf("%s can only define items when type is array", name)
 	}
 	if len(items) > 0 {
-		if arrayType != "" {
-			return Definition{}, fmt.Errorf("%s cannot define both items and arraytype", name)
-		}
 		if itemReference != "" {
 			return Definition{}, fmt.Errorf("%s cannot define both items and itemtype", name)
 		}
@@ -369,7 +362,7 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if typeName == TypeCollection && itemReference == "" {
 		return Definition{}, fmt.Errorf("%s must define itemtype when type is collection", name)
 	}
-	if err := validateRangeConstraints(name, typeName, arrayType, normalizeReference(itemReference), min, max); err != nil {
+	if err := validateRangeConstraints(name, typeName, min, max); err != nil {
 		return Definition{}, err
 	}
 	if err := validateAllowedValuesConstraints(name, typeName, allowedValues, pattern, min, max, minLength, maxLength); err != nil {
@@ -377,7 +370,7 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	}
 	return Definition{
 		name: name, typeName: typeName, reference: reference, description: description,
-		arrayType: arrayType, itemReference: normalizeReference(itemReference), optional: optional,
+		itemReference: normalizeReference(itemReference), optional: optional,
 		items:         normalizeReferences(items),
 		allowedValues: allowedValues, pattern: pattern, keyPattern: keyPattern, min: min, max: max,
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
@@ -385,7 +378,7 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	}, nil
 }
 
-func validateRangeConstraints(name string, typeName, arrayType SchemaType, itemReference string, min, max any) error {
+func validateRangeConstraints(name string, typeName SchemaType, min, max any) error {
 	if min == nil && max == nil {
 		return nil
 	}
@@ -405,22 +398,6 @@ func validateRangeConstraints(name string, typeName, arrayType SchemaType, itemR
 		return fmt.Errorf("%s cannot define min or max when type is any", name)
 	}
 	if typeName == TypeArray {
-		if itemReference != "" {
-			return fmt.Errorf("%s cannot define min or max together with itemtype", name)
-		}
-		itemType := arrayType
-		if itemType == "" {
-			itemType = TypeAny
-		}
-		if !isRangeComparable(itemType) {
-			return fmt.Errorf("%s can only define min or max for arrays with integer, float, or temporal arraytype", name)
-		}
-		if err := validateBoundaryMatchesType(name, "min", min, itemType); err != nil {
-			return err
-		}
-		if err := validateBoundaryMatchesType(name, "max", max, itemType); err != nil {
-			return err
-		}
 		return nil
 	}
 	if typeName != "" && !isRangeComparable(typeName) {
@@ -435,6 +412,82 @@ func validateRangeConstraints(name string, typeName, arrayType SchemaType, itemR
 		}
 	}
 	return nil
+}
+
+func (s *Schema) validateArrayRanges() error {
+	var validateDefinition func(Definition) error
+	validateDefinition = func(definition Definition) error {
+		if definition.typeName == TypeArray && (definition.min != nil || definition.max != nil) {
+			itemType, ok, err := s.resolveItemKind(definition.itemReference, map[string]bool{})
+			if err != nil {
+				return fmt.Errorf("%s has invalid itemtype: %w", definition.name, err)
+			}
+			if !ok || !isRangeComparable(itemType) {
+				return fmt.Errorf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name)
+			}
+			if err := validateBoundaryMatchesType(definition.name, "min", definition.min, itemType); err != nil {
+				return err
+			}
+			if err := validateBoundaryMatchesType(definition.name, "max", definition.max, itemType); err != nil {
+				return err
+			}
+		}
+		for _, child := range definition.children {
+			if err := validateDefinition(child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, definitions := range []map[string]Definition{s.types, s.elements} {
+		for _, definition := range definitions {
+			if err := validateDefinition(definition); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Schema) resolveItemKind(reference string, seen map[string]bool) (SchemaType, bool, error) {
+	normalized := normalizeReference(reference)
+	if normalized == "" {
+		return "", false, nil
+	}
+	if builtInType, ok := parseSchemaType(normalized); ok {
+		return builtInType, true, nil
+	}
+	if seen[normalized] {
+		return "", false, fmt.Errorf("cyclic type reference: %s", normalized)
+	}
+	definition, ok := s.types[normalized]
+	if !ok {
+		return "", false, fmt.Errorf("unknown type reference: %s", reference)
+	}
+	seen[normalized] = true
+	defer delete(seen, normalized)
+	if definition.reference != "" {
+		return s.resolveItemKind(definition.reference, seen)
+	}
+	alternatives := definition.oneOf
+	if len(alternatives) == 0 {
+		alternatives = definition.anyOf
+	}
+	if len(alternatives) == 0 {
+		return definition.typeName, definition.typeName != "", nil
+	}
+	var resolvedType SchemaType
+	for _, alternative := range alternatives {
+		alternativeType, resolved, err := s.resolveItemKind(alternative, seen)
+		if err != nil {
+			return "", false, err
+		}
+		if !resolved || (resolvedType != "" && alternativeType != resolvedType) {
+			return "", false, nil
+		}
+		resolvedType = alternativeType
+	}
+	return resolvedType, resolvedType != "", nil
 }
 
 func validateRangeBoundary(name, key string, value any) error {
@@ -672,37 +725,29 @@ func (v *validator) validateArray(path string, array []any, definition Definitio
 		v.validateTupleArray(path, array, definition)
 		return
 	}
-	arrayType := definition.arrayType
-	if arrayType == "" {
-		arrayType = TypeAny
-	}
-	var itemDefinition *Definition
-	if definition.itemReference != "" {
-		resolved, err := v.resolveReference(definition.itemReference, map[string]bool{})
-		if err != nil {
-			v.add(path, err.Error())
+	if definition.itemReference == "" {
+		if len(definition.allowedValues) == 0 {
 			return
 		}
-		itemDefinition = &resolved
-	}
-	if arrayType == TypeAny && itemDefinition == nil {
+		for i, item := range array {
+			v.validateAllowedValues(fmt.Sprintf("%s[%d]", path, i), item, definition)
+		}
 		return
 	}
+	itemDefinition, err := v.resolveReference(definition.itemReference, map[string]bool{})
+	if err != nil {
+		v.add(path, err.Error())
+		return
+	}
+	rangeType, hasRangeType, _ := v.schema.resolveItemKind(definition.itemReference, map[string]bool{})
 	for i, item := range array {
 		itemPath := fmt.Sprintf("%s[%d]", path, i)
-		matchesArrayType := true
-		if arrayType != TypeAny {
-			v.validateType(itemPath, item, arrayType)
-			matchesArrayType = isType(item, arrayType)
-		}
-		if !matchesArrayType {
-			continue
-		}
-		if itemDefinition == nil {
+		v.validateValue(itemPath, item, itemDefinition)
+		if len(definition.allowedValues) > 0 {
 			v.validateAllowedValues(itemPath, item, definition)
+		}
+		if hasRangeType && isType(item, rangeType) {
 			v.validateRange(itemPath, item, definition)
-		} else {
-			v.validateValue(itemPath, item, *itemDefinition)
 		}
 	}
 }
@@ -800,7 +845,6 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 	}
 	return Definition{
 		name: definition.name, typeName: referenced.typeName, description: definition.description,
-		arrayType:     referenced.arrayType,
 		itemReference: referenced.itemReference,
 		items:         referenced.items,
 		optional:      definition.optional || referenced.optional,
@@ -857,17 +901,6 @@ func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
 		return nil, nil, err
 	}
 	return schema, document, nil
-}
-
-func getSchemaType(table map[string]any, key string) (SchemaType, error) {
-	value, err := getString(table, key)
-	if err != nil || value == "" {
-		return "", err
-	}
-	if schemaType, ok := parseSchemaType(value); ok {
-		return schemaType, nil
-	}
-	return "", fmt.Errorf("unsupported schema type: %s", value)
 }
 
 func propertyValue(table map[string]any, key string) any {

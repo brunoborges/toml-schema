@@ -5,11 +5,11 @@ version = "1.0.0"
 
 [types.stringArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 
 [types.anyArray]
 type = "array"
-arraytype = "any"
+itemtype = "any"
 
 [types.numberValue]
 oneof = [ "integer", "float" ]
@@ -55,7 +55,6 @@ type = "table"
 
 [types.cacheBusters]
 type = "array"
-arraytype = "table"
 itemtype = "types.cacheBuster"
 
 [types.build]
@@ -105,22 +104,22 @@ type = "table"
 
     [types.frontmatter.date]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.frontmatter.expiryDate]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.frontmatter.lastmod]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.frontmatter.publishDate]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.imagingExif]
@@ -147,12 +146,12 @@ type = "table"
 
     [types.imagingMeta.fields]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.imagingMeta.sources]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.imagingWebp]
@@ -256,7 +255,6 @@ type = "table"
 
 [types.menu]
 type = "array"
-arraytype = "table"
 itemtype = "types.menuEntry"
 
 [types.menus]
@@ -347,7 +345,7 @@ type = "table"
 
     [types.mediaType.suffixes]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.goldmarkExtensionToggle]
@@ -675,7 +673,6 @@ itemtype = "any"
 
     [types.moduleImport.mounts]
     type = "array"
-    arraytype = "table"
     itemtype = "types.moduleMount"
     optional = true
 
@@ -701,12 +698,12 @@ itemtype = "any"
 
     [types.moduleMount.includeFiles]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.moduleMount.excludeFiles]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.module]
@@ -714,13 +711,11 @@ type = "table"
 
     [types.module.imports]
     type = "array"
-    arraytype = "table"
     itemtype = "types.moduleImport"
     optional = true
 
     [types.module.mounts]
     type = "array"
-    arraytype = "table"
     itemtype = "types.moduleMount"
     optional = true
 
@@ -851,12 +846,12 @@ type = "table"
 
     [types.securityAllowDeny.allow]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.securityAllowDeny.deny]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.securityHttp]
@@ -864,27 +859,27 @@ type = "table"
 
     [types.securityHttp.allow]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.securityHttp.deny]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.securityHttp.mediaTypes]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.securityHttp.methods]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.securityHttp.urls]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.security]
@@ -1127,12 +1122,12 @@ optional = true
 
 [elements.disableKinds]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 optional = true
 
 [elements.disableLanguages]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 optional = true
 
 [elements.disableLiveReload]
@@ -1185,12 +1180,12 @@ optional = true
 
 [elements.ignoreFiles]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 optional = true
 
 [elements.ignoreLogs]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 optional = true
 
 [elements.ignoreVendorPaths]
@@ -1332,7 +1327,7 @@ optional = true
 
 [elements.renderSegments]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 optional = true
 
 [elements.resourceDir]

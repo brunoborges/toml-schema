@@ -108,10 +108,10 @@ type="table"
     type = "boolean"
     [elements.database.ports]
     type = "array"
-    arraytype = "integer"
+    itemtype = "integer"
     [elements.database.data]
     type = "array"
-    arraytype = "array"
+    itemtype = "array"
     [elements.database.temp_targets]
     type = "table"
 
@@ -245,7 +245,6 @@ Built-in type names are reserved and MUST NOT be used as `[types]` definition na
 [types.<typename>]
 type = "<type-reference>"
 description = "<human-readable description>"
-arraytype = "<simple-type> | array | table"
 itemtype = "<type-reference>"
 items = [ "<type-reference>", ... ]
 oneof = [ "<type-reference>", ... ]
@@ -331,9 +330,14 @@ These properties define inclusive value ranges. They may only be used for:
  - `float`
  - `integer`
  - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
- - `array`, when `arraytype` is one of `integer`, `float`, or the temporal types above
+ - `array`, when `itemtype` resolves to `integer`, `float`, or one of the temporal types above
 
-For arrays, `min` and `max` apply to each array item. They cannot be combined with `itemtype`; put range constraints in the referenced item type instead.
+For arrays, `min` and `max` apply to each item. `itemtype` MUST resolve to one
+comparable built-in kind: `integer`, `float`, `offset-date-time`,
+`local-date-time`, `local-date`, or `local-time`. All alternatives of a
+referenced `oneof` or `anyof` definition MUST resolve to that same kind.
+Parsers MUST reject array range constraints when the item schema can resolve to
+different kinds or to a non-comparable kind.
 
 A `min` or `max` boundary must be a TOML value that is comparable with the schema type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
 
@@ -380,8 +384,7 @@ If a property of type `table` has no defined property and/or structure, the pars
 
 Arrays can be defined by mixing the following properties:
 
- - `arraytype`: the built-in type of each value in the array (e.g. string, array, or table).
- - `itemtype`: a type reference used to validate each item in the array.
+ - `itemtype`: a type reference used to validate every item in a homogeneous array.
  - `items`: ordered type references for tuple-style positional validation with fixed arity.
  - `minlength`: the minimum length of the array (e.g. no less than 2 elements).
  - `maxlength`: the maximum length of the array (e.g. no more than 2 elements).
@@ -389,12 +392,16 @@ Arrays can be defined by mixing the following properties:
  - `max`: the maximum value allowed for each comparable array item (e.g. 8080).
  - `allowedvalues`: enumeration of possible values.
 
+`arraytype` is not a TOML Schema property. Parsers MUST reject schema
+definitions that declare it. Use `itemtype` for both built-in and named member
+types.
+
 Example for schema definition:
 
 ```toml
 [elements.colors]
 type="array"
-arraytype="string"
+itemtype="string"
 ```
 
 Example of TOML file:
@@ -405,7 +412,11 @@ colors=[ "red", "yellow", "green" ]
 
 ##### Observations on Conditions to Arrays
 
-The `min` and `max` conditions are used to set a valid range of values, and it may be applied only to properties where `arraytype` is one of the following: `integer`, `float`, and the four available `date` and/or `time` types. Both properties are **inclusive**.
+The `min` and `max` conditions set an inclusive range for every array item. They
+may be used only when `itemtype` resolves to one comparable built-in kind:
+`integer`, `float`, or one of the four date/time types. When `itemtype`
+references a named definition, aliases and alternatives are resolved before
+this rule is checked.
 
 Dates and Times are naturally sorted by past, present, future, meaning that the first element is in the past, and the furthest element is in the future.
 
@@ -413,15 +424,22 @@ Dates and Times are naturally sorted by past, present, future, meaning that the 
 
 If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `min` and `max`, the parser must throw an error indicating that the TOML Schema is malformed.
 
-If `arraytype` is not defined, then the type of array elements is `any`, and any data type can be used and mixed together.
+If neither `itemtype` nor `items` is defined, array items default to `any`, so
+items of different TOML types may be mixed.
 
-If `type` is `array` and `arraytype` is `array`, every item MUST be an array. The
-contents of those nested arrays are unconstrained; only omitting `arraytype`
+If `type = "array"` and `itemtype = "array"`, every item MUST be an array. The
+contents of those nested arrays are unconstrained; only omitting `itemtype`
 permits non-array and array items to be mixed in the outer array.
 
 ##### Array Item Schemas and Arrays of Tables
 
-Use `itemtype` when each array item must be validated against a reusable schema definition. This is required for TOML arrays of tables and arrays of inline tables, because both parse as arrays whose items are table values. The same keyword selects the type of each dynamic value in a `collection`.
+`itemtype` accepts the same built-in or named references as `type`. Use a
+built-in reference such as `itemtype = "string"` for a homogeneous scalar
+array, or a reusable schema definition when members require constraints or
+structure. A reusable table definition is required for TOML arrays of tables
+and arrays of inline tables because both parse as arrays whose items are table
+values. The same keyword selects the type of each dynamic value in a
+`collection`.
 
 Example with TOML arrays of tables:
 
@@ -449,7 +467,6 @@ type = "table"
 
 [elements.products]
 type = "array"
-arraytype = "table"
 itemtype = "types.productType"
 ```
 
@@ -476,7 +493,6 @@ type = "table"
 
 [elements.points]
 type = "array"
-arraytype = "table"
 itemtype = "types.pointType"
 ```
 
@@ -496,7 +512,7 @@ Semantics:
 
  - `items` is ordered, and each index validates against the corresponding referenced type.
  - When `items` is present, the array must have exactly the same number of items.
- - `items` is mutually exclusive with `arraytype` and `itemtype`.
+ - `items` is mutually exclusive with `itemtype`.
  - `items` is also mutually exclusive with `minlength` and `maxlength`.
 
 #### Collection of Elements for Dynamic Keys
@@ -581,7 +597,7 @@ A `collection` may be represented as subtables of a common table in a TOML docum
 
 A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
 
-When `type` selects a named reusable definition, the reference inherits that definition's validation rules as-is. The referencing definition MAY also declare `optional` and `description`, but it MUST NOT declare any other sibling property or child definition. In particular, validation constraints such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`, `arraytype`, `itemtype`, and `items` cannot be added or overridden at the reference site. Parsers MUST reject such schemas at schema-load time.
+When `type` selects a named reusable definition, the reference inherits that definition's validation rules as-is. The referencing definition MAY also declare `optional` and `description`, but it MUST NOT declare any other sibling property or child definition. In particular, validation constraints such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`, `itemtype`, and `items` cannot be added or overridden at the reference site. Parsers MUST reject such schemas at schema-load time.
 
 To specialize validation rules, declare another named reusable definition rather than adding constraints to a reference:
 
@@ -665,7 +681,7 @@ anyof = [ "types.stringId", "types.integerId" ]
 oneof = [ "string", "integer" ]
 ```
 
-Use a named reusable definition whenever an alternative needs constraints such as `pattern`, `min`, `allowedvalues`, `arraytype`, or child fields.
+Use a named reusable definition whenever an alternative needs constraints such as `pattern`, `min`, `allowedvalues`, `itemtype`, or child fields.
 
 ```toml
 [types.dependencyVersion]
@@ -706,7 +722,6 @@ description = "A game object."
 [elements.game]
 type = "array"
 description = "A list of games."
-arraytype = "table"
 itemtype = "types.game"
 ```
 

@@ -8,11 +8,10 @@ oneof = [ "integer", "float" ]
 
 [types.stringArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 
 [types.numberArray]
 type = "array"
-arraytype = "any"
 itemtype = "types.numberValue"
 
 [types.stringMap]
@@ -63,7 +62,6 @@ oneof = [ "string", "types.routeTable" ]
 
 [types.routes]
 type = "array"
-arraytype = "any"
 itemtype = "types.route"
 
 [types.triggers]
@@ -71,7 +69,7 @@ type = "table"
 
     [types.triggers.crons]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.observability]
@@ -164,7 +162,7 @@ type = "table"
 
     [types.moduleRule.globs]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
 
     [types.moduleRule.fallthrough]
     type = "boolean"
@@ -172,7 +170,6 @@ type = "table"
 
 [types.rules]
 type = "array"
-arraytype = "table"
 itemtype = "types.moduleRule"
 
 [types.pythonModules]
@@ -180,7 +177,7 @@ type = "table"
 
     [types.pythonModules.excludes]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.dev]
@@ -238,7 +235,6 @@ type = "table"
 
 [types.kvNamespaces]
 type = "array"
-arraytype = "table"
 itemtype = "types.kvNamespace"
 
 [types.d1Database]
@@ -265,7 +261,6 @@ type = "table"
 
 [types.d1Databases]
 type = "array"
-arraytype = "table"
 itemtype = "types.d1Database"
 
 [types.r2Bucket]
@@ -288,7 +283,6 @@ type = "table"
 
 [types.r2Buckets]
 type = "array"
-arraytype = "table"
 itemtype = "types.r2Bucket"
 
 [types.simpleBinding]
@@ -371,7 +365,7 @@ type = "table"
 
     [types.dispatchOutbound.parameters]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.dispatchNamespace]
@@ -403,7 +397,6 @@ type = "table"
 
     [types.durableObjects.bindings]
     type = "array"
-    arraytype = "table"
     itemtype = "types.durableObjectBinding"
     optional = true
 
@@ -424,33 +417,31 @@ type = "table"
 
     [types.migration.deleted_classes]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.migration.new_classes]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.migration.new_sqlite_classes]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.migration.renamed_classes]
     type = "array"
-    arraytype = "table"
     itemtype = "types.renameClass"
     optional = true
 
     [types.migration.transferred_classes]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.migrations]
 type = "array"
-arraytype = "table"
 itemtype = "types.migration"
 
 [types.emailBinding]
@@ -461,7 +452,7 @@ type = "table"
 
     [types.emailBinding.allowed_destination_addresses]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.emailBinding.destination_address]
@@ -513,13 +504,11 @@ type = "table"
 
     [types.queues.consumers]
     type = "array"
-    arraytype = "table"
     itemtype = "types.queueConsumer"
     optional = true
 
     [types.queues.producers]
     type = "array"
-    arraytype = "table"
     itemtype = "types.queueProducer"
     optional = true
 
@@ -528,7 +517,7 @@ type = "table"
 
     [types.secrets.required]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.secretsStoreSecret]
@@ -550,12 +539,12 @@ type = "table"
 
     [types.site.exclude]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.site.include]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.instanceType]
@@ -612,7 +601,7 @@ type = "table"
 
     [types.containerConstraints.regions]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.container]
@@ -626,7 +615,6 @@ type = "table"
 
     [types.container.authorized_keys]
     type = "array"
-    arraytype = "table"
     itemtype = "types.authorizedKey"
     optional = true
 
@@ -672,67 +660,54 @@ type = "table"
 
 [types.containers]
 type = "array"
-arraytype = "table"
 itemtype = "types.container"
 
 [types.arrayOfSimpleBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.simpleBinding"
 
 [types.arrayOfIdBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.idBinding"
 
 [types.arrayOfNameBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.nameBinding"
 
 [types.arrayOfNamespaceBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.namespaceBinding"
 
 [types.arrayOfIndexBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.indexBinding"
 
 [types.arrayOfDatasetBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.datasetBinding"
 
 [types.arrayOfServiceBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.serviceBinding"
 
 [types.arrayOfCertificateBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.certificateBinding"
 
 [types.arrayOfWorkflowBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.workflowBinding"
 
 [types.arrayOfDispatchNamespaces]
 type = "array"
-arraytype = "table"
 itemtype = "types.dispatchNamespace"
 
 [types.arrayOfEmailBindings]
 type = "array"
-arraytype = "table"
 itemtype = "types.emailBinding"
 
 [types.arrayOfSecretsStoreSecrets]
 type = "array"
-arraytype = "table"
 itemtype = "types.secretsStoreSecret"
 
 [types.workerSettings]
@@ -749,7 +724,6 @@ itemtype = "any"
 
     [types.workerSettings.ai_search]
     type = "array"
-    arraytype = "table"
     itemtype = "types.aiSearchInstance"
     optional = true
 
@@ -787,7 +761,7 @@ itemtype = "any"
 
     [types.workerSettings.compatibility_flags]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.workerSettings.containers]
@@ -975,7 +949,6 @@ optional = true
 
 [elements.ai_search]
 type = "array"
-arraytype = "table"
 itemtype = "types.aiSearchInstance"
 optional = true
 
@@ -1009,7 +982,7 @@ optional = true
 
 [elements.compatibility_flags]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 optional = true
 
 [elements.containers]
