@@ -435,6 +435,18 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
     let one_of = get_string_array_values(name, table, "oneof")?;
     let any_of = get_string_array_values(name, table, "anyof")?;
+    reject_bare_collection_reference(name, "itemtype", item_reference.as_deref())?;
+    reject_bare_collection_references(name, "items", &items)?;
+    validate_alternative_references(name, "oneof", &one_of)?;
+    validate_alternative_references(name, "anyof", &any_of)?;
+    if type_selector.as_deref().is_some_and(|selector| {
+        type_name != Some(SchemaType::Collection)
+            && normalize_reference(selector.to_string()) == SchemaType::Collection.schema_name()
+    }) {
+        return Err(format!(
+            "{name} cannot use collection as a bare type reference"
+        ));
+    }
     let type_selectors = usize::from(type_selector.is_some())
         + usize::from(!one_of.is_empty())
         + usize::from(!any_of.is_empty());
@@ -537,6 +549,46 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         any_of: normalize_references(any_of),
         children,
     })
+}
+
+fn reject_bare_collection_references(
+    name: &str,
+    property: &str,
+    references: &[String],
+) -> Result<(), String> {
+    for reference in references {
+        reject_bare_collection_reference(name, property, Some(reference.as_str()))?;
+    }
+    Ok(())
+}
+
+fn reject_bare_collection_reference(
+    name: &str,
+    property: &str,
+    reference: Option<&str>,
+) -> Result<(), String> {
+    if reference.is_some_and(|reference| {
+        normalize_reference(reference.to_string()) == SchemaType::Collection.schema_name()
+    }) {
+        return Err(format!(
+            "{name} cannot use collection as a bare {property} reference"
+        ));
+    }
+    Ok(())
+}
+
+fn validate_alternative_references(
+    name: &str,
+    property: &str,
+    references: &[String],
+) -> Result<(), String> {
+    for reference in references {
+        reject_bare_collection_reference(name, property, Some(reference.as_str()))?;
+        if normalize_reference(reference.clone()) == SchemaType::Any.schema_name() {
+            return Err(format!("{name} cannot use any directly in {property}"));
+        }
+    }
+    Ok(())
 }
 
 fn validate_range_constraints(

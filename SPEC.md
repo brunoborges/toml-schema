@@ -237,6 +237,20 @@ Type references are strings accepted by `type`, `itemtype`, `items`, `oneof`, an
 
 Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`.
 
+Two built-in names have context-specific restrictions:
+
+- `collection` is valid for `type` only when the same definition declares
+  `itemtype`. It MUST NOT be used as a bare reference in `itemtype`, `items`,
+  `oneof`, or `anyof`, because those locations cannot supply the collection's
+  dynamic-value rule. Parsers MUST reject such references at schema-load time.
+- `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
+  directly in `oneof` or `anyof`. Parsers MUST reject a direct `any` alternative
+  at schema-load time.
+
+These restrictions apply to bare built-in references, not to named reusable
+definitions. A named definition that declares a complete collection or selects
+`type = "any"` remains a valid reference.
+
 `type`, `oneof`, and `anyof` are alternative ways to select the type of the current schema node. Every definition MUST declare exactly one of them, except that a definition with nested child definitions MAY omit all three and is then treated as `type = "table"`. Parsers MUST reject a definition that declares more than one of these properties, or that declares none of them and has no nested child definitions. `type` accepts either a built-in type name or a named reusable definition from `[types]`. Container member types are selected separately with `itemtype`: it validates each member of an `array` or each dynamically keyed value of a `collection`. `itemtype` requires the same definition to declare the built-in `type = "array"` or `type = "collection"`; it cannot be attached to another built-in or to a named type reference.
 
 ```toml
@@ -358,6 +372,10 @@ Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present,
 ### Conditions on `any`
 
 No min/max condition may be applied to type `any`. The parser must show an error if this happens.
+
+An unconstrained value may declare `type = "any"`, and arrays may use `any` in
+`itemtype` or `items`. A direct `any` entry in `oneof` or `anyof` is malformed
+because it would add an unconstrained branch to an alternative type selector.
 
 ### Block Types
 
@@ -523,6 +541,11 @@ A `collection` is also a `table` and, therefore, it may have nested, schema-rest
 
 A `collection` requires `itemtype` to define the type of its dynamic child values. Each dynamic child must be given a unique key in the TOML document. `itemtype` may reference a built-in type or a named reusable definition.
 
+The built-in `collection` cannot itself be used as `itemtype` or as an entry in
+`items`, `oneof`, or `anyof`: those bare references provide no place to declare
+the nested collection's required `itemtype`. Define a reusable collection with
+its own `itemtype` and reference that named definition instead.
+
 When collection values may have alternative types, define those alternatives in a reusable `[types]` definition with `oneof` or `anyof`, then reference that definition with `itemtype`. This keeps `oneof` and `anyof` consistently scoped to the current node rather than changing their meaning on a container.
 
 A `collection` may additionally constrain the **keys** (entry names) of its dynamic children with `keypattern`. See [Key Pattern - `keypattern`](#key-pattern---keypattern).
@@ -662,6 +685,10 @@ Use `oneof` or `anyof` when a value may validate against alternative type refere
 - `anyof`: at least one referenced type must validate.
 
 These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array or collection items. Alternatives may reference built-in type names directly or named definitions when a branch needs constraints.
+
+The bare built-in names `any` and `collection` MUST NOT appear directly in
+`oneof` or `anyof`. Use a named reusable definition when an alternative needs a
+fully defined collection or an intentionally unconstrained named branch.
 
 `type`, `oneof`, and `anyof` all select the current node's type and are mutually exclusive. A parser MUST reject a definition containing more than one of them.
 

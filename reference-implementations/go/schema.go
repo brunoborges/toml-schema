@@ -302,6 +302,21 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	if err := rejectBareCollectionReference(name, "itemtype", itemReference); err != nil {
+		return Definition{}, err
+	}
+	if err := rejectBareCollectionReferences(name, "items", items); err != nil {
+		return Definition{}, err
+	}
+	if err := validateAlternativeReferences(name, "oneof", oneOf); err != nil {
+		return Definition{}, err
+	}
+	if err := validateAlternativeReferences(name, "anyof", anyOf); err != nil {
+		return Definition{}, err
+	}
+	if typeSelector != "" && typeName != TypeCollection && normalizeReference(typeSelector) == string(TypeCollection) {
+		return Definition{}, fmt.Errorf("%s cannot use collection as a bare type reference", name)
+	}
 	typeSelectors := 0
 	if typeSelector != "" {
 		typeSelectors++
@@ -376,6 +391,35 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
 		children: children,
 	}, nil
+}
+
+func rejectBareCollectionReferences(name, property string, references []string) error {
+	for _, reference := range references {
+		if err := rejectBareCollectionReference(name, property, normalizeReference(reference)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func rejectBareCollectionReference(name, property, reference string) error {
+	if normalizeReference(reference) == string(TypeCollection) {
+		return fmt.Errorf("%s cannot use collection as a bare %s reference", name, property)
+	}
+	return nil
+}
+
+func validateAlternativeReferences(name, property string, references []string) error {
+	for _, reference := range references {
+		normalized := normalizeReference(reference)
+		if err := rejectBareCollectionReference(name, property, normalized); err != nil {
+			return err
+		}
+		if normalized == string(TypeAny) {
+			return fmt.Errorf("%s cannot use any directly in %s", name, property)
+		}
+	}
+	return nil
 }
 
 func validateRangeConstraints(name string, typeName SchemaType, min, max any) error {

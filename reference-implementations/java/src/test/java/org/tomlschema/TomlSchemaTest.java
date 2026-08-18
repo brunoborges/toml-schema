@@ -417,6 +417,85 @@ class TomlSchemaTest {
     }
 
     @Test
+    void rejectsBareCollectionAndAnyAlternativeReferences() throws IOException {
+        List<String> invalidDefinitions = List.of(
+                """
+                type = "collection"
+                """,
+                """
+                type = "types.collection"
+                """,
+                """
+                type = "array"
+                itemtype = "collection"
+                """,
+                """
+                type = "array"
+                items = [ "collection" ]
+                """,
+                """
+                oneof = [ "collection", "string" ]
+                """,
+                """
+                anyof = [ "collection", "string" ]
+                """,
+                """
+                oneof = [ "any", "string" ]
+                """,
+                """
+                anyof = [ "any", "string" ]
+                """
+        );
+
+        for (int index = 0; index < invalidDefinitions.size(); index++) {
+            Path schema = write("invalid-bare-reference-" + index + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [elements.value]
+                    %s
+                    """.formatted(invalidDefinitions.get(index)));
+
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+    }
+
+    @Test
+    void allowsAnyOutsideAlternativesAndNamedCollections() throws IOException {
+        Path schema = write("valid-special-references.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.stringMap]
+                type = "collection"
+                itemtype = "string"
+
+                [elements.direct]
+                type = "any"
+
+                [elements.values]
+                type = "array"
+                itemtype = "any"
+
+                [elements.tuple]
+                type = "array"
+                items = [ "any" ]
+
+                [elements.maps]
+                type = "array"
+                itemtype = "types.stringMap"
+                """);
+        Path document = write("valid-special-references.toml", """
+                direct = { key = 1 }
+                values = [ 1, "two" ]
+                tuple = [ true ]
+                maps = [ { one = "1", two = "2" } ]
+                """);
+
+        assertTrue(TomlSchema.load(schema).validate(document).isValid());
+    }
+
+    @Test
     void rejectsInvalidTypeSelectorCardinality() throws IOException {
         List<String> invalidDefinitions = List.of(
                 """
