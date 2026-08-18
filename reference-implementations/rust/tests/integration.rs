@@ -1687,6 +1687,142 @@ type = "npm"
 }
 
 #[test]
+fn preserves_numeric_precision_and_defines_temporal_ordering() {
+    let directory = tempfile_dir("value-semantics");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.precise]
+type = "integer"
+allowedvalues = [ 9007199254740992 ]
+
+[elements.mixed]
+type = "integer"
+max = 9007199254740992.0
+
+[elements.nanValue]
+type = "float"
+allowedvalues = [ nan ]
+
+[elements.nanRange]
+type = "float"
+min = 0.0
+
+[elements.zero]
+type = "float"
+allowedvalues = [ -0.0 ]
+
+[elements.instant]
+type = "offset-date-time"
+min = 2024-01-01T00:00:00Z
+max = 2024-01-01T00:00:00Z
+
+[elements.instantMember]
+type = "offset-date-time"
+allowedvalues = [ 2024-01-01T00:00:00Z ]
+
+[elements.localMember]
+type = "local-time"
+allowedvalues = [ 12:00:00.1 ]
+
+[elements.localDateTime]
+type = "local-date-time"
+max = 2024-01-01T00:00:00.100
+
+[elements.localDate]
+type = "local-date"
+max = 2024-01-01
+
+[elements.localTime]
+type = "local-time"
+max = 12:00:00.100
+"#,
+    );
+    let valid_path = write_file(
+        &directory,
+        "valid.toml",
+        r#"
+precise = 9007199254740992
+mixed = 9007199254740992
+nanValue = nan
+nanRange = 0.0
+zero = 0.0
+instant = 2023-12-31T19:00:00-05:00
+instantMember = 2024-01-01T00:00:00+00:00
+localMember = 12:00:00.100
+localDateTime = 2024-01-01T00:00:00.100
+localDate = 2024-01-01
+localTime = 12:00:00.100
+"#,
+    );
+    let invalid_path = write_file(
+        &directory,
+        "invalid.toml",
+        r#"
+precise = 9007199254740993
+mixed = 9007199254740993
+nanValue = 0.0
+nanRange = nan
+zero = 1.0
+instant = 2024-01-01T00:00:00.001Z
+instantMember = 2023-12-31T19:00:00-05:00
+localMember = 12:00:00.101
+localDateTime = 2024-01-01T00:00:00.101
+localDate = 2024-01-02
+localTime = 12:00:00.101
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load schema");
+    let valid = schema.validate_file(&valid_path);
+    assert!(
+        valid.valid(),
+        "expected valid value semantics: {:#?}",
+        valid.errors
+    );
+    let invalid = schema.validate_file(&invalid_path);
+    for path in [
+        "$.precise",
+        "$.mixed",
+        "$.nanValue",
+        "$.nanRange",
+        "$.zero",
+        "$.instant",
+        "$.instantMember",
+        "$.localMember",
+        "$.localDateTime",
+        "$.localDate",
+        "$.localTime",
+    ] {
+        assert!(
+            has_path(&invalid, path),
+            "expected error at {path}: {:#?}",
+            invalid.errors
+        );
+    }
+
+    let malformed_path = write_file(
+        &directory,
+        "malformed.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+allowedvalues = [ 9007199254740993 ]
+max = 9007199254740992.0
+"#,
+    );
+    Schema::load(&malformed_path)
+        .expect_err("imprecise allowed value comparison must fail at schema load");
+}
+
+#[test]
 fn cli_locates_schema_from_document_metadata() {
     let directory = tempfile_dir("cli-locates-schema");
     write_file(

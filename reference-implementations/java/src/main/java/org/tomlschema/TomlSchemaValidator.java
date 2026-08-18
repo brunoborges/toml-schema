@@ -11,7 +11,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 
 final class TomlSchemaValidator {
@@ -240,11 +239,23 @@ final class TomlSchemaValidator {
     private void validateRange(String path, Object value, SchemaDefinition definition) {
         Object min = definition.min();
         Object max = definition.max();
-        if (min != null && compare(value, min) < 0) {
-            add(path, "value is less than min");
+        if (min != null) {
+            try {
+                if (ValueSemantics.compare(value, min) < 0) {
+                    add(path, "value is less than min");
+                }
+            } catch (SchemaException error) {
+                add(path, error.getMessage());
+            }
         }
-        if (max != null && compare(value, max) > 0) {
-            add(path, "value is greater than max");
+        if (max != null) {
+            try {
+                if (ValueSemantics.compare(value, max) > 0) {
+                    add(path, "value is greater than max");
+                }
+            } catch (SchemaException error) {
+                add(path, error.getMessage());
+            }
         }
     }
 
@@ -257,22 +268,8 @@ final class TomlSchemaValidator {
         }
     }
 
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private int compare(Object value, Object boundary) {
-        if (value instanceof Number valueNumber && boundary instanceof Number boundaryNumber) {
-            return Double.compare(valueNumber.doubleValue(), boundaryNumber.doubleValue());
-        }
-        if (value instanceof Comparable valueComparable && value.getClass().isInstance(boundary)) {
-            return valueComparable.compareTo(boundary);
-        }
-        throw new SchemaException("Cannot compare " + typeName(value) + " with boundary " + typeName(boundary));
-    }
-
     private boolean valuesEqual(Object allowed, Object value) {
-        if (allowed instanceof Number allowedNumber && value instanceof Number valueNumber) {
-            return Double.compare(allowedNumber.doubleValue(), valueNumber.doubleValue()) == 0;
-        }
-        return Objects.equals(allowed, value);
+        return ValueSemantics.valuesEqual(allowed, value);
     }
 
     private SchemaDefinition resolve(SchemaDefinition definition, Set<String> seenReferences) {

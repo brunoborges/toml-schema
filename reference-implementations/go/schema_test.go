@@ -1352,6 +1352,115 @@ type = "npm"
 	}
 }
 
+func TestPreservesNumericPrecisionAndDefinesTemporalOrdering(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "value-semantics.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.precise]
+type = "integer"
+allowedvalues = [ 9007199254740992 ]
+
+[elements.mixed]
+type = "integer"
+max = 9007199254740992.0
+
+[elements.nanValue]
+type = "float"
+allowedvalues = [ nan ]
+
+[elements.nanRange]
+type = "float"
+min = 0.0
+
+[elements.zero]
+type = "float"
+allowedvalues = [ -0.0 ]
+
+[elements.instant]
+type = "offset-date-time"
+min = 2024-01-01T00:00:00Z
+max = 2024-01-01T00:00:00Z
+
+[elements.instantMember]
+type = "offset-date-time"
+allowedvalues = [ 2024-01-01T00:00:00Z ]
+
+[elements.localMember]
+type = "local-time"
+allowedvalues = [ 12:00:00.1 ]
+
+[elements.localDateTime]
+type = "local-date-time"
+max = 2024-01-01T00:00:00.100
+
+[elements.localDate]
+type = "local-date"
+max = 2024-01-01
+
+[elements.localTime]
+type = "local-time"
+max = 12:00:00.100
+`)
+	validPath := write(t, dir, "value-semantics-valid.toml", `
+precise = 9007199254740992
+mixed = 9007199254740992
+nanValue = nan
+nanRange = 0.0
+zero = 0.0
+instant = 2023-12-31T19:00:00-05:00
+instantMember = 2024-01-01T00:00:00+00:00
+localMember = 12:00:00.100
+localDateTime = 2024-01-01T00:00:00.100
+localDate = 2024-01-01
+localTime = 12:00:00.100
+`)
+	invalidPath := write(t, dir, "value-semantics-invalid.toml", `
+precise = 9007199254740993
+mixed = 9007199254740993
+nanValue = 0.0
+nanRange = nan
+zero = 1.0
+instant = 2024-01-01T00:00:00.001Z
+instantMember = 2023-12-31T19:00:00-05:00
+localMember = 12:00:00.101
+localDateTime = 2024-01-01T00:00:00.101
+localDate = 2024-01-02
+localTime = 12:00:00.101
+`)
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(validPath); !result.Valid() {
+		t.Fatalf("expected valid value semantics, got %#v", result.Errors)
+	}
+	invalid := schema.ValidateFile(invalidPath)
+	for _, path := range []string{
+		"$.precise", "$.mixed", "$.nanValue", "$.nanRange", "$.zero",
+		"$.instant", "$.instantMember", "$.localMember",
+		"$.localDateTime", "$.localDate", "$.localTime",
+	} {
+		if !hasPath(invalid, path) {
+			t.Fatalf("expected error at %s, got %#v", path, invalid.Errors)
+		}
+	}
+
+	malformedPath := write(t, dir, "value-semantics-malformed.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+allowedvalues = [ 9007199254740993 ]
+max = 9007199254740992.0
+`)
+	if _, err := LoadSchema(malformedPath); err == nil {
+		t.Fatal("expected imprecise allowed value comparison to be rejected at schema load")
+	}
+}
+
 func TestLocatesSchemaFromDocumentMetadata(t *testing.T) {
 	dir := t.TempDir()
 	write(t, dir, "schema.tosd", `

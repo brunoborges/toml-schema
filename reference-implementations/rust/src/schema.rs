@@ -842,7 +842,9 @@ fn validate_boundary_matches_type(
 
 fn boundary_matches_type(value: &Value, type_name: SchemaType) -> bool {
     match type_name {
-        SchemaType::Integer | SchemaType::Float => numeric(value).is_some(),
+        SchemaType::Integer | SchemaType::Float => {
+            matches!(value, Value::Integer(_) | Value::Float(_))
+        }
         SchemaType::OffsetDateTime
         | SchemaType::LocalDateTime
         | SchemaType::LocalDate
@@ -1328,10 +1330,14 @@ fn type_name_of_value(value: &Value) -> &'static str {
 }
 
 fn compare(value: &Value, boundary: &Value) -> Result<std::cmp::Ordering, String> {
-    if let (Some(value_number), Some(boundary_number)) = (numeric(value), numeric(boundary)) {
-        return Ok(value_number
-            .partial_cmp(&boundary_number)
-            .unwrap_or(std::cmp::Ordering::Equal));
+    match (value, boundary) {
+        (Value::Integer(left), Value::Integer(right)) => return Ok(left.cmp(right)),
+        (Value::Float(left), Value::Float(right)) => return compare_floats(*left, *right),
+        (Value::Integer(left), Value::Float(right)) => return compare_integer_float(*left, *right),
+        (Value::Float(left), Value::Integer(right)) => {
+            return compare_integer_float(*right, *left).map(std::cmp::Ordering::reverse)
+        }
+        _ => {}
     }
     if let (Value::Datetime(left), Value::Datetime(right)) = (value, boundary) {
         if let Some(ordering) = compare_datetimes(left, right) {
@@ -1419,22 +1425,57 @@ fn days_from_civil(year: i64, month: u32, day: u32) -> i64 {
     era * 146_097 + doe - 719_468
 }
 
-fn numeric(value: &Value) -> Option<f64> {
-    match value {
-        Value::Integer(integer) => Some(*integer as f64),
-        Value::Float(float) => Some(*float),
-        _ => None,
+fn compare_floats(left: f64, right: f64) -> Result<std::cmp::Ordering, String> {
+    left.partial_cmp(&right)
+        .ok_or_else(|| "NaN is unordered".to_string())
+}
+
+fn compare_integer_float(integer: i64, float: f64) -> Result<std::cmp::Ordering, String> {
+    if float.is_nan() {
+        return Err("NaN is unordered".to_string());
+    }
+    if float == f64::NEG_INFINITY {
+        return Ok(std::cmp::Ordering::Greater);
+    }
+    if float == f64::INFINITY {
+        return Ok(std::cmp::Ordering::Less);
+    }
+    if float < i64::MIN as f64 {
+        return Ok(std::cmp::Ordering::Greater);
+    }
+    if float >= 9_223_372_036_854_775_808.0 {
+        return Ok(std::cmp::Ordering::Less);
+    }
+    let truncated = float.trunc() as i64;
+    match integer.cmp(&truncated) {
+        std::cmp::Ordering::Equal => {
+            if float.fract() > 0.0 {
+                Ok(std::cmp::Ordering::Less)
+            } else if float.fract() < 0.0 {
+                Ok(std::cmp::Ordering::Greater)
+            } else {
+                Ok(std::cmp::Ordering::Equal)
+            }
+        }
+        ordering => Ok(ordering),
     }
 }
 
 fn values_equal(left: &Value, right: &Value) -> bool {
-    if let (Some(left_number), Some(right_number)) = (numeric(left), numeric(right)) {
-        return left_number == right_number;
+    if let (Value::Float(left_float), Value::Float(right_float)) = (left, right) {
+        if left_float.is_nan() || right_float.is_nan() {
+            return left_float.is_nan() && right_float.is_nan();
+        }
+    }
+    if matches!(left, Value::Integer(_) | Value::Float(_))
+        && matches!(right, Value::Integer(_) | Value::Float(_))
+    {
+        return compare(left, right).is_ok_and(|ordering| ordering == std::cmp::Ordering::Equal);
     }
     match (left, right) {
         (Value::String(left), Value::String(right)) => left == right,
         (Value::Boolean(left), Value::Boolean(right)) => left == right,
-        (Value::Datetime(left), Value::Datetime(right)) => left.to_string() == right.to_string(),
+        (Value::Datetime(left), Value::Datetime(right)) => datetimes_equal(left, right),
         (Value::Array(left), Value::Array(right)) => {
             left.len() == right.len()
                 && left
@@ -1453,6 +1494,19 @@ fn values_equal(left: &Value, right: &Value) -> bool {
         }
         _ => false,
     }
+}
+
+fn datetimes_equal(left: &Datetime, right: &Datetime) -> bool {
+    left.date == right.date
+        && left.time == right.time
+        && numeric_offset(left.offset) == numeric_offset(right.offset)
+}
+
+fn numeric_offset(offset: Option<Offset>) -> Option<i16> {
+    offset.map(|offset| match offset {
+        Offset::Z => 0,
+        Offset::Custom { minutes } => minutes,
+    })
 }
 
 fn matches_pattern(pattern: &Regex, value: &str) -> bool {
