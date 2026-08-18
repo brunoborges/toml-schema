@@ -2,7 +2,10 @@ package org.tomlschema;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Objects;
+import org.tomlj.TomlArray;
+import org.tomlj.TomlTable;
 
 final class ValueSemantics {
     private ValueSemantics() {
@@ -27,6 +30,28 @@ final class ValueSemantics {
                 return isNaN(leftNumber) && isNaN(rightNumber);
             }
             return compareNumbers(leftNumber, rightNumber) == 0;
+        }
+        if (left instanceof TomlArray leftArray && right instanceof TomlArray rightArray) {
+            if (leftArray.size() != rightArray.size()) {
+                return false;
+            }
+            for (int i = 0; i < leftArray.size(); i++) {
+                if (!valuesEqual(leftArray.get(i), rightArray.get(i))) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        if (left instanceof TomlTable leftTable && right instanceof TomlTable rightTable) {
+            if (!leftTable.keySet().equals(rightTable.keySet())) {
+                return false;
+            }
+            for (String key : leftTable.keySet()) {
+                if (!valuesEqual(leftTable.get(List.of(key)), rightTable.get(List.of(key)))) {
+                    return false;
+                }
+            }
+            return true;
         }
         return Objects.equals(left, right);
     }
