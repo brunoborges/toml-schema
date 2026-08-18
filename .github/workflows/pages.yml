@@ -7,8 +7,10 @@ on:
     paths:
       - docs/**
       - SPEC.md
-      - scripts/render-spec.mjs
+      - REFERENCE_IMPLEMENTATIONS.md
+      - scripts/render-docs.mjs
       - scripts/package.json
+      - scripts/package-lock.json
       - .github/workflows/pages.yml
   pull_request:
     branches:
@@ -16,8 +18,10 @@ on:
     paths:
       - docs/**
       - SPEC.md
-      - scripts/render-spec.mjs
+      - REFERENCE_IMPLEMENTATIONS.md
+      - scripts/render-docs.mjs
       - scripts/package.json
+      - scripts/package-lock.json
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -50,9 +54,9 @@ jobs:
         working-directory: scripts
         run: npm ci
 
-      - name: Render specification page
+      - name: Render documentation pages
         working-directory: scripts
-        run: npm run render-spec
+        run: npm run render-docs
 
       - name: Configure Pages
         uses: actions/configure-pages@v5
