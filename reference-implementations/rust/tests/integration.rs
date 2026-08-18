@@ -1120,8 +1120,60 @@ port = 8080
 }
 
 #[test]
-fn rejects_type_with_alternative_type_selector() {
-    let directory = tempfile_dir("type-and-oneof");
+fn rejects_invalid_type_selector_cardinality() {
+    let directory = tempfile_dir("invalid-type-selectors");
+    let invalid_definitions = [
+        (
+            "type-and-oneof.tosd",
+            r#"
+type = "string"
+oneof = [ "string", "integer" ]
+"#,
+        ),
+        (
+            "type-and-anyof.tosd",
+            r#"
+type = "string"
+anyof = [ "string", "integer" ]
+"#,
+        ),
+        (
+            "oneof-and-anyof.tosd",
+            r#"
+oneof = [ "string", "integer" ]
+anyof = [ "string", "integer" ]
+"#,
+        ),
+        (
+            "selectorless-leaf.tosd",
+            r#"
+description = "selector-less leaf"
+"#,
+        ),
+    ];
+
+    for (file_name, definition) in invalid_definitions {
+        let schema_path = write_file(
+            &directory,
+            file_name,
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{definition}
+"#
+            ),
+        );
+
+        Schema::load(&schema_path).expect_err("expected invalid type selector cardinality");
+    }
+}
+
+#[test]
+fn infers_table_for_selectorless_definition_with_children() {
+    let directory = tempfile_dir("implicit-table");
     let schema_path = write_file(
         &directory,
         "schema.tosd",
@@ -1129,15 +1181,14 @@ fn rejects_type_with_alternative_type_selector() {
 [toml-schema]
 version = "1.0.0"
 
-[elements.value]
-type = "string"
-oneof = [ "string", "integer" ]
+[elements.parent]
+
+    [elements.parent.child]
+    type = "string"
 "#,
     );
 
-    let error =
-        Schema::load(&schema_path).expect_err("expected type and oneof on one node rejection");
-    assert!(error.contains("more than one of type, oneof, and anyof"));
+    Schema::load(&schema_path).expect("expected child definitions to imply table type");
 }
 
 #[test]

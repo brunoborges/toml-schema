@@ -417,17 +417,51 @@ class TomlSchemaTest {
     }
 
     @Test
-    void rejectsTypeWithAlternativeTypeSelector() throws IOException {
-        Path schema = write("type-and-oneof.tosd", """
+    void rejectsInvalidTypeSelectorCardinality() throws IOException {
+        List<String> invalidDefinitions = List.of(
+                """
+                type = "string"
+                oneof = [ "string", "integer" ]
+                """,
+                """
+                type = "string"
+                anyof = [ "string", "integer" ]
+                """,
+                """
+                oneof = [ "string", "integer" ]
+                anyof = [ "string", "integer" ]
+                """,
+                """
+                description = "selector-less leaf"
+                """
+        );
+
+        for (int index = 0; index < invalidDefinitions.size(); index++) {
+            Path schema = write("invalid-type-selector-" + index + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [elements.value]
+                    %s
+                    """.formatted(invalidDefinitions.get(index)));
+
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+    }
+
+    @Test
+    void infersTableForSelectorlessDefinitionWithChildren() throws IOException {
+        Path schema = write("implicit-table.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
-                [elements.value]
-                type = "string"
-                oneof = [ "string", "integer" ]
+                [elements.parent]
+
+                    [elements.parent.child]
+                    type = "string"
                 """);
 
-        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        assertDoesNotThrow(() -> TomlSchema.load(schema));
     }
 
     @Test

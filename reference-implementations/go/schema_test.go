@@ -874,19 +874,56 @@ port = 8080
 	}
 }
 
-func TestRejectsTypeWithAlternativeTypeSelector(t *testing.T) {
+func TestRejectsInvalidTypeSelectorCardinality(t *testing.T) {
 	dir := t.TempDir()
-	schemaPath := write(t, dir, "type-and-oneof.tosd", `
+	invalidDefinitions := map[string]string{
+		"type-and-oneof": `
+type = "string"
+oneof = [ "string", "integer" ]
+`,
+		"type-and-anyof": `
+type = "string"
+anyof = [ "string", "integer" ]
+`,
+		"oneof-and-anyof": `
+oneof = [ "string", "integer" ]
+anyof = [ "string", "integer" ]
+`,
+		"selectorless-leaf": `
+description = "selector-less leaf"
+`,
+	}
+
+	for name, definition := range invalidDefinitions {
+		t.Run(name, func(t *testing.T) {
+			schemaPath := write(t, dir, name+".tosd", `
 [toml-schema]
 version = "1.0.0"
 
 [elements.value]
-type = "string"
-oneof = [ "string", "integer" ]
+`+definition)
+
+			if _, err := LoadSchema(schemaPath); err == nil {
+				t.Fatal("expected invalid type selector cardinality to be rejected")
+			}
+		})
+	}
+}
+
+func TestInfersTableForSelectorlessDefinitionWithChildren(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "implicit-table.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.parent]
+
+    [elements.parent.child]
+    type = "string"
 `)
 
-	if _, err := LoadSchema(schemaPath); err == nil {
-		t.Fatal("expected type and oneof on the same node to be rejected")
+	if _, err := LoadSchema(schemaPath); err != nil {
+		t.Fatalf("expected child definitions to imply table type: %v", err)
 	}
 }
 
