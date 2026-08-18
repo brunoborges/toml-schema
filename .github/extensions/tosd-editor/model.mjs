@@ -21,11 +21,13 @@
 //   min/max/default                              : string    (TOML value token)
 
 import {
+    TomlError,
     parseToml,
     formatValue,
     formatKeyPath,
     parseValue,
     isPlainTable,
+    tableCollisions,
 } from "./toml.mjs";
 
 export const PROP_ORDER = [
@@ -62,7 +64,6 @@ const VALUELIST_PROPS = new Set(["allowedvalues"]);
 const VALUE_PROPS = new Set(["min", "max", "default"]);
 
 const ALL_PROPS = new Set(PROP_ORDER);
-const SEMVER_RE = /^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/;
 
 export const BUILTIN_TYPES = [
     "any",
@@ -79,79 +80,124 @@ export const BUILTIN_TYPES = [
     "collection",
 ];
 
-const NUMERIC_OR_TEMPORAL = new Set([
-    "integer",
-    "float",
-    "offset-date-time",
-    "local-date-time",
-    "local-date",
-    "local-time",
-]);
-
 // ---------------------------------------------------------------------------
 // Parse .tosd text -> editor model
 // ---------------------------------------------------------------------------
 
 export function parseDocument(text) {
-    const root = parseToml(text || "");
-    const meta = root["toml-schema"] || {};
-    const version = typeof meta.version === "string" ? meta.version : "1.0.0";
+    const root = parseToml(text || "", { allowTableValueCollisions: true });
+    const allowedTopLevel = new Set(["toml-schema", "types", "elements"]);
+    for (const key of Object.keys(root)) {
+        if (!allowedTopLevel.has(key)) {
+            throw new TomlError(`Unsupported top-level key or table: ${key}`);
+        }
+    }
+
+    const meta = root["toml-schema"];
+    if (!isPlainTable(meta)) throw new TomlError("Missing required [toml-schema] table.");
+    if (!Object.prototype.hasOwnProperty.call(meta, "version")) {
+        throw new TomlError("Missing required [toml-schema].version.");
+    }
+    if (typeof meta.version !== "string") {
+        throw new TomlError("[toml-schema].version must be a string.");
+    }
+    for (const key of [...Object.keys(meta), ...Object.keys(tableCollisions(meta))]) {
+        if (!["version", "meta"].includes(key)) {
+            throw new TomlError(`Unsupported key or table under [toml-schema]: ${key}`);
+        }
+    }
+    if (Object.prototype.hasOwnProperty.call(meta, "meta") && !isPlainTable(meta.meta)) {
+        throw new TomlError("[toml-schema].meta must be a table.");
+    }
+    if (!isPlainTable(root.elements)) throw new TomlError("Missing required [elements] table.");
+    if (root.types !== undefined && !isPlainTable(root.types)) {
+        throw new TomlError("[types] must be a table.");
+    }
+
     const metaTable = isPlainTable(meta.meta) ? meta.meta : null;
 
     return {
-        version,
+        version: meta.version,
         meta: metaTable,
-        types: tableToNodes(root["types"]),
-        elements: tableToNodes(root["elements"]),
+        types: tableToNodes(root.types, "types"),
+        elements: tableToNodes(root.elements, "elements"),
     };
 }
 
-function tableToNodes(table) {
+function tableToNodes(table, basePath) {
     if (!isPlainTable(table)) return [];
     const nodes = [];
     for (const [name, value] of Object.entries(table)) {
-        if (isPlainTable(value)) {
-            nodes.push(tableToNode(name, value));
+        if (!isPlainTable(value)) {
+            throw new TomlError(`${basePath}.${name} must be a schema definition table.`);
         }
+        nodes.push(tableToNode(name, value, `${basePath}.${name}`));
     }
     return nodes;
 }
 
-function tableToNode(name, table) {
+function tableToNode(name, table, path) {
     const node = { name, props: {}, children: [] };
     for (const [key, value] of Object.entries(table)) {
         if (isPlainTable(value)) {
-            node.children.push(tableToNode(key, value));
+            node.children.push(tableToNode(key, value, `${path}.${key}`));
         } else if (ALL_PROPS.has(key)) {
-            node.props[key] = decodeProp(key, value);
+            node.props[key] = decodeProp(key, value, path);
         } else if (key === "arraytype") {
+            // Preserve removed syntax long enough for validation to report it.
             node.props[key] = String(value);
         } else {
-            node.children.push({ name: key, props: scalarToProps(value), children: [] });
+            throw new TomlError(`Unsupported schema property at ${path}: ${key}`);
         }
+    }
+    for (const [key, value] of Object.entries(tableCollisions(table))) {
+        node.children.push(tableToNode(key, value, `${path}.${key}`));
     }
     return node;
 }
 
-function scalarToProps(value) {
-    return { type: typeofToken(value) };
-}
-
-function typeofToken(value) {
-    if (typeof value === "boolean") return "boolean";
-    if (typeof value === "number") return Number.isInteger(value) ? "integer" : "float";
-    if (value && value.__datetime) return value.__datetime;
-    return "string";
-}
-
-function decodeProp(key, value) {
-    if (STRING_PROPS.has(key)) return typeof value === "string" ? value : String(value);
-    if (BOOL_PROPS.has(key)) return value;
-    if (INT_PROPS.has(key)) return value;
-    if (REFLIST_PROPS.has(key)) return Array.isArray(value) ? value.map(String) : [];
-    if (GROUPLIST_PROPS.has(key)) return decodeGroupList(value);
-    if (MAPLIST_PROPS.has(key)) return decodeDependentRequired(value);
-    if (VALUELIST_PROPS.has(key)) return Array.isArray(value) ? value.map(formatValue) : [];
+function decodeProp(key, value, path) {
+    if (STRING_PROPS.has(key)) {
+        if (typeof value !== "string") throw new TomlError(`${path}.${key} must be a string.`);
+        return value;
+    }
+    if (BOOL_PROPS.has(key)) {
+        if (typeof value !== "boolean") throw new TomlError(`${path}.${key} must be a boolean.`);
+        return value;
+    }
+    if (INT_PROPS.has(key)) {
+        if (typeof value === "number" && Number.isInteger(value)) return value;
+        if (value?.__integer) return value.value;
+        throw new TomlError(`${path}.${key} must be an integer.`);
+    }
+    if (REFLIST_PROPS.has(key)) {
+        if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
+            throw new TomlError(`${path}.${key} must be an array of type-reference strings.`);
+        }
+        return value;
+    }
+    if (GROUPLIST_PROPS.has(key)) {
+        if (!Array.isArray(value) || value.some((group) => !Array.isArray(group) || group.some((entry) => typeof entry !== "string"))) {
+            throw new TomlError(`${path}.${key} must be an array of string arrays.`);
+        }
+        return decodeGroupList(value);
+    }
+    if (MAPLIST_PROPS.has(key)) {
+        const inner = value && value.__inline ? value.value : value;
+        if (!inner || typeof inner !== "object" || Array.isArray(inner)) {
+            throw new TomlError(`${path}.${key} must be an inline table of string arrays.`);
+        }
+        for (const entry of Object.values(inner)) {
+            if (!Array.isArray(entry) || entry.some((name) => typeof name !== "string")) {
+                throw new TomlError(`${path}.${key} must map each key to an array of strings.`);
+            }
+        }
+        return decodeDependentRequired(value);
+    }
+    if (VALUELIST_PROPS.has(key)) {
+        if (!Array.isArray(value)) throw new TomlError(`${path}.${key} must be an array.`);
+        return value.map(formatValue);
+    }
     if (VALUE_PROPS.has(key)) return formatValue(value);
     return formatValue(value);
 }
@@ -230,22 +276,19 @@ function encodeProp(key, raw) {
     if (BOOL_PROPS.has(key)) return encodeBoolean(raw);
     if (INT_PROPS.has(key)) return encodeInteger(raw);
     if (REFLIST_PROPS.has(key)) {
-        const arr = (Array.isArray(raw) ? raw : []).map(String).filter((s) => s.trim() !== "");
-        return arr.length ? arr : undefined;
+        return (Array.isArray(raw) ? raw : []).map(String).filter((s) => s.trim() !== "");
     }
     if (GROUPLIST_PROPS.has(key)) {
-        const groups = normalizeGroups(raw);
-        return groups.length ? groups : undefined;
+        return normalizeGroups(raw);
     }
     if (MAPLIST_PROPS.has(key)) {
-        const mapping = normalizeDependentRequired(raw);
-        return Object.keys(mapping).length ? mapping : undefined;
+        return normalizeDependentRequired(raw);
     }
     if (VALUELIST_PROPS.has(key)) {
         const arr = (Array.isArray(raw) ? raw : [])
             .map((tok) => parseTokenForEmit(tok))
             .filter((v) => v !== undefined);
-        return arr.length ? arr : undefined;
+        return arr;
     }
     if (VALUE_PROPS.has(key)) return parseTokenForEmit(raw);
     return parseTokenForEmit(raw);
@@ -260,8 +303,8 @@ function encodeBoolean(raw) {
 function encodeInteger(raw) {
     if (raw === undefined || raw === null || raw === "") return undefined;
     if (typeof raw === "number" && Number.isFinite(raw)) return Math.trunc(raw);
-    const parsed = parseTokenForEmit(raw);
-    return typeof parsed === "number" ? Math.trunc(parsed) : parsed;
+    const details = tokenDetails(raw);
+    return details?.kind === "integer" ? details.value : undefined;
 }
 
 function normalizeGroups(raw) {
@@ -319,10 +362,6 @@ function isBooleanValue(value) {
     return typeof value === "boolean";
 }
 
-function isIntegerValue(value) {
-    return typeof value === "number" && Number.isInteger(value);
-}
-
 function isNonArrayObject(value) {
     return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -345,33 +384,236 @@ function emitRawTable(pathParts, table, lines) {
 }
 
 function formatKeyMeta(key) {
-    return /^[A-Za-z0-9_-]+$/.test(key) ? key : `'${key}'`;
+    return formatKeyPath([key]);
 }
 
 // ---------------------------------------------------------------------------
 // Lightweight structural validation surfaced in the editor.
 // ---------------------------------------------------------------------------
 
-export function validateModel(model) {
-    const issues = [];
-    const typeNames = new Set((model.types || []).map((t) => t.name));
-    const typesByName = new Map((model.types || []).map((t) => [t.name, t]));
-    const parsedVersion = parseSemver(model.version);
-    for (const name of typeNames) {
-        if (BUILTIN_TYPES.includes(name)) {
-            issues.push({ level: "error", path: `types.${name}`, message: `\`${name}\` is a reserved built-in type name.` });
+const NUMERIC_OR_TEMPORAL = new Set([
+    "integer",
+    "float",
+    "offset-date-time",
+    "local-date-time",
+    "local-date",
+    "local-time",
+]);
+
+const SIMPLE_TYPES = new Set([
+    "any",
+    "string",
+    "integer",
+    "float",
+    "boolean",
+    "offset-date-time",
+    "local-date-time",
+    "local-date",
+    "local-time",
+]);
+
+const SEMVER_RE =
+    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+
+function parseSemVer(version) {
+    const match = SEMVER_RE.exec(version || "");
+    return match ? { major: Number(match[1]), minor: Number(match[2]) } : null;
+}
+
+function tokenDetails(token) {
+    const raw = String(token ?? "").trim();
+    try {
+        const value = parseValue(raw);
+        let kind;
+        if (typeof value === "string") kind = "string";
+        else if (typeof value === "boolean") kind = "boolean";
+        else if (value?.__integer) kind = "integer";
+        else if (value?.__float) kind = "float";
+        else if (value?.__datetime) kind = value.__datetime;
+        else if (typeof value === "number") {
+            kind = /[.eE]|inf|nan/i.test(raw) ? "float" : "integer";
+        }
+        return { raw, value, kind };
+    } catch {
+        return null;
+    }
+}
+
+function numericComparable(details) {
+    if (!details || !["integer", "float"].includes(details.kind)) return false;
+    if (details.value?.__float) return !details.value.value.toLowerCase().includes("nan");
+    return !Number.isNaN(details.value);
+}
+
+function integerBigInt(details) {
+    if (!details || details.kind !== "integer") return null;
+    if (details.value?.__integer) return parseIntegerBigInt(details.value.value);
+    return BigInt(details.value);
+}
+
+function parseIntegerBigInt(token) {
+    const raw = String(token).replace(/_/g, "");
+    const sign = raw.startsWith("-") ? -1n : 1n;
+    const unsigned = raw.replace(/^[+-]/, "");
+    return sign * BigInt(unsigned);
+}
+
+function patternIssue(pattern) {
+    try {
+        new RegExp(pattern, "u");
+    } catch (error) {
+        return { level: "error", message: `is not a valid regular expression: ${error.message}` };
+    }
+    if (/\\[dDsSwW]/.test(pattern) || /\\[1-9]/.test(pattern) || /\(\?(?:[=!]|<[=!])/.test(pattern)) {
+        return { level: "warning", message: "uses syntax outside the portable RE2 profile" };
+    }
+    return null;
+}
+
+function numericValue(details) {
+    if (!numericComparable(details)) return null;
+    if (details.kind === "integer") return { numerator: integerBigInt(details), denominator: 1n };
+    const token = details.value?.__float ? details.value.value.replace(/_/g, "") : String(details.value);
+    const number = token.endsWith("inf")
+        ? (token.startsWith("-") ? -Infinity : Infinity)
+        : Number(token);
+    if (number === Infinity) return { infinity: 1 };
+    if (number === -Infinity) return { infinity: -1 };
+
+    const buffer = new ArrayBuffer(8);
+    const view = new DataView(buffer);
+    view.setFloat64(0, number, false);
+    const bits = view.getBigUint64(0, false);
+    const sign = bits >> 63n ? -1n : 1n;
+    const exponentBits = Number((bits >> 52n) & 0x7ffn);
+    const fractionBits = bits & ((1n << 52n) - 1n);
+    const mantissa = exponentBits === 0 ? fractionBits : (1n << 52n) + fractionBits;
+    const exponent = exponentBits === 0 ? -1074 : exponentBits - 1023 - 52;
+    return exponent >= 0
+        ? { numerator: sign * (mantissa << BigInt(exponent)), denominator: 1n }
+        : { numerator: sign * mantissa, denominator: 1n << BigInt(-exponent) };
+}
+
+function compareNumeric(left, right) {
+    const a = numericValue(left);
+    const b = numericValue(right);
+    if (!a || !b) return null;
+    if (a.infinity || b.infinity) {
+        const av = a.infinity || 0;
+        const bv = b.infinity || 0;
+        return av === bv ? 0 : av < bv ? -1 : 1;
+    }
+    const difference = a.numerator * b.denominator - b.numerator * a.denominator;
+    return difference === 0n ? 0 : difference < 0n ? -1 : 1;
+}
+
+function daysFromCivil(year, month, day) {
+    const adjustedYear = year - (month <= 2 ? 1 : 0);
+    const era = Math.floor(adjustedYear / 400);
+    const yearOfEra = adjustedYear - era * 400;
+    const shiftedMonth = month + (month > 2 ? -3 : 9);
+    const dayOfYear = Math.floor((153 * shiftedMonth + 2) / 5) + day - 1;
+    const dayOfEra = yearOfEra * 365 + Math.floor(yearOfEra / 4) - Math.floor(yearOfEra / 100) + dayOfYear;
+    return BigInt(era * 146097 + dayOfEra);
+}
+
+function parseTime(raw) {
+    const match = /^(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/.exec(raw);
+    if (!match) return null;
+    return {
+        seconds: BigInt(Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3])),
+        fraction: match[4] || "",
+    };
+}
+
+function temporalValue(details) {
+    if (!details?.value?.__datetime) return null;
+    const raw = details.value.value;
+    if (details.kind === "local-date") {
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+        return match ? { whole: daysFromCivil(Number(match[1]), Number(match[2]), Number(match[3])), fraction: "" } : null;
+    }
+    if (details.kind === "local-time") {
+        const time = parseTime(raw);
+        return time ? { whole: time.seconds, fraction: time.fraction } : null;
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})[Tt ](.+)$/.exec(raw);
+    if (!match) return null;
+    let timeText = match[4];
+    let offsetSeconds = 0;
+    if (details.kind === "offset-date-time") {
+        const offset = /(Z|[+-]\d{2}:\d{2})$/i.exec(timeText);
+        if (!offset) return null;
+        timeText = timeText.slice(0, -offset[1].length);
+        if (offset[1].toUpperCase() !== "Z") {
+            const sign = offset[1][0] === "-" ? -1 : 1;
+            offsetSeconds = sign * (Number(offset[1].slice(1, 3)) * 3600 + Number(offset[1].slice(4, 6)) * 60);
         }
     }
+    const time = parseTime(timeText);
+    if (!time) return null;
+    const days = daysFromCivil(Number(match[1]), Number(match[2]), Number(match[3]));
+    return { whole: days * 86400n + time.seconds - BigInt(offsetSeconds), fraction: time.fraction };
+}
+
+function compareTemporal(left, right) {
+    const a = temporalValue(left);
+    const b = temporalValue(right);
+    if (!a || !b) return null;
+    if (a.whole !== b.whole) return a.whole < b.whole ? -1 : 1;
+    const width = Math.max(a.fraction.length, b.fraction.length);
+    const af = (a.fraction || "").padEnd(width, "0");
+    const bf = (b.fraction || "").padEnd(width, "0");
+    return af === bf ? 0 : af < bf ? -1 : 1;
+}
+
+function valueSatisfiesRange(details, boundary, direction) {
+    if (!details || !boundary) return false;
+    if (numericComparable(details) && numericComparable(boundary)) {
+        const comparison = compareNumeric(details, boundary);
+        return comparison != null && (direction === "min" ? comparison >= 0 : comparison <= 0);
+    }
+    if (details.kind !== boundary.kind || !details.value?.__datetime || !boundary.value?.__datetime) return false;
+    const comparison = compareTemporal(details, boundary);
+    return comparison != null && (direction === "min" ? comparison >= 0 : comparison <= 0);
+}
+
+export function validateModel(model) {
+    const issues = [];
+    const checkSiblingNames = (nodes, path) => {
+        const names = new Set();
+        for (const node of nodes || []) {
+            if (!node.name) {
+                issues.push({ level: "error", path, message: "Schema definition names must not be blank." });
+            } else if (names.has(node.name)) {
+                issues.push({ level: "error", path: `${path}.${node.name}`, message: `Duplicate schema definition name: ${node.name}.` });
+            }
+            names.add(node.name);
+        }
+    };
+    checkSiblingNames(model.elements, "elements");
+
+    const typeNames = new Set();
+    for (const type of model.types || []) {
+        if (!type.name) {
+            issues.push({ level: "error", path: "types", message: "Reusable type names must not be blank." });
+        } else if (BUILTIN_TYPES.includes(type.name)) {
+            issues.push({ level: "error", path: `types.${type.name}`, message: `Built-in type name \`${type.name}\` is reserved.` });
+        } else if (typeNames.has(type.name)) {
+            issues.push({ level: "error", path: `types.${type.name}`, message: `Duplicate reusable type name: ${type.name}.` });
+        }
+        typeNames.add(type.name);
+    }
+    const typesByName = new Map((model.types || []).map((t) => [t.name, t]));
 
     const normalizeRef = (ref) => ref?.startsWith("types.") ? ref.slice(6) : ref;
-    const isNamedRef = (ref) => {
-        const name = normalizeRef(ref);
-        return !!name && !BUILTIN_TYPES.includes(name);
-    };
+    const bareBuiltin = (ref) => !!ref && !ref.startsWith("types.") && BUILTIN_TYPES.includes(ref);
+    const isNamedRef = (ref) => !!ref && !bareBuiltin(ref);
     const refExists = (ref) => {
         if (!ref) return true;
-        const name = normalizeRef(ref);
-        if (BUILTIN_TYPES.includes(name)) return true;
+        const qualified = ref.startsWith("types.");
+        const name = qualified ? ref.slice(6) : ref;
+        if (!qualified && BUILTIN_TYPES.includes(name)) return true;
         return typeNames.has(name);
     };
 
@@ -394,7 +636,7 @@ export function validateModel(model) {
         if (!ref) return new Set();
         const name = normalizeRef(ref);
         if (!name) return new Set();
-        if (BUILTIN_TYPES.includes(name)) return new Set([name]);
+        if (bareBuiltin(ref)) return new Set([name]);
         if (seen.has(name)) return new Set();
         const definition = typesByName.get(name);
         if (!definition) return new Set();
@@ -453,7 +695,7 @@ export function validateModel(model) {
             issues.push({ level: "error", path: label, message: `Unknown type reference in ${key}: "${ref}".` });
             return;
         }
-        const direct = normalizeRef(ref);
+        const direct = bareBuiltin(ref) ? ref : null;
         if (disallowAny && direct === "any") {
             issues.push({ level: "error", path: label, message: `\`${key}\` must not reference the bare built-in type \`any\`.` });
         }
@@ -541,6 +783,7 @@ export function validateModel(model) {
         const label = pathLabel;
         const selectorKindsForNode = selectorKinds(node);
         const fixedChildren = fixedChildrenForNode(node);
+        let compiledPattern = null;
 
         if (p.arraytype != null) {
             issues.push({ level: "error", path: label, message: "`arraytype` is not supported; use `itemtype`." });
@@ -575,7 +818,7 @@ export function validateModel(model) {
             }
         }
 
-        const isNamedTypeRef = p.type && isNamedRef(p.type);
+        const isNamedTypeRef = p.type && isNamedRef(p.type) && refExists(p.type);
         if (isNamedTypeRef) {
             const allowed = new Set(["type", "allof", "description", "optional", "default", "deprecated"]);
             for (const key of Object.keys(p)) {
@@ -584,7 +827,6 @@ export function validateModel(model) {
                 }
             }
         }
-
         if ((node.children || []).length > 0 && !["table", "collection"].includes(p.type) && exclusivity.length > 0) {
             issues.push({ level: "error", path: label, message: "Child definitions require the built-in type `table` or `collection`." });
         }
@@ -592,8 +834,8 @@ export function validateModel(model) {
         if (p.items && p.itemtype) {
             issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `itemtype`." });
         }
-        if (p.items && p.allowedvalues) {
-            issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `allowedvalues`." });
+        if (p.items && p.type !== "array") {
+            issues.push({ level: "error", path: label, message: "`items` requires `type = \"array\"`." });
         }
         if (p.itemtype && !["array", "collection"].includes(p.type)) {
             issues.push({ level: "error", path: label, message: "`itemtype` requires `type = \"array\"` or `type = \"collection\"`." });
@@ -604,18 +846,30 @@ export function validateModel(model) {
         if (p.items && (p.minlength != null || p.maxlength != null)) {
             issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `minlength`/`maxlength`." });
         }
+        if (p.items && p.allowedvalues) {
+            issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `allowedvalues`." });
+        }
+        const minLength = p.minlength != null ? integerBigInt(tokenDetails(p.minlength)) : null;
+        const maxLength = p.maxlength != null ? integerBigInt(tokenDetails(p.maxlength)) : null;
+        if (p.minlength != null && (minLength == null || minLength < 0n)) {
+            issues.push({ level: "error", path: label, message: "`minlength` must be an integer greater than or equal to zero." });
+        }
+        if (p.maxlength != null && (maxLength == null || maxLength < 0n)) {
+            issues.push({ level: "error", path: label, message: "`maxlength` must be an integer greater than or equal to zero." });
+        }
+        if (minLength != null && maxLength != null && minLength > maxLength) {
+            issues.push({ level: "error", path: label, message: "`minlength` must be less than or equal to `maxlength`." });
+        }
 
         const hasMin = p.min != null && p.min !== "";
         const hasMax = p.max != null && p.max !== "";
         if (hasMin) pushTokenIssue(label, "min", p.min);
         if (hasMax) pushTokenIssue(label, "max", p.max);
-        if (p.default != null) pushTokenIssue(label, "default", p.default);
-        for (const [index, token] of (p.allowedvalues || []).entries()) {
-            const parsed = parseTokenForValidation(token);
-            if (!parsed.ok) {
-                issues.push({ level: "error", path: label, message: `\`allowedvalues[${index}]\` must be a valid TOML value token (${parsed.message}).` });
-            }
-        }
+        if (p.default != null && p.default !== "") pushTokenIssue(label, "default", p.default);
+        const rangeKind = p.type === "array"
+            ? (resolvedKinds(p.itemtype).size === 1 ? [...resolvedKinds(p.itemtype)][0] : null)
+            : p.type;
+        const boundaries = {};
         if (hasMin || hasMax) {
             const t = p.type;
             const itemKinds = t === "array" ? resolvedKinds(p.itemtype) : new Set();
@@ -626,15 +880,21 @@ export function validateModel(model) {
             } else if (!ok) {
                 issues.push({ level: "error", path: label, message: "`min`/`max` only apply to numeric/temporal types, or arrays of them." });
             }
+            for (const key of ["min", "max"]) {
+                if (p[key] == null || p[key] === "") continue;
+                const details = tokenDetails(p[key]);
+                boundaries[key] = details;
+                const valid = NUMERIC_OR_TEMPORAL.has(rangeKind)
+                    && (["integer", "float"].includes(rangeKind)
+                        ? numericComparable(details)
+                        : details?.kind === rangeKind);
+                if (!valid) {
+                    issues.push({ level: "error", path: label, message: `\`${key}\` must be a comparable TOML value for ${rangeKind || "the selected type"}.` });
+                }
+            }
         }
 
         if ((p.minlength != null || p.maxlength != null)) {
-            if (p.minlength != null && !isIntegerValue(p.minlength)) {
-                issues.push({ level: "error", path: label, message: "`minlength` must be an integer." });
-            }
-            if (p.maxlength != null && !isIntegerValue(p.maxlength)) {
-                issues.push({ level: "error", path: label, message: "`maxlength` must be an integer." });
-            }
             const t = p.type;
             if (!["string", "array", "collection"].includes(t)) {
                 issues.push({ level: "error", path: label, message: "`minlength`/`maxlength` require the built-in type string, array, or collection." });
@@ -643,10 +903,17 @@ export function validateModel(model) {
 
         if (Object.prototype.hasOwnProperty.call(p, "pattern") && p.type !== "string") {
             issues.push({ level: "error", path: label, message: "`pattern` requires the built-in type `string`." });
+        } else if (p.pattern) {
+            const issue = patternIssue(p.pattern);
+            if (issue) issues.push({ level: issue.level, path: label, message: `\`pattern\` ${issue.message}.` });
+            if (issue?.level !== "error") compiledPattern = new RegExp(p.pattern, "u");
         }
 
         if (Object.prototype.hasOwnProperty.call(p, "keypattern") && p.type !== "collection") {
             issues.push({ level: "error", path: label, message: "`keypattern` requires the built-in type `collection`." });
+        } else if (p.keypattern) {
+            const issue = patternIssue(p.keypattern);
+            if (issue) issues.push({ level: issue.level, path: label, message: `\`keypattern\` ${issue.message}.` });
         }
 
         if (Object.prototype.hasOwnProperty.call(p, "uniqueitems")) {
@@ -694,6 +961,50 @@ export function validateModel(model) {
             }
         }
 
+        if (p.allowedvalues != null) {
+            if (!Array.isArray(p.allowedvalues)) {
+                issues.push({ level: "error", path: label, message: "`allowedvalues` must be an array of TOML values." });
+            }
+            if (p.type && !SIMPLE_TYPES.has(p.type) && p.type !== "array") {
+                issues.push({ level: "error", path: label, message: "`allowedvalues` requires a simple type or `array`." });
+            }
+            const expectedKind = p.type === "array"
+                ? (resolvedKinds(p.itemtype).size === 1 ? [...resolvedKinds(p.itemtype)][0] : null)
+                : p.type;
+            for (const token of p.allowedvalues || []) {
+                const details = tokenDetails(token);
+                if (!details) {
+                    issues.push({ level: "error", path: label, message: `Invalid TOML value in \`allowedvalues\`: ${token}.` });
+                    continue;
+                }
+                if (expectedKind && expectedKind !== "any") {
+                    const sameKind = details.kind === expectedKind
+                        || (["integer", "float"].includes(details.kind) && ["integer", "float"].includes(expectedKind));
+                    if (!sameKind) {
+                        issues.push({ level: "error", path: label, message: `\`allowedvalues\` entry ${token} does not match ${expectedKind}.` });
+                        continue;
+                    }
+                }
+                if (compiledPattern && details.kind === "string" && !compiledPattern.test(details.value)) {
+                    issues.push({ level: "error", path: label, message: `\`allowedvalues\` entry ${token} does not satisfy \`pattern\`.` });
+                }
+                if (p.type === "string" && details.kind === "string") {
+                    const length = [...details.value].length;
+                    if (p.minlength != null && length < p.minlength) {
+                        issues.push({ level: "error", path: label, message: `\`allowedvalues\` entry ${token} is shorter than \`minlength\`.` });
+                    }
+                    if (p.maxlength != null && length > p.maxlength) {
+                        issues.push({ level: "error", path: label, message: `\`allowedvalues\` entry ${token} is longer than \`maxlength\`.` });
+                    }
+                }
+                for (const key of ["min", "max"]) {
+                    if (boundaries[key] && !valueSatisfiesRange(details, boundaries[key], key)) {
+                        issues.push({ level: "error", path: label, message: `\`allowedvalues\` entry ${token} violates \`${key}\`.` });
+                    }
+                }
+            }
+        }
+
         if (Object.prototype.hasOwnProperty.call(p, "dependentrequired")) {
             validatePresenceMapping(label, "dependentrequired", p.dependentrequired, fixedChildren, selectorKindsForNode);
         }
@@ -707,6 +1018,7 @@ export function validateModel(model) {
         for (const child of node.children || []) {
             walk(child, `${label}.${child.name}`);
         }
+        checkSiblingNames(node.children, label);
     };
 
     for (const t of model.types || []) walk(t, `types.${t.name}`);
@@ -714,8 +1026,9 @@ export function validateModel(model) {
 
     const visited = new Set();
     const visitSelector = (name, visiting = new Set()) => {
+        if (!name || bareBuiltin(name)) return;
         name = normalizeRef(name);
-        if (!name || BUILTIN_TYPES.includes(name) || visited.has(name) || !typesByName.has(name)) return;
+        if (visited.has(name) || !typesByName.has(name)) return;
         if (visiting.has(name)) {
             issues.push({ level: "error", path: `types.${name}`, message: "Cyclic type selector reference." });
             return;
@@ -730,21 +1043,12 @@ export function validateModel(model) {
     };
     for (const name of typeNames) visitSelector(name);
 
-    if (!parsedVersion) {
+    const semver = parseSemVer(model.version);
+    if (!semver) {
         issues.push({ level: "error", path: "toml-schema.version", message: "version must be a full SemVer string (e.g. 1.0.0)." });
-    } else if (parsedVersion.major !== 1 || parsedVersion.minor > 0) {
-        issues.push({ level: "error", path: "toml-schema.version", message: "This editor supports TOML Schema 1.0 only." });
+    } else if (semver.major !== 1 || semver.minor > 0) {
+        issues.push({ level: "error", path: "toml-schema.version", message: `Unsupported TOML Schema version: ${model.version}.` });
     }
 
     return issues;
-}
-
-function parseSemver(version) {
-    const match = SEMVER_RE.exec(String(version || ""));
-    if (!match) return null;
-    return {
-        major: Number(match[1]),
-        minor: Number(match[2]),
-        patch: Number(match[3]),
-    };
 }
