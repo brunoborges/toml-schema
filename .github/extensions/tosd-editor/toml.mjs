@@ -16,6 +16,8 @@
 
 export class TomlError extends Error {}
 
+const TABLE_COLLISIONS = Symbol("table-collisions");
+
 const DATETIME_RE =
     /^(\d{4}-\d{2}-\d{2}([Tt ]\d{2}:\d{2}:\d{2}(\.\d+)?([Zz]|[+-]\d{2}:\d{2})?)?|\d{2}:\d{2}:\d{2}(\.\d+)?)$/;
 
@@ -32,9 +34,10 @@ function classifyDatetime(raw) {
 // Parser
 // ---------------------------------------------------------------------------
 
-export function parseToml(text) {
-    const root = {};
+export function parseToml(text, { allowTableValueCollisions = false } = {}) {
+    const root = Object.create(null);
     let current = root;
+    const declaredTables = new Set();
 
     const lines = splitLogicalLines(text);
     for (const line of lines) {
@@ -49,7 +52,10 @@ export function parseToml(text) {
             } else {
                 const name = trimmed.slice(1, trimmed.lastIndexOf("]")).trim();
                 const path = parseKeyPath(name);
-                current = enterTable(root, path);
+                const tableId = JSON.stringify(path);
+                if (declaredTables.has(tableId)) throw new TomlError(`Duplicate table declaration: ${name}`);
+                declaredTables.add(tableId);
+                current = enterTable(root, path, allowTableValueCollisions);
             }
             continue;
         }
@@ -217,11 +223,26 @@ export function parseKeyPath(text) {
     return parts;
 }
 
-function enterTable(root, path) {
+function enterTable(root, path, allowTableValueCollisions) {
     let node = root;
     for (const key of path) {
-        if (node[key] === undefined) node[key] = {};
-        node = node[key];
+        if (node[key] === undefined) {
+            node[key] = Object.create(null);
+            node = node[key];
+            continue;
+        }
+        if (isPlainTable(node[key])) {
+            node = node[key];
+            continue;
+        }
+        if (!allowTableValueCollisions) {
+            throw new TomlError(`Cannot redefine value as table: ${key}`);
+        }
+        if (!node[TABLE_COLLISIONS]) {
+            Object.defineProperty(node, TABLE_COLLISIONS, { value: Object.create(null), enumerable: false });
+        }
+        if (!node[TABLE_COLLISIONS][key]) node[TABLE_COLLISIONS][key] = Object.create(null);
+        node = node[TABLE_COLLISIONS][key];
     }
     return node;
 }
@@ -230,12 +251,12 @@ function enterArrayTable(root, path) {
     let node = root;
     for (let i = 0; i < path.length - 1; i++) {
         const key = path[i];
-        if (node[key] === undefined) node[key] = {};
+        if (node[key] === undefined) node[key] = Object.create(null);
         node = node[key];
     }
     const last = path[path.length - 1];
     if (!Array.isArray(node[last])) node[last] = [];
-    const entry = {};
+    const entry = Object.create(null);
     node[last].push(entry);
     return entry;
 }
@@ -244,10 +265,13 @@ function assignKey(table, path, value) {
     let node = table;
     for (let i = 0; i < path.length - 1; i++) {
         const key = path[i];
-        if (node[key] === undefined) node[key] = {};
+        if (node[key] === undefined) node[key] = Object.create(null);
+        if (!isPlainTable(node[key])) throw new TomlError(`Cannot redefine value as dotted key: ${key}`);
         node = node[key];
     }
-    node[path[path.length - 1]] = value;
+    const key = path[path.length - 1];
+    if (Object.prototype.hasOwnProperty.call(node, key)) throw new TomlError(`Duplicate key: ${key}`);
+    node[key] = value;
 }
 
 export function parseValue(text) {
@@ -265,7 +289,10 @@ export function parseValue(text) {
 
     if (DATETIME_RE.test(s)) {
         const kind = classifyDatetime(s);
-        if (kind) return { __datetime: kind, value: s };
+        if (kind) {
+            if (!validDatetime(s, kind)) throw new TomlError(`Invalid ${kind} value: ${s}`);
+            return { __datetime: kind, value: s };
+        }
     }
 
     const num = parseNumber(s);
@@ -276,16 +303,55 @@ export function parseValue(text) {
 
 function parseNumber(s) {
     if (/^[+-]?(inf|nan)$/.test(s)) {
-        if (s.endsWith("nan")) return NaN;
-        return s[0] === "-" ? -Infinity : Infinity;
+        return { __float: true, value: s };
     }
     const cleaned = s.replace(/_/g, "");
-    if (/^[+-]?0x[0-9a-fA-F]+$/.test(cleaned)) return parseInt(cleaned, 16);
-    if (/^[+-]?0o[0-7]+$/.test(cleaned)) return parseInt(cleaned.replace(/0o/, ""), 8);
-    if (/^[+-]?0b[01]+$/.test(cleaned)) return parseInt(cleaned.replace(/0b/, ""), 2);
-    if (/^[+-]?\d+$/.test(cleaned)) return parseInt(cleaned, 10);
-    if (/^[+-]?(\d+(\.\d+)?([eE][+-]?\d+)?)$/.test(cleaned)) return parseFloat(cleaned);
+    if (/^[+-]?0x[0-9a-fA-F]+$/.test(cleaned)) return parseInteger(cleaned, 16);
+    if (/^[+-]?0o[0-7]+$/.test(cleaned)) return parseInteger(cleaned, 8);
+    if (/^[+-]?0b[01]+$/.test(cleaned)) return parseInteger(cleaned, 2);
+    if (/^[+-]?\d+$/.test(cleaned)) return parseInteger(cleaned, 10);
+    if (/^[+-]?(\d+(\.\d+)?([eE][+-]?\d+)?)$/.test(cleaned)) return { __float: true, value: s };
     return undefined;
+}
+
+function parseInteger(token, radix) {
+    let value;
+    if (radix === 10) {
+        value = BigInt(token);
+    } else {
+        const sign = token.startsWith("-") ? -1n : 1n;
+        const unsigned = token.replace(/^[+-]/, "");
+        value = sign * BigInt(unsigned);
+    }
+
+    if (value < -(1n << 63n) || value > (1n << 63n) - 1n) {
+        throw new TomlError(`Integer is outside the signed 64-bit TOML range: ${token}`);
+    }
+    const number = Number(value);
+    return Number.isSafeInteger(number) ? number : { __integer: true, value: token };
+}
+
+function validDatetime(raw, kind) {
+    const dateMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+    if (dateMatch) {
+        const year = Number(dateMatch[1]);
+        const month = Number(dateMatch[2]);
+        const day = Number(dateMatch[3]);
+        const leap = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+        const days = [31, leap ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+        if (month < 1 || month > 12 || day < 1 || day > days[month - 1]) return false;
+    }
+    if (kind === "local-date") return true;
+
+    const timeMatch = /(?:^|[Tt ])(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?/.exec(raw);
+    if (!timeMatch) return false;
+    if (Number(timeMatch[1]) > 23 || Number(timeMatch[2]) > 59 || Number(timeMatch[3]) > 59) return false;
+
+    if (kind === "offset-date-time") {
+        const offset = /([+-])(\d{2}):(\d{2})$/.exec(raw);
+        if (offset && (Number(offset[2]) > 23 || Number(offset[3]) > 59)) return false;
+    }
+    return true;
 }
 
 function parseBasicString(s) {
@@ -375,7 +441,7 @@ function parseArray(s) {
 function parseInlineTable(s) {
     const inner = s.slice(1, s.lastIndexOf("}"));
     const tokens = splitTopLevel(inner);
-    const obj = {};
+    const obj = Object.create(null);
     for (const tok of tokens) {
         const t = tok.trim();
         if (t === "") continue;
@@ -444,6 +510,8 @@ export function formatValue(value) {
     if (typeof value === "number") return formatNumber(value);
     if (typeof value === "string") return formatString(value);
     if (Array.isArray(value)) return "[ " + value.map(formatValue).join(", ") + " ]";
+    if (value.__integer) return value.value;
+    if (value.__float) return value.value;
     if (value.__datetime) return value.value;
     if (value.__inline) return formatInline(value.value);
     if (typeof value === "object") return formatInline(value);
@@ -490,7 +558,13 @@ export function isPlainTable(value) {
         value !== null &&
         typeof value === "object" &&
         !Array.isArray(value) &&
+        !value.__integer &&
+        !value.__float &&
         !value.__datetime &&
         !value.__inline
     );
+}
+
+export function tableCollisions(value) {
+    return value?.[TABLE_COLLISIONS] || {};
 }

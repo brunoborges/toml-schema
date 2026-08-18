@@ -325,6 +325,7 @@ button.danger:hover {
     min-width: 0;
     min-height: 0;
     border-right: 1px solid var(--tosd-border);
+    position: relative;
 }
 
 .diagram-bar {
@@ -1269,4 +1270,169 @@ pre.preview::-webkit-scrollbar-thumb,
 pre.preview::-webkit-scrollbar-thumb:hover {
     background: color-mix(in srgb, var(--tosd-muted) 50%, transparent);
     background-clip: padding-box;
+}
+
+/* Undo / redo icon buttons ---------------------------------------------- */
+.btn.icon-btn {
+    padding: 5px 8px;
+}
+
+.btn.icon-btn .bi {
+    font-size: 15px;
+    line-height: 1;
+}
+
+button:disabled {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
+
+/* Keyboard focus rings --------------------------------------------------- */
+.dg-box:focus-visible,
+.dg-root:focus-visible {
+    outline: 2px solid var(--color-focus-outline, var(--tosd-accent));
+    outline-offset: 2px;
+}
+
+.vtab:focus-visible,
+.legend-glyph:focus-visible {
+    outline: 2px solid var(--color-focus-outline, var(--tosd-accent));
+    outline-offset: 1px;
+}
+
+.diagram-scroll:focus-visible {
+    outline: 2px solid var(--color-focus-outline, var(--tosd-accent));
+    outline-offset: -2px;
+}
+
+/* Unresolved reference state -------------------------------------------- */
+.dg-box.has-error {
+    border-color: color-mix(in srgb, var(--tosd-error) 55%, var(--tosd-border));
+}
+
+.dg-box.has-error::before {
+    background: var(--tosd-error);
+}
+
+.dg-warn {
+    color: var(--tosd-error);
+    font-size: 12px;
+    line-height: 1;
+    margin-left: 2px;
+    flex: 0 0 auto;
+}
+
+.field input.invalid,
+.list-row input.invalid {
+    border-color: var(--tosd-error);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--tosd-error) 14%, transparent);
+}
+
+.field-err {
+    color: var(--tosd-error);
+    font-size: 11px;
+    margin-top: 4px;
+    min-height: 0;
+}
+
+.field-err:empty {
+    margin-top: 0;
+}
+
+.add-row {
+    margin-top: 2px;
+}
+
+/* Legend ----------------------------------------------------------------- */
+.legend-toggle.active,
+#legend-toggle.active {
+    color: var(--tosd-accent);
+    border-color: color-mix(in srgb, var(--tosd-accent) 45%, var(--tosd-border));
+    background: var(--tosd-accent-soft);
+}
+
+.legend {
+    position: absolute;
+    left: 12px;
+    bottom: 12px;
+    z-index: 5;
+    max-width: min(420px, calc(100% - 24px));
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px 18px;
+    padding: 14px 16px;
+    background: color-mix(in srgb, var(--tosd-bg) 92%, transparent);
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--tosd-border);
+    border-radius: 10px;
+    box-shadow: 0 8px 28px rgba(31, 35, 40, 0.16);
+}
+
+.legend-title {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 600;
+    color: var(--tosd-muted);
+    margin-bottom: 6px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 4px;
+    font-size: 11.5px;
+}
+
+.legend-glyph {
+    width: 20px;
+    text-align: center;
+    font-size: 13px;
+    color: var(--tosd-muted);
+    flex: 0 0 auto;
+}
+
+.legend-glyph.choice { color: var(--cat-choice); }
+.legend-glyph.repeat { color: var(--cat-array); }
+.legend-glyph.sequence { color: var(--tosd-muted); }
+.legend-glyph.warn { color: var(--tosd-error); }
+
+.legend-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    flex: 0 0 auto;
+    background: var(--cat, var(--tosd-muted));
+}
+
+.legend-dot[data-cat="string"] { background: var(--cat-string); }
+.legend-dot[data-cat="number"] { background: var(--cat-number); }
+.legend-dot[data-cat="boolean"] { background: var(--cat-boolean); }
+.legend-dot[data-cat="date"] { background: var(--cat-date); }
+.legend-dot[data-cat="table"] { background: var(--cat-table); }
+.legend-dot[data-cat="array"] { background: var(--cat-array); }
+.legend-dot[data-cat="ref"] { background: var(--cat-ref); }
+.legend-dot[data-cat="choice"] { background: var(--cat-choice); }
+
+.legend-label {
+    color: var(--text-color-default);
+}
+
+/* Reduced motion --------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.001ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.001ms !important;
+        scroll-behavior: auto !important;
+    }
+
+    .modal-err.working::before {
+        animation: none !important;
+        border-top-color: color-mix(in srgb, var(--tosd-accent) 30%, transparent);
+    }
 }
