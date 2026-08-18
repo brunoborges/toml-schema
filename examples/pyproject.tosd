@@ -36,7 +36,7 @@ type = "table"
 
 [types.readmeTable]
 type = "table"
-description = "Exactly one of file or text is required; sibling mutual exclusion requires application-level validation."
+exactlyone = [ [ "file", "text" ] ]
 
     [types.readmeTable.file]
     type = "string"
@@ -54,6 +54,8 @@ oneof = [ "string", "types.readmeTable" ]
 
 [types.legacyLicenseTable]
 type = "table"
+deprecated = true
+description = "Use an SPDX license expression and license-files instead."
 
     [types.legacyLicenseTable.file]
     type = "string"
@@ -104,6 +106,7 @@ itemtype = "types.pythonImportName"
 [types.dynamicMetadata]
 type = "array"
 itemtype = "string"
+uniqueitems = true
 allowedvalues = [
     "version",
     "description",

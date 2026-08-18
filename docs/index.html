@@ -43,8 +43,8 @@
           <div class="eyebrow">A TOML-native schema language</div>
           <h1>Validate TOML without leaving TOML.</h1>
           <p class="lead">
-            TOML Schema describes the structure, names, value types, and constraints
-            of TOML configuration documents using TOML syntax itself.
+            TOML Schema describes structure, value types, reusable constraints,
+            and common semantic relationships using TOML syntax itself.
           </p>
           <div class="actions">
             <a class="button" href="/spec/">Read the specification</a>
@@ -70,7 +70,8 @@ type = "boolean"
 
 [elements.database.ports]
 type = "array"
-itemtype = "integer"</code></pre>
+itemtype = "integer"
+uniqueitems = true</code></pre>
         </aside>
       </section>
 
@@ -90,7 +91,7 @@ itemtype = "integer"</code></pre>
           <article class="card">
             <span class="badge">Practical</span>
             <h3>Validation-focused</h3>
-            <p>Define required fields, scalar types, arrays, tables, dynamic collections, unions, ranges, and patterns.</p>
+            <p>Define required fields, types, collections, unions, composition, sibling rules, uniqueness, defaults, and deprecations.</p>
           </article>
           <article class="card">
             <span class="badge">Toolable</span>
@@ -196,9 +197,11 @@ max = 10</code></pre>
         </p>
         <div class="spec-list">
           <div class="spec-item"><strong>Versioned metadata</strong><span><code>[toml-schema]</code> declares SemVer language compatibility.</span></div>
-          <div class="spec-item"><strong>Type references</strong><span>References used by <code>type</code>, <code>itemtype</code>, <code>items</code>, <code>oneof</code>, and <code>anyof</code> select built-in types or reusable <code>[types]</code> definitions.</span></div>
+          <div class="spec-item"><strong>Type references</strong><span>References used by <code>type</code>, <code>itemtype</code>, <code>items</code>, <code>oneof</code>, <code>anyof</code>, and <code>allof</code> select or compose built-in types and reusable <code>[types]</code> definitions.</span></div>
           <div class="spec-item"><strong>Dynamic entries</strong><span><code>collection</code> validates dynamically named values; <code>keypattern</code> can constrain their keys.</span></div>
           <div class="spec-item"><strong>Alternative types</strong><span><code>oneof</code> requires exactly one matching type; <code>anyof</code> requires at least one.</span></div>
+          <div class="spec-item"><strong>Semantic rules</strong><span><code>dependentrequired</code>, <code>mutuallyexclusive</code>, and <code>exactlyone</code> constrain direct sibling presence.</span></div>
+          <div class="spec-item"><strong>Annotations</strong><span><code>default</code> is non-mutating metadata; <code>deprecated</code> produces warnings without invalidating a document.</span></div>
           <div class="spec-item"><strong>Containers and tuples</strong><span><code>itemtype</code> validates homogeneous array and collection members; <code>items</code> defines positional arrays.</span></div>
           <div class="spec-item"><strong>Media type</strong><span>TOML Schema files use <code>.tosd</code> and <code>application/tosd</code>.</span></div>
         </div>

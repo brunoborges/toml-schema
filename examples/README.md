@@ -10,10 +10,10 @@ reference for writing your own schemas. The examples are not affiliated
 with or endorsed by the upstream projects.
 
 These schemas are representative snapshots rather than canonical schemas
-published by the upstream projects. When an upstream rule depends on another
-field's presence or value, the example accepts the structurally valid superset
-and leaves that policy to application-level validation. See
-[Expressiveness and Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
+published by the upstream projects. TOML Schema 1.0 models direct-sibling
+presence rules, but rules that depend on another field's value or an arbitrary
+document path still require application-level validation. See [Expressiveness
+and Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
 The upstream sources in the table below were reviewed on 2026-08-18.
 
 ## Available examples
@@ -29,25 +29,23 @@ The upstream sources in the table below were reviewed on 2026-08-18.
 
 Together these examples exercise dynamic-key maps, arrays of tables, open
 extension namespaces, constrained scalar values, map values, fixed and dynamic
-children in one collection, and alternative representations such as scalar
-versus table or one table versus an array of tables. They also expose the
-intentional version 1.0 boundary: cross-field requirements, merge and
-inheritance behavior, sibling mutual exclusion, array uniqueness, and
-deprecation metadata require application-level handling.
+children in one collection, alternative representations, reusable
+composition, sibling presence rules, array uniqueness, defaults, and
+deprecation warnings.
 
 ## Industry format coverage
 
-The version 1.0 vocabulary is sufficient to describe the parsed structure of
-the major formats reviewed:
+The version 1.0 vocabulary describes both parsed structure and common
+presence-based semantic rules in the major formats reviewed:
 
 | Format | Structural coverage | Remaining application-level rules |
 | --- | --- | --- |
-| [Cargo](https://doc.rust-lang.org/cargo/reference/manifest.html) | Dependencies, target-specific maps, workspace inheritance, profiles, arrays of targets | Relationships among dependency source fields, unstable-feature gates |
-| [`pyproject.toml`](https://packaging.python.org/en/latest/specifications/pyproject-toml/) | Project metadata, build systems, dependency groups, open `[tool]` namespaces | Static-versus-dynamic metadata rules, mutually exclusive table fields |
+| [Cargo](https://doc.rust-lang.org/cargo/reference/manifest.html) | Dependencies, target-specific maps, workspace inheritance, profiles, arrays of targets, dependency source presence rules | Value-sensitive unstable-feature gates |
+| [`pyproject.toml`](https://packaging.python.org/en/latest/specifications/pyproject-toml/) | Project metadata, unique dynamic metadata names, exactly-one readme fields, deprecated legacy license tables, open `[tool]` namespaces | Static-versus-dynamic cross-path rules |
 | [uv](https://docs.astral.sh/uv/reference/settings/) and [Ruff](https://docs.astral.sh/ruff/settings/) | Fixed settings, enums, unions, nested tables, typed maps | Merge behavior, sibling dependencies, defaults and deprecations |
 | [Taplo](https://github.com/tamasfe/taplo/blob/master/crates/taplo-common/src/config.rs) | Closed option tables, arrays of rules, plugin maps | URL/path precedence and embedded glob semantics |
 | [Starship](https://starship.rs/config/) | Fixed modules, custom-module maps, nested palette maps | Reusable base-module extension, defaults, embedded format-string syntax |
-| [Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/) | Routes, bindings, module rules, environment maps | Inheritance and override semantics, embedded cron syntax |
+| [Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/) | Routes, mutually exclusive environment route forms, bindings, module rules, environment maps | Runtime inheritance and override semantics, embedded cron syntax |
 
 A collection may combine fixed children with a general `itemtype`, so an open
 namespace can still give well-known keys specialized schemas. For example,
@@ -56,11 +54,11 @@ while unknown tool names remain open. The generic `pyproject.tosd` example
 intentionally leaves every `[tool.*]` entry open because it does not bundle
 third-party tool schemas.
 
-Across these formats, the main practical limitation is semantic rather than
-structural: version 1.0 does not express relationships between sibling or
-cross-path values. Defaults, examples, and deprecation notices are also not
-machine-readable annotations. These boundaries are detailed in
-[Expressiveness and Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
+Version 1.0 does not express value-sensitive conditionals, arbitrary
+cross-path comparisons, field-selected uniqueness, runtime merge behavior, or
+embedded-language validation. Defaults are descriptive and never mutate parsed
+TOML data. These boundaries are detailed in [Expressiveness and Validation
+Scope](../SPEC.md#expressiveness-and-validation-scope).
 
 ## Using the examples
 

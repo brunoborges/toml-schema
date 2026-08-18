@@ -30,13 +30,15 @@ metadata-subtable = toml-table-header-toml-schema-meta-descendant *metadata-memb
 
 schema-definition = schema-definition-table *definition-property *schema-definition
 
-schema-key = type / description / itemtype / items / oneof / anyof
+schema-key = type / description / itemtype / items / oneof / anyof / allof
            / allowedvalues / pattern / keypattern / optional / min / max
-           / minlength / maxlength
+           / minlength / maxlength / uniqueitems / dependentrequired
+           / mutuallyexclusive / exactlyone / default / deprecated
 
-definition-property = type / description / itemtype / items / oneof / anyof
+definition-property = type / description / itemtype / items / oneof / anyof / allof
                     / allowedvalues / pattern / keypattern / optional / min / max
-                    / minlength / maxlength
+                    / minlength / maxlength / uniqueitems / dependentrequired
+                    / mutuallyexclusive / exactlyone / default / deprecated
 
 version       = "version" keyval-sep semver-string
 type          = "type" keyval-sep type-reference
@@ -45,6 +47,7 @@ itemtype      = "itemtype" keyval-sep type-reference
 items         = "items" keyval-sep type-reference-array ; ordered type references for positional array validation
 oneof         = "oneof" keyval-sep type-reference-array
 anyof         = "anyof" keyval-sep type-reference-array
+allof         = "allof" keyval-sep type-reference-array ; conjunctive reusable definitions applied with the local definition
 allowedvalues = "allowedvalues" keyval-sep toml-array
 pattern       = "pattern" keyval-sep toml-string
 keypattern    = "keypattern" keyval-sep toml-string ; collection dynamic-entry keys must match this regular expression
@@ -53,6 +56,12 @@ min           = "min" keyval-sep range-boundary
 max           = "max" keyval-sep range-boundary
 minlength     = "minlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
 maxlength     = "maxlength" keyval-sep toml-integer ; strings count Unicode scalar values after TOML parsing
+uniqueitems   = "uniqueitems" keyval-sep toml-boolean
+dependentrequired = "dependentrequired" keyval-sep toml-inline-table ; fixed-child name to required fixed-child name array
+mutuallyexclusive = "mutuallyexclusive" keyval-sep sibling-group-array ; each group permits at most one present child
+exactlyone        = "exactlyone" keyval-sep sibling-group-array ; each group requires exactly one present child
+default       = "default" keyval-sep toml-value
+deprecated    = "deprecated" keyval-sep toml-boolean
 
 built-in-type = anytype / stringtype / integertype / floattype / booleantype
               / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
@@ -60,6 +69,7 @@ built-in-type = anytype / stringtype / integertype / floattype / booleantype
 
 type-reference       = built-in-type / toml-string
 type-reference-array = toml-array ; semantically intended to contain only type-reference values; element types are not constrained by this ABNF
+sibling-group-array   = toml-array ; semantically an array of arrays containing unique fixed-child name strings
 range-boundary       = toml-integer / toml-float / toml-offset-date-time
                      / toml-local-date-time / toml-local-date / toml-local-time
 
@@ -91,6 +101,7 @@ toml-key                           = <TOML 1.0 key>
 toml-value                         = <TOML 1.0 value>
 toml-string                        = <TOML 1.0 string>
 toml-array                         = <TOML 1.0 array>
+toml-inline-table                  = <TOML 1.0 inline table>
 toml-boolean                       = <TOML 1.0 boolean>
 toml-integer                       = <TOML 1.0 integer>
 toml-float                         = <TOML 1.0 float>

@@ -29,6 +29,7 @@ This repository contains the TOML Schema specification/proposal plus reference i
 
 - Schema documents are intended to be valid TOML documents. The required top-level tables are `[toml-schema]` and `[elements]`; `[types]` is optional and exists for reusable definitions.
 - Use full SemVer strings for `[toml-schema].version`; the current TOML Schema version is `1.0.0`, and shorthand values like `"1"` or `"1.0"` are invalid.
+- TOML Schema `1.0.0` has not been released yet. Do not bump the schema-language version in the specification, self-schema, examples, loaders, extraction output, or documentation beyond `1.0.0` until the final release is actually published. Keep reference-implementation artifact versions at `1.0.0-rc.2` unless a release explicitly changes them.
 - Custom metadata belongs under `[toml-schema.meta]`; do not add arbitrary keys or subtables directly under `[toml-schema]`.
 - Reusable definitions live under `[types.<name>]` and are referenced from `[elements]` or nested type definitions rather than duplicating structures.
 - Use `type` for built-in and named type references, `collection` for dynamic-key tables, and `itemtype` for homogeneous array or collection members.

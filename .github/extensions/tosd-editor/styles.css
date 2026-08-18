@@ -522,6 +522,30 @@ button.danger:hover {
     margin-top: 4px;
 }
 
+.dg-flags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 5px;
+    max-width: 176px;
+}
+
+.dg-flag {
+    font-size: 9.5px;
+    font-weight: 600;
+    color: var(--tosd-muted);
+    background: var(--tosd-subtle);
+    border: 1px solid var(--tosd-border-soft);
+    border-radius: 999px;
+    padding: 0 6px;
+}
+
+.dg-flag.warn {
+    color: var(--tosd-warn);
+    border-color: color-mix(in srgb, var(--tosd-warn) 35%, transparent);
+    background: color-mix(in srgb, var(--tosd-warn) 10%, transparent);
+}
+
 .dg-type {
     font-size: 10.5px;
     font-weight: 600;
@@ -930,6 +954,7 @@ button.danger:hover {
 
 .field input[type="text"],
 .field input[type="number"],
+.field textarea,
 .field select {
     width: 100%;
     padding: 6px 9px;
@@ -943,13 +968,23 @@ button.danger:hover {
 
 .field input[type="text"]:focus,
 .field input[type="number"]:focus,
+.field textarea:focus,
 .field select:focus {
     outline: none;
     border-color: var(--tosd-accent);
     box-shadow: 0 0 0 3px var(--tosd-accent-soft);
 }
 
+.field textarea {
+    resize: vertical;
+    min-height: 48px;
+}
+
 .field input.mono {
+    font-family: var(--font-mono, monospace);
+}
+
+.field textarea.mono {
     font-family: var(--font-mono, monospace);
 }
 
@@ -980,6 +1015,14 @@ button.danger:hover {
     display: flex;
     gap: 6px;
     margin-bottom: 6px;
+}
+
+.list-row-2 input:first-child {
+    flex: 0 0 36%;
+}
+
+.list-row-2 input:nth-child(2) {
+    flex: 1 1 auto;
 }
 
 .list-row input {
@@ -1020,6 +1063,28 @@ button.danger:hover {
 .toggle-all:hover {
     background: none;
     text-decoration: underline;
+}
+
+.mini-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.mini-badge {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--tosd-muted);
+    background: var(--tosd-subtle);
+    border: 1px solid var(--tosd-border-soft);
+    border-radius: 999px;
+    padding: 2px 8px;
+}
+
+.mini-badge.warn {
+    color: var(--tosd-warn);
+    border-color: color-mix(in srgb, var(--tosd-warn) 35%, transparent);
+    background: color-mix(in srgb, var(--tosd-warn) 10%, transparent);
 }
 
 /* Preview + issues ------------------------------------------------------- */
