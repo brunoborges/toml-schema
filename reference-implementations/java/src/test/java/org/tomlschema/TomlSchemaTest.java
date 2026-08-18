@@ -210,6 +210,23 @@ class TomlSchemaTest {
     }
 
     @Test
+    void patternUsesRe2EndAnchorSemantics() throws IOException {
+        Path schema = write("pattern-end-anchor.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "string"
+                pattern = "^foo$"
+                """);
+        Path document = write("pattern-end-anchor.toml", """
+                value = "foo\\n"
+                """);
+
+        assertFalse(TomlSchema.load(schema).validate(document).isValid());
+    }
+
+    @Test
     void stringLengthCountsUnicodeScalarValues() throws IOException {
         Path schema = write("unicode-length.tosd", """
                 [toml-schema]
@@ -555,6 +572,29 @@ class TomlSchemaTest {
                 """);
 
         assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
+
+    @Test
+    void rejectsPatternOnNonStringAndUndocumentedDefault() throws IOException {
+        Path patternSchema = write("pattern-integer.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "integer"
+                pattern = "^[0-9]+$"
+                """);
+        Path defaultSchema = write("default.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "string"
+                default = "value"
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(patternSchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(defaultSchema));
     }
 
     @Test
@@ -1163,10 +1203,19 @@ class TomlSchemaTest {
                 minlength = 5
                 maxlength = 2
                 """);
+        Path incompatibleLengthSchema = write("boolean-length.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "boolean"
+                minlength = 1
+                """);
 
         assertThrows(SchemaException.class, () -> TomlSchema.load(negativeLengthSchema));
         assertThrows(SchemaException.class, () -> TomlSchema.load(negativeMaxLengthSchema));
         assertThrows(SchemaException.class, () -> TomlSchema.load(invertedLengthSchema));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(incompatibleLengthSchema));
     }
 
     @Test

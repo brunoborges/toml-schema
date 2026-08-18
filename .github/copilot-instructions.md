@@ -40,4 +40,4 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - Root `[toml-schema]` in TOML documents is reserved metadata and ignored during application validation unless the schema explicitly defines `[elements.toml-schema]`.
 - Optionality defaults to required behavior. Only mark a schema node optional with `optional = true` when the TOML document may omit that structure.
 - Tables with no defined child structure are intentionally open-ended; tables with defined child properties are intended to validate exactly against those children.
-- `pattern` applies to string validation, and the README specifies Perl/PCRE-compatible regular expressions for parsers.
+- `pattern` applies to string validation, and the specification defines the portable RE2 regular-expression profile required of parsers.

@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use toml_schema::cli::run;
 use toml_schema::schema::{Schema, ValidationResult};
+use url::Url;
 
 fn repository_root() -> PathBuf {
     // Tests run from `reference-implementations/rust`.
@@ -383,6 +384,17 @@ version = "1.0.0"
 type = "string"
 minlength = 5
 maxlength = 2
+"#,
+        ),
+        (
+            "incompatible-length",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "boolean"
+minlength = 1
 "#,
         ),
     ];
@@ -977,6 +989,39 @@ keypattern = "^[a-z]+$"
 
     let error = Schema::load(&schema_path).expect_err("expected keypattern on scalar rejection");
     assert!(error.contains("keypattern"));
+}
+
+#[test]
+fn rejects_pattern_on_non_string_and_undocumented_default() {
+    let directory = tempfile_dir("invalid-pattern-and-default");
+    let cases = [
+        (
+            "pattern-integer",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+pattern = "^[0-9]+$"
+"#,
+        ),
+        (
+            "default",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+default = "value"
+"#,
+        ),
+    ];
+    for (name, content) in cases {
+        let schema_path = write_file(&directory, &format!("{name}.tosd"), content);
+        Schema::load(&schema_path).expect_err("expected malformed schema");
+    }
 }
 
 #[test]
@@ -1582,6 +1627,71 @@ location = "schema.tosd"
         stdout.contains("is valid"),
         "expected valid output, got {stdout:?}"
     );
+}
+
+#[test]
+fn cli_resolves_file_uri_and_enforces_document_schema_version() {
+    let directory = tempfile_dir("cli-schema-reference-semantics");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.1"
+
+[elements.title]
+type = "string"
+"#,
+    );
+    let file_uri = Url::from_file_path(&schema_path)
+        .expect("schema file URI")
+        .to_string();
+    let cases = [
+        (
+            "file-uri-warning",
+            r#"version = "1.0.0""#,
+            file_uri.as_str(),
+            0,
+            "Warning: document expects TOML Schema version 1.0.0, but resolved schema uses 1.0.1",
+        ),
+        (
+            "major-version-mismatch",
+            r#"version = "2.0.0""#,
+            file_uri.as_str(),
+            2,
+            "document expects TOML Schema major version 2.0.0, but resolved schema uses 1.0.1",
+        ),
+        (
+            "unsupported-scheme",
+            "",
+            "https://example.com/schema.tosd",
+            2,
+            "unsupported schema location URI scheme: https",
+        ),
+    ];
+
+    for (name, version, location, expected_code, expected_error) in cases {
+        let document_path = write_file(
+            &directory,
+            &format!("{name}.toml"),
+            &format!(
+                r#"
+title = "Example"
+
+[toml-schema]
+{version}
+location = {location:?}
+"#
+            ),
+        );
+        let (exit_code, _stdout, stderr) = capture(&["validate", document_path.to_str().unwrap()]);
+
+        assert_eq!(exit_code, expected_code, "{stderr}");
+        assert!(
+            stderr.contains(expected_error),
+            "expected {expected_error:?}, got {stderr:?}"
+        );
+    }
 }
 
 #[test]

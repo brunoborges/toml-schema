@@ -7,7 +7,7 @@
 //     the resulting tree therefore always represents a sub-table — i.e. a child
 //     schema definition.
 //   * Inline tables ({ a = 1 }) are tagged as { __inline: true, value: {...} }
-//     so they are never confused with sub-tables (relevant only for `default`).
+//     so they are never confused with sub-tables.
 //   * Date/time values are tagged as { __datetime: kind, value: "..." } so the
 //     serializer emits them bare instead of quoting them.
 //

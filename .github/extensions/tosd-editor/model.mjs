@@ -16,7 +16,7 @@
 //   minlength/maxlength                    : number
 //   items/oneof/anyof                      : string[]  (type references)
 //   allowedvalues                          : string[]  (TOML value tokens)
-//   min/max/default                        : string    (TOML value token)
+//   min/max                                : string    (TOML value token)
 
 import {
     parseToml,
@@ -40,7 +40,6 @@ export const PROP_ORDER = [
     "minlength",
     "maxlength",
     "optional",
-    "default",
 ];
 
 const STRING_PROPS = new Set(["type", "itemtype", "pattern", "keypattern"]);
@@ -48,7 +47,7 @@ const INT_PROPS = new Set(["minlength", "maxlength"]);
 const BOOL_PROPS = new Set(["optional"]);
 const REFLIST_PROPS = new Set(["items", "oneof", "anyof"]);
 const VALUELIST_PROPS = new Set(["allowedvalues"]);
-const VALUE_PROPS = new Set(["min", "max", "default"]);
+const VALUE_PROPS = new Set(["min", "max"]);
 
 const ALL_PROPS = new Set(PROP_ORDER);
 
@@ -105,7 +104,7 @@ function tableToNode(name, table) {
             node.children.push(tableToNode(key, value));
         } else if (ALL_PROPS.has(key)) {
             node.props[key] = decodeProp(key, value);
-        } else if (key === "arraytype") {
+        } else if (key === "arraytype" || key === "default") {
             // Preserve removed syntax long enough for validation to report it.
             node.props[key] = String(value);
         } else {
@@ -295,6 +294,9 @@ export function validateModel(model) {
         if (p.arraytype != null) {
             issues.push({ level: "error", path: label, message: "`arraytype` is not supported; use `itemtype`." });
         }
+        if (p.default != null) {
+            issues.push({ level: "error", path: label, message: "`default` is not a TOML Schema property." });
+        }
 
         const exclusivity = ["type", "oneof", "anyof"].filter((k) => p[k] != null && p[k] !== "" && !(Array.isArray(p[k]) && p[k].length === 0));
         if (exclusivity.length > 1) {
@@ -327,23 +329,23 @@ export function validateModel(model) {
             if (t === "any") {
                 issues.push({ level: "error", path: label, message: "`min`/`max` cannot be applied to type `any`." });
             } else if (!ok) {
-                issues.push({ level: "warning", path: label, message: "`min`/`max` only apply to numeric/temporal types, or arrays of them." });
+                issues.push({ level: "error", path: label, message: "`min`/`max` only apply to numeric/temporal types, or arrays of them." });
             }
         }
 
         if ((p.minlength != null || p.maxlength != null)) {
             const t = p.type;
-            if (t && !["string", "array", "collection"].includes(t)) {
-                issues.push({ level: "warning", path: label, message: "`minlength`/`maxlength` only apply to string, array, or collection." });
+            if (!["string", "array", "collection"].includes(t)) {
+                issues.push({ level: "error", path: label, message: "`minlength`/`maxlength` require the built-in type string, array, or collection." });
             }
         }
 
-        if (p.pattern && p.type && p.type !== "string") {
-            issues.push({ level: "warning", path: label, message: `\`pattern\` is ignored on \`${p.type}\` — it only validates \`string\` values.` });
+        if (Object.prototype.hasOwnProperty.call(p, "pattern") && p.type !== "string") {
+            issues.push({ level: "error", path: label, message: "`pattern` requires the built-in type `string`." });
         }
 
-        if (p.keypattern && p.type && p.type !== "collection") {
-            issues.push({ level: "warning", path: label, message: `\`keypattern\` only applies to \`collection\` — it validates dynamic entry keys.` });
+        if (Object.prototype.hasOwnProperty.call(p, "keypattern") && p.type !== "collection") {
+            issues.push({ level: "error", path: label, message: "`keypattern` requires the built-in type `collection`." });
         }
 
         for (const ref of [p.type, p.itemtype]) {

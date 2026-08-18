@@ -47,6 +47,9 @@ func validateWithEmbeddedSchema(documentPath string, out, errOut io.Writer) int 
 		fmt.Fprintln(errOut, err)
 		return 2
 	}
+	for _, warning := range schema.Warnings() {
+		fmt.Fprintln(errOut, warning)
+	}
 	return report(schema.Validate(document), documentPath, out, errOut)
 }
 

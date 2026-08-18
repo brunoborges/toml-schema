@@ -44,7 +44,12 @@ fn validate_with_embedded_schema(
     err: &mut dyn Write,
 ) -> u8 {
     match schema_from_document(document_path) {
-        Ok((schema, document)) => report(schema.validate(&document), document_path, out, err),
+        Ok((schema, document)) => {
+            for warning in schema.warnings() {
+                let _ = writeln!(err, "{warning}");
+            }
+            report(schema.validate(&document), document_path, out, err)
+        }
         Err(error) => {
             let _ = writeln!(err, "{error}");
             2

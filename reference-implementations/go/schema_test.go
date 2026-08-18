@@ -358,6 +358,14 @@ type = "string"
 minlength = 5
 maxlength = 2
 `,
+		"incompatible-length": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "boolean"
+minlength = 1
+`,
 	}
 
 	for name, content := range cases {
@@ -1028,6 +1036,43 @@ keypattern = "^[a-z]+$"
 
 	if _, err := LoadSchema(schemaPath); err == nil {
 		t.Fatal("expected keypattern on a scalar to be rejected")
+	}
+}
+
+func TestRejectsPatternOnNonStringAndUndocumentedDefault(t *testing.T) {
+	dir := t.TempDir()
+	cases := map[string]string{
+		"pattern-integer": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+pattern = "^[0-9]+$"
+`,
+		"empty-pattern-integer": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+pattern = ""
+`,
+		"default": `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+default = "value"
+`,
+	}
+	for name, content := range cases {
+		t.Run(name, func(t *testing.T) {
+			if _, err := LoadSchema(write(t, dir, name+".tosd", content)); err == nil {
+				t.Fatal("expected malformed schema to be rejected")
+			}
+		})
 	}
 }
 

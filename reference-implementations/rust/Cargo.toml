@@ -19,3 +19,4 @@ path = "src/main.rs"
 [dependencies]
 toml = "1"
 regex = "1"
+url = "2"

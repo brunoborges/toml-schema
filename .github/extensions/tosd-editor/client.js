@@ -576,12 +576,12 @@ function renderEditor() {
     // string pattern + allowedvalues for simple types
     if (t === "string") {
         box.append(textField("pattern", "Pattern (regex)", p.pattern || "", (v) => setProp(p, "pattern", v), true,
-            "PCRE-compatible regular expression."));
+            "Portable RE2-profile regular expression."));
     }
     // collection key pattern
     if (t === "collection") {
         box.append(textField("keypattern", "Key pattern (regex)", p.keypattern || "", (v) => setProp(p, "keypattern", v), true,
-            "PCRE-compatible regex every dynamic entry key must match."));
+            "Portable RE2-profile regex every dynamic entry key must match."));
     }
     if (SIMPLE_TYPES.includes(t) || t === "array") {
         box.append(listField("allowedvalues", "Allowed values (enum)", p.allowedvalues || [],
@@ -608,14 +608,13 @@ function renderEditor() {
         box.append(row);
     }
 
-    // optional + default (always available)
+    // optional (always available)
     box.append(checkboxField("optional", "Optional (may be omitted in the document)", !!p.optional, (v) => {
         if (v) p.optional = true;
         else delete p.optional;
         markDirty();
         renderTree();
     }));
-    box.append(textField("default", "Default value (TOML token)", p.default || "", (v) => setProp(p, "default", v), true));
 
     // Show-all advanced toggle
     const toggle = el("button", {
@@ -637,7 +636,7 @@ function renderEditor() {
 function advancedAll(p) {
     const wrap = el("div");
     wrap.append(el("div", { class: "section-title", text: "All properties" }));
-    const allProps = ["type", "itemtype", "pattern", "keypattern", "min", "max", "default"];
+    const allProps = ["type", "itemtype", "pattern", "keypattern", "min", "max"];
     for (const key of allProps) {
         wrap.append(textField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v), true));
     }

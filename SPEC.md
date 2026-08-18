@@ -369,6 +369,12 @@ For `array` and `collection` values, length is counted as the number of items or
 
 Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present, `minlength` MUST be less than or equal to `maxlength`. A schema violating either rule is malformed and parsers MUST reject it at schema-load time.
 
+`minlength` and `maxlength` are valid only on definitions whose selected type is
+the built-in `string`, `array`, or `collection`. They cannot be attached to
+another built-in type, an alternative selector, or a named type reference.
+Parsers MUST reject an incompatible length constraint at schema-load time rather
+than silently ignoring it.
+
 ### Conditions on `any`
 
 No min/max condition may be applied to type `any`. The parser must show an error if this happens.
@@ -713,7 +719,7 @@ Use a named reusable definition whenever an alternative needs constraints such a
 ```toml
 [types.dependencyVersion]
 type = "string"
-pattern = "^\\d+\\.\\d+\\.\\d+$"
+pattern = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
 
 [types.inlineDependency]
 type = "table"
@@ -760,11 +766,29 @@ Parsers must only skip a structure validation if the structure is optional in th
 
 ### Pattern - `pattern`
 
-This property is only used for validating `string` input. Parsers must validate the input with the provided regular expression.
+This property is only valid on a definition whose selected type is the built-in
+`string`. It cannot be attached to another built-in type, an alternative
+selector, or a named type reference. Parsers MUST reject an incompatible
+`pattern` at schema-load time rather than silently ignoring it.
 
-Parsers must support Perl/PCRE syntax. Parsers may support more extensions and other syntaxes.
+The portable TOML Schema regular-expression profile consists of literals,
+escaped metacharacters, `.`, character classes and ranges, negated character
+classes, concatenation, alternation, capturing and non-capturing groups, the
+anchors `^` and `$`, and the greedy quantifiers `?`, `*`, `+`, `{n}`, `{n,}`,
+and `{n,m}`. These constructs use the syntax documented by the
+[RE2 syntax reference](https://github.com/google/re2/wiki/Syntax). Parsers MUST
+support this profile.
 
-The pattern is not implicitly anchored. A value validates if the regular expression matches anywhere in the string. Authors who require a full-string match must anchor the expression with `^` and `$` (or `\A` and `\z`).
+Character-class shorthands such as `\d`, `\s`, and `\w` are outside the
+portable profile because regular-expression engines disagree about whether
+they use ASCII or Unicode membership. Backreferences, look-around assertions,
+atomic groups, conditionals, and recursion are also outside the portable
+profile. Parsers MAY accept additional constructs, but schemas that use those
+extensions are not portable between TOML Schema implementations.
+
+The pattern is not implicitly anchored. A value validates if the regular
+expression matches anywhere in the string. Authors who require a full-string
+match must anchor the expression with `^` and `$`.
 
 ### Key Pattern - `keypattern`
 
@@ -780,7 +804,11 @@ Keys that are explicitly declared as fixed child definitions of the collection (
 key-value pairs) are validated by their own definitions and are not subject to `keypattern`. Only
 dynamic, user-provided keys are matched against the pattern.
 
-Parsers must support Perl/PCRE syntax, the same flavor as [`pattern`](#pattern---pattern). Like `pattern`, `keypattern` is not implicitly anchored: a key validates if the regular expression matches anywhere in the key string. Authors who require a full-key match must anchor the expression with `^` and `$`.
+Parsers MUST support the same portable RE2 regular-expression profile as
+[`pattern`](#pattern---pattern). Like `pattern`, `keypattern` is not implicitly
+anchored: a key validates if the regular expression matches anywhere in the key
+string. Authors who require a full-key match must anchor the expression with
+`^` and `$`.
 
 **Example:**
 
