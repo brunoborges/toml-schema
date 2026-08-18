@@ -158,7 +158,7 @@ type = "string"
 		t.Fatalf("expected compatible patch version to load: %v", err)
 	}
 
-	for _, version := range []string{"1", "1.0", "01.0.0", "1.1.0", "2.0.0"} {
+	for _, version := range []string{"1", "1.0", "01.0.0", "1.2.0", "2.0.0"} {
 		schemaPath := write(t, dir, "invalid-version-"+strings.ReplaceAll(version, ".", "-")+".tosd", fmt.Sprintf(`
 [toml-schema]
 version = %q
@@ -643,6 +643,10 @@ func TestRejectsInvalidUnionStructureAndChildPlacement(t *testing.T) {
 		`oneof = []`,
 		`anyof = []`,
 		"oneof = [ \"string\" ]\npattern = \"x\"",
+		"oneof = [ \"string\" ]\ndependentrequired = { a = [\"b\"] }",
+		"oneof = [ \"string\" ]\nmutuallyexclusive = [[\"a\", \"b\"]]",
+		"anyof = [ \"string\" ]\nexactlyone = [[\"a\", \"b\"]]",
+		"anyof = [ \"array\" ]\nuniqueitems = true",
 		"oneof = [ \"string\" ]\n\n[elements.value.child]\ntype = \"string\"",
 		"type = \"string\"\n\n[elements.value.child]\ntype = \"string\"",
 		"type = \"array\"\n\n[elements.value.child]\ntype = \"string\"",
@@ -922,7 +926,10 @@ func TestRejectsConstraintsAndChildrenOnNamedTypeReference(t *testing.T) {
 		`max = 1`,
 		`minlength = 1`,
 		`maxlength = 1`,
-		`default = "name"`,
+		`dependentrequired = { a = ["b"] }`,
+		`mutuallyexclusive = [["a", "b"]]`,
+		`exactlyone = [["a", "b"]]`,
+		`uniqueitems = true`,
 		"[elements.name.child]\ntype = \"string\"",
 	}
 
@@ -1139,7 +1146,7 @@ keypattern = "^[a-z]+$"
 	}
 }
 
-func TestRejectsPatternOnNonStringAndUndocumentedDefault(t *testing.T) {
+func TestRejectsPatternOnNonString(t *testing.T) {
 	dir := t.TempDir()
 	cases := map[string]string{
 		"pattern-integer": `
@@ -1157,14 +1164,6 @@ version = "1.0.0"
 [elements.value]
 type = "integer"
 pattern = ""
-`,
-		"default": `
-[toml-schema]
-version = "1.0.0"
-
-[elements.value]
-type = "string"
-default = "value"
 `,
 	}
 	for name, content := range cases {

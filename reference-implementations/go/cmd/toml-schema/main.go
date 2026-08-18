@@ -72,6 +72,9 @@ func extract(documentPath, schemaPath string, out, errOut io.Writer) int {
 }
 
 func report(result tomlschema.ValidationResult, documentPath string, out, errOut io.Writer) int {
+	for _, warning := range result.Warnings {
+		fmt.Fprintf(errOut, "warning[%s] %s: %s\n", warning.Code, warning.Path, warning.Message)
+	}
 	if result.Valid() {
 		fmt.Fprintf(out, "%s is valid\n", documentPath)
 		return 0
