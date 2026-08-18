@@ -56,6 +56,7 @@ command.
   - [Pattern - `pattern`](#pattern---pattern)
   - [Key Pattern - `keypattern`](#key-pattern---keypattern)
 - [Validation and Data Model](#validation-and-data-model)
+  - [Parsed Value Equality](#parsed-value-equality)
   - [Validation Diagnostics](#validation-diagnostics)
   - [Expressiveness and Validation Scope](#expressiveness-and-validation-scope)
 - [Filename Extension](#filename-extension)
@@ -107,7 +108,7 @@ type="table"
 
     [types.serverType.ip]
     type="string"
-    pattern="^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$"
+    pattern='^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
     [types.serverType.role]
     type="string"
 
@@ -200,7 +201,10 @@ MAY appear only inside the `toml-schema.meta` table.
 
 TOML Schema follows the same version-numbering policy as the TOML specification: schema language versions use [Semantic Versioning](https://semver.org/).
 
-The `version` property MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form. The current TOML Schema version is `1.0.0`.
+The `version` property MUST be a string containing a complete Semantic
+Versioning 2.0.0 value. The `MAJOR.MINOR.PATCH` core is required; a valid
+pre-release suffix and build metadata are optional. The current TOML Schema
+version is `1.0.0`.
 
 ```toml
 [toml-schema]
@@ -265,14 +269,28 @@ Type references are strings accepted by `type`, `itemtype`, `items`, `oneof`,
 - a built-in type name such as `"string"`, `"boolean"`, or `"integer"`;
 - a named reusable definition from `[types]`, written either as `"types.<typename>"` or `"<typename>"`.
 
-Built-in type names are reserved and MUST NOT be used as `[types]` definition names. The reserved names are `any`, `string`, `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`, `local-time`, `array`, `table`, and `collection`.
+Each reusable type is a direct child of `[types]`, and its name is the exact
+decoded TOML key of that child. A dot in a type name is an ordinary character
+when the key is quoted, so `[types."network.endpoint"]` defines the reusable
+type named `network.endpoint`; it does not define a nested type hierarchy.
+Tables below a direct child define that type's fixed children.
+
+The optional `types.` reference prefix is removed exactly once before lookup.
+Consequently, both `"network.endpoint"` and `"types.network.endpoint"` refer
+to the direct definition `[types."network.endpoint"]`. To keep those two forms
+unambiguous, a reusable type name MUST NOT begin with the literal characters
+`types.`. Built-in type names are also reserved and MUST NOT be used as
+`[types]` definition names. The reserved names are `any`, `string`, `integer`,
+`float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`,
+`local-time`, `array`, `table`, and `collection`.
 
 Two built-in names have context-specific restrictions:
 
-- `collection` is valid for `type` only when the same definition declares
-  `itemtype`. It MUST NOT be used as a bare reference in `itemtype`, `items`,
-  `oneof`, `anyof`, or `allof`, because those locations cannot supply the collection's
-  dynamic-value rule. Schema loaders MUST reject such references at schema-load time.
+- `collection` is valid for `type` only when the effective definition obtains
+  an `itemtype` locally or from a compatible `allof` component. It MUST NOT be
+  used as a bare reference in `itemtype`, `items`, `oneof`, `anyof`, or
+  `allof`, because those locations cannot supply the collection's dynamic-value
+  rule. Schema loaders MUST reject such references at schema-load time.
 - `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
   directly in `oneof`, `anyof`, or `allof`. Schema loaders MUST reject a direct
   `any` component at schema-load time.
@@ -356,9 +374,23 @@ reusable definitions.
 
 Schema child definitions use TOML tables. When a target TOML key is empty or contains characters that TOML requires to be quoted, such as a literal dot, quote that key in the schema table path.
 
-Target keys may have the same names as TOML Schema properties, such as `type`, `itemtype`, `optional`, or `pattern`. When those names are used as child table path segments, they define target document keys rather than schema properties.
+Target keys may have the same names as TOML Schema properties, such as `type`,
+`itemtype`, `optional`, or `pattern`. A key/value pair directly inside a schema
+definition is a schema property, while a table-header path segment below that
+definition is a target child definition.
 
 A schema definition with nested child definitions and no explicit `type`, `oneof`, or `anyof` is treated as `type = "table"`. This lets schemas describe target keys that would otherwise collide with schema properties.
+
+TOML itself forbids one table from containing both a value and a subtable with
+the same key. Therefore, a definition cannot simultaneously use a schema
+property and define a target child with that property's name. For example, an
+implicit table can define `[elements.plugin.type]`, but the parent cannot also
+declare a `type = ...` property. Likewise, a definition cannot have both a
+`default = ...` annotation and a child table named `default`. Authors can
+sometimes avoid a collision by factoring structure through a reusable type or
+by choosing the implicit-table form. If the colliding schema property is still
+required on the same definition, TOML Schema 1.0 cannot express both meanings
+there. Quoting the child key does not remove this TOML data model restriction.
 
 Example TOML document:
 
@@ -409,23 +441,10 @@ It is invalid on a `table` or `collection`.
 For a non-array simple type, when `allowedvalues` is combined with `pattern`, `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST satisfy every applicable constraint. A schema containing an entry that violates one of those constraints is malformed, and schema loaders MUST reject it at schema-load time.
 
 After a schema with `allowedvalues` has been loaded successfully, a document
-value is valid when it is a member of `allowedvalues`. Validators do not need to
+value is valid when it is a member of `allowedvalues` according to
+[Parsed Value Equality](#parsed-value-equality). Validators do not need to
 re-evaluate the other constraints for that document value because every
 enumerated value has already been checked against them while loading the schema.
-
-Numeric membership compares mathematical values after TOML parsing. Integer
-comparison MUST remain exact across the full TOML signed 64-bit range, including
-when one operand is a float; implementations MUST NOT convert both operands to a
-binary float when that would lose integer precision. Positive and negative zero
-are equal. NaN is equal to NaN for `allowedvalues` membership, but is unequal to
-every other value.
-
-Temporal membership requires the same TOML temporal type and the same parsed
-fields, including the numeric UTC offset for an offset date-time. Equivalent
-spellings of the same field value, such as `.1` and `.100` fractional seconds or
-`Z` and `+00:00`, are equal. Two offset date-times that identify the same instant
-but have different local fields or numeric offsets therefore compare equal for
-range ordering but are distinct `allowedvalues` members.
 
 The rules for applying `allowedvalues` to array items are defined separately under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
 
@@ -675,18 +694,9 @@ array may be equal. When it is `false` or absent, the schema imposes no
 uniqueness condition. It applies to homogeneous arrays, tuple arrays, and
 arrays whose item type is otherwise unconstrained.
 
-Equality is recursive over parsed TOML values:
-
-- strings and booleans compare by value;
-- numeric values compare by mathematical value, so integer `1` equals float
-  `1.0`, positive and negative zero are equal, and NaN equals NaN for this
-  membership operation;
-- temporal values use the same type-sensitive field equality as
-  `allowedvalues`, so two offset date-times with different retained local fields
-  or offsets are distinct even if they identify the same instant;
-- arrays compare by length and equal values at every index; and
-- tables compare by their unordered parsed key sets and recursively equal
-  values. Source key order and lexical spelling do not participate.
+Items are compared using
+[Parsed Value Equality](#parsed-value-equality), recursively for arrays and
+tables.
 
 Uniqueness compares complete item values. Version 1.0 does not define a
 field-selecting operation such as `uniqueBy`; two tables that share an `id` but
@@ -1134,7 +1144,8 @@ warning. A loader MUST reject an incompatible default.
 
 A default declared directly at a use site takes precedence over one inherited
 through its `type` reference. Without a use-site default, the referenced
-default is inherited. Equal defaults contributed by `allof` components are
+default is inherited. Defaults contributed by `allof` components are compared using
+[Parsed Value Equality](#parsed-value-equality). Equal defaults are
 deduplicated. If components contribute unequal defaults and the local
 definition has no default, the schema is malformed because it has no single
 effective default. A valid local default resolves that annotation conflict and
@@ -1244,8 +1255,32 @@ This mirrors JSON Schema's `propertyNames: { pattern: ... }`, applied to TOML ma
 
 It is NOT the goal of a TOML Schema to ever modify the data output of a TOML object during parsing.
 
-A validator MUST produce the exact same TOML data object as the underlying TOML
-parser would produce without schema validation.
+A validator MUST NOT mutate, replace, or augment the TOML data object produced
+by the underlying parser. An API that returns that object MUST return the same
+parsed keys and values that would exist without schema validation.
+
+### Parsed Value Equality
+
+TOML Schema uses one equality relation for `allowedvalues` membership,
+`uniqueitems`, and comparison of defaults contributed by composition. Equality
+is defined over parsed TOML values:
+
+- strings and booleans compare by value, without Unicode normalization;
+- numeric values compare by mathematical value, so integer `1` equals float
+  `1.0`, positive and negative zero are equal, and NaN equals NaN only for this
+  equality relation;
+- integer comparison remains exact across the full TOML signed 64-bit range,
+  including comparison with a float, and implementations MUST NOT first round
+  the integer to the float's binary format;
+- temporal values require the same TOML temporal type and the same parsed
+  fields, including the numeric UTC offset for an offset date-time; equivalent
+  spellings such as `.1` and `.100` or `Z` and `+00:00` are equal, but offset
+  date-times with different retained local fields or offsets are unequal even
+  when they identify the same instant;
+- arrays compare by length and equal values at every index; and
+- tables compare by their unordered parsed key sets and recursively equal
+  values. Source key order, table syntax, and lexical spelling do not
+  participate.
 
 ### Validation Diagnostics
 
@@ -1255,10 +1290,12 @@ reference, or invalid keyword application prevents validation from starting.
 
 Document-validation diagnostics have a severity, stable machine-readable code,
 document path, and human-readable message. Errors determine document validity.
-Warnings do not. An implementation MAY expose additional diagnostic fields,
-but MUST provide separate access to errors and warnings. A command-line
-validator MUST exit successfully for a document whose only diagnostics are
-warnings.
+Warnings do not. Except for codes explicitly assigned by this specification,
+diagnostic codes and path serialization are implementation-defined, but they
+MUST remain stable across compatible releases of that implementation.
+An implementation MAY expose additional diagnostic fields, but MUST provide
+separate access to errors and warnings. A command-line validator MUST exit
+successfully for a document whose only diagnostics are warnings.
 
 Deprecation produces a warning with the stable machine-readable code
 `deprecated`. Implementations MUST retain branch-local diagnostics while
@@ -1360,7 +1397,13 @@ file URI that can be converted to a local path, such as
 document. A file URI with a query or fragment MUST also be rejected because
 those components are not part of the local filesystem path.
 
-`version` is OPTIONAL. When present, it denotes the expected TOML Schema **language version** in the resolved schema document's `[toml-schema].version`; it is not an application version or an author-defined revision of that schema. Its value MUST be a string containing a full SemVer version in `MAJOR.MINOR.PATCH` form, with the same syntax defined by [Schema Versioning](#schema-versioning).
+`version` is OPTIONAL. When present, it denotes the expected TOML Schema
+**language version** in the resolved schema document's
+`[toml-schema].version`; it is not an application version or an author-defined
+revision of that schema. Its value MUST be a string containing a complete
+Semantic Versioning 2.0.0 value: the `MAJOR.MINOR.PATCH` core is required, and
+valid pre-release and build suffixes are optional, as defined by
+[Schema Versioning](#schema-versioning).
 
 After resolving and loading the schema, a validator MUST compare these two language versions when the referencing document provides `version`. A different major version is incompatible and schema discovery MUST fail. Any other unequal version, including a minor, patch, pre-release, or build metadata difference, MUST produce a warning but MUST NOT by itself cause validation to fail. Compatibility between the resolved schema and the validator remains governed by [Schema Versioning](#schema-versioning).
 

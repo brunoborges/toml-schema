@@ -1009,6 +1009,62 @@ type = "string"
 }
 
 #[test]
+fn rejects_types_named_with_reference_prefix() {
+    let directory = tempfile_dir("reserved-reference-prefix");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types."types.name"]
+type = "string"
+
+[elements.value]
+type = "name"
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("expected reserved reference prefix");
+    assert!(error.contains("reserved type-reference prefix"));
+}
+
+#[test]
+fn resolves_quoted_dotted_type_names_in_both_reference_forms() {
+    let directory = tempfile_dir("dotted-type-name");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types."network.endpoint"]
+type = "string"
+
+[elements.short]
+type = "network.endpoint"
+
+[elements.qualified]
+type = "types.network.endpoint"
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+short = "one"
+qualified = "two"
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load dotted type schema");
+    let result = schema.validate_file(&document_path);
+    assert!(result.valid(), "{:?}", result.errors);
+}
+
+#[test]
 fn rejects_removed_table_collection_alias_as_unknown_reference() {
     let directory = tempfile_dir("table-collection-alias");
     let schema_path = write_file(

@@ -1096,6 +1096,11 @@ fn parse_definitions(
         if prefix == "types" && SchemaType::parse(key).is_some() {
             return Err(format!("[types.{key}] uses a reserved built-in type name"));
         }
+        if prefix == "types" && key.starts_with("types.") {
+            return Err(format!(
+                "[types.{key}] uses the reserved type-reference prefix"
+            ));
+        }
         let value_map = value
             .as_table()
             .ok_or_else(|| format!("[{prefix}] entry must be a table: {key}"))?;
