@@ -36,6 +36,7 @@ type = "table"
 
 [types.readmeTable]
 type = "table"
+description = "Exactly one of file or text is required; sibling mutual exclusion requires application-level validation."
 
     [types.readmeTable.file]
     type = "string"
@@ -47,7 +48,6 @@ type = "table"
 
     [types.readmeTable."content-type"]
     type = "string"
-    optional = true
 
 [types.readme]
 oneof = [ "string", "types.readmeTable" ]
@@ -87,11 +87,11 @@ pattern = '^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$'
 
 [types.pythonImportName]
 type = "string"
-pattern = '^([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)*(\s*;\s*private)?$'
+pattern = '^([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)*([ \t]*;[ \t]*private)?$'
 
 [types.pythonImportNameOrEmpty]
 type = "string"
-pattern = '^$|^([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)*(\s*;\s*private)?$'
+pattern = '^$|^([A-Za-z_][A-Za-z0-9_]*)(\.[A-Za-z_][A-Za-z0-9_]*)*([ \t]*;[ \t]*private)?$'
 
 [types.importNames]
 type = "array"

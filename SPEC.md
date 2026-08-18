@@ -652,7 +652,9 @@ Semantics:
 
 One can set an element of type `collection` when there is a need to have multiple children with dynamic, user-provided keys or table headers.
 
-A `collection` is also a `table` and, therefore, it may have nested, schema-restricted key-value pairs of simple types.
+A `collection` is also a `table` and, therefore, it may have fixed child
+definitions in addition to dynamically named entries. Fixed children may use
+any schema definition, including nested tables, arrays, and named types.
 
 A `collection` requires `itemtype` to define the type of its dynamic child values. Each dynamic child must be given a unique key in the TOML document. `itemtype` may reference a built-in type or a named reusable definition.
 
@@ -671,6 +673,12 @@ rule. This permits a collection to validate known keys precisely while applying
 keys forward-compatible while fixed children still receive their declared
 validation. Authors choosing this pattern trade typo detection on unknown keys
 for extensibility; use a plain `table` when undeclared keys must be rejected.
+
+This precedence also supports open extension namespaces with typed well-known
+entries. For example, a `pyproject.toml` schema can define `[tool]` as a
+collection of open tables, then add fixed `[tool.ruff]` and `[tool.uv]` child
+definitions with their respective schemas. Other tool names continue to use the
+collection's general `itemtype`.
 
 
 **Example:**
@@ -989,6 +997,8 @@ patterns used by major configuration formats, including:
 - fixed keys and closed tables;
 - open tables for extension-owned data;
 - dynamic-key maps with uniform values by using `collection`;
+- open namespaces with specially typed well-known keys by combining a
+  `collection` with fixed child definitions;
 - arrays of tables and arrays of inline tables by using a named table as an
   array's `itemtype`;
 - scalar-or-table and other alternative representations with `oneof` or
