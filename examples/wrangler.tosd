@@ -792,6 +792,7 @@ itemtype = "types.secretsStoreSecret"
 [types.workerSettings]
 type = "collection"
 itemtype = "any"
+mutuallyexclusive = [ [ "route", "routes" ] ]
 
     [types.workerSettings.account_id]
     type = "string"

@@ -9,6 +9,7 @@ import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -16,136 +17,355 @@ import java.util.Set;
 final class TomlSchemaValidator {
     private final TomlSchema schema;
     private final List<ValidationError> errors = new ArrayList<>();
+    private final LinkedHashSet<ValidationWarning> warnings = new LinkedHashSet<>();
+    private LinkedHashSet<ValidationWarning> nodeWarnings = warnings;
+    private boolean suppressWarnings;
 
     TomlSchemaValidator(TomlSchema schema) {
         this.schema = schema;
     }
 
     ValidationResult validate(TomlTable document) {
-        validateTable("$", document, schema.elements());
+        validateFixedChildren("$", document, schema.elements());
         for (String key : document.keySet()) {
             if (!schema.elements().containsKey(key) && !key.equals("toml-schema")) {
-                add("$." + key, "unexpected key");
+                add("unexpected-key", appendPath("$", key), "unexpected key");
             }
         }
-        return new ValidationResult(errors);
+        return result();
     }
 
-    private void validateTable(String path, TomlTable table, Map<String, SchemaDefinition> definitions) {
+    ValidationResult validateDefinitionDefault(Object value, SchemaDefinition definition) {
+        suppressWarnings = true;
+        validateNode("$default", value, definition);
+        return result();
+    }
+
+    private ValidationResult result() {
+        return new ValidationResult(errors, List.copyOf(warnings));
+    }
+
+    private void validateFixedChildren(
+            String path,
+            TomlTable table,
+            Map<String, SchemaDefinition> definitions
+    ) {
         for (Map.Entry<String, SchemaDefinition> entry : definitions.entrySet()) {
             String key = entry.getKey();
-            SchemaDefinition definition = resolve(entry.getValue(), new HashSet<>());
             Object value = table.get(List.of(key));
             String childPath = appendPath(path, key);
             if (value == null) {
-                if (!definition.optional()) {
-                    add(childPath, "required value is missing");
+                if (!isOptional(entry.getValue(), new HashSet<>())) {
+                    add("required", childPath, "required value is missing");
                 }
+            } else {
+                validateNode(childPath, value, entry.getValue());
+            }
+        }
+    }
+
+    private void validateNode(String path, Object value, SchemaDefinition definition) {
+        validateComposedNode(path, value, definition, new HashSet<>(),
+                collectFixedChildren(definition, new HashSet<>()),
+                !resolvesToUnionSelector(definition, new HashSet<>()), warnings);
+    }
+
+    /**
+     * Validates every contributor of one composed node inside a single warning transaction.
+     * Warnings produced by the node itself, including node warnings adopted from successful union
+     * branches, are buffered until the whole composition has been validated and are handed to
+     * {@code nodeSink} only when the node contributed no error. Descendant nodes run their own
+     * transaction and commit into {@link #warnings} independently, so a valid child keeps its
+     * warnings even when an ancestor or sibling contributor fails.
+     */
+    private void validateComposedNode(
+            String path,
+            Object value,
+            SchemaDefinition definition,
+            Set<String> externalChildren,
+            Set<String> closure,
+            boolean enforceClosure,
+            Set<ValidationWarning> nodeSink
+    ) {
+        LinkedHashSet<ValidationWarning> enclosingWarnings = nodeWarnings;
+        LinkedHashSet<ValidationWarning> scopedWarnings = new LinkedHashSet<>();
+        nodeWarnings = scopedWarnings;
+        int errorsBefore = errors.size();
+        try {
+            validateContributor(path, value, definition, externalChildren, new HashSet<>());
+
+            if (enforceClosure
+                    && effectiveKind(definition, new HashSet<>()) == SchemaType.TABLE
+                    && value instanceof TomlTable table
+                    && !closure.isEmpty()) {
+                for (String key : table.keySet()) {
+                    if (!closure.contains(key)) {
+                        add("unexpected-key", appendPath(path, key), "unexpected key");
+                    }
+                }
+            }
+            if (!suppressWarnings && isDeprecatedWithoutAlternatives(definition, new HashSet<>())) {
+                warn(path);
+            }
+        } finally {
+            nodeWarnings = enclosingWarnings;
+        }
+        if (errors.size() == errorsBefore) {
+            nodeSink.addAll(scopedWarnings);
+        }
+    }
+
+    /**
+     * Validates one contributor of a composed node. {@code externalChildren} carries the keys that
+     * other contributors of the same node already account for, so that composed unions can tell
+     * externally contributed keys apart from keys owned by a sibling alternative.
+     */
+    private void validateContributor(
+            String path,
+            Object value,
+            SchemaDefinition definition,
+            Set<String> externalChildren,
+            Set<String> visiting
+    ) {
+        if (definition.reference() != null) {
+            Set<String> referenceExternal =
+                    siblingChildren(definition, externalChildren, true, null, visiting);
+            Set<String> referenceScope = new HashSet<>(visiting);
+            validateContributor(path, value, reference(definition.reference(), referenceScope),
+                    referenceExternal, referenceScope);
+            if (value instanceof TomlTable table) {
+                validatePresenceRules(path, table, definition);
+            }
+            if (value instanceof TomlArray array && Boolean.TRUE.equals(definition.uniqueItems())) {
+                validateUniqueItems(path, array);
+            }
+        } else if (!definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
+            validateUnion(path, value, definition,
+                    siblingChildren(definition, externalChildren, true, null, visiting));
+            if (value instanceof TomlTable table) {
+                validatePresenceRules(path, table, definition);
+            }
+            if (value instanceof TomlArray array && Boolean.TRUE.equals(definition.uniqueItems())) {
+                validateUniqueItems(path, array);
+            }
+        } else {
+            SchemaType type = definition.type() == null ? SchemaType.ANY : definition.type();
+            if (!isType(value, type)) {
+                add("type-mismatch", path,
+                        "expected " + type.schemaName() + " but found " + typeName(value));
+            } else {
+                validateCommonConstraints(path, value, definition);
+                switch (type) {
+                    case TABLE -> validateTableContributor(path, (TomlTable) value, definition);
+                    case COLLECTION -> validateCollectionContributor(
+                            path, (TomlTable) value, definition,
+                            nodeChildren(definition, externalChildren, visiting));
+                    case ARRAY -> validateArray(path, (TomlArray) value, definition);
+                    default -> {
+                    }
+                }
+            }
+        }
+        for (String component : definition.allOf()) {
+            Set<String> componentScope = new HashSet<>(visiting);
+            Set<String> componentExternal =
+                    siblingChildren(definition, externalChildren, false, component, visiting);
+            validateContributor(path, value, reference(component, componentScope),
+                    componentExternal, componentScope);
+        }
+    }
+
+    /**
+     * Collects every key allowed at this node by contributors of {@code definition} other than the
+     * one about to be validated, merged with the keys already contributed from outside the node.
+     */
+    private Set<String> siblingChildren(
+            SchemaDefinition definition,
+            Set<String> externalChildren,
+            boolean excludePrimary,
+            String excludedComponent,
+            Set<String> visiting
+    ) {
+        Set<String> result = new HashSet<>(externalChildren);
+        result.addAll(definition.children().keySet());
+        if (!excludePrimary) {
+            result.addAll(primaryChildren(definition, visiting));
+        }
+        for (String component : definition.allOf()) {
+            if (component.equals(excludedComponent)) {
                 continue;
             }
-            validateValue(childPath, value, definition);
+            Set<String> scope = new HashSet<>(visiting);
+            result.addAll(collectFixedChildren(reference(component, scope), scope));
         }
+        return result;
     }
 
-    private void validateValue(String path, Object value, SchemaDefinition definition) {
-        SchemaDefinition resolved = resolve(definition, new HashSet<>());
-        if (!resolved.oneOf().isEmpty() || !resolved.anyOf().isEmpty()) {
-            validateUnion(path, value, resolved);
+    private Set<String> primaryChildren(SchemaDefinition definition, Set<String> visiting) {
+        if (definition.reference() != null) {
+            Set<String> scope = new HashSet<>(visiting);
+            return collectFixedChildren(reference(definition.reference(), scope), scope);
+        }
+        Set<String> result = new HashSet<>();
+        for (String alternative : alternatives(definition)) {
+            Set<String> scope = new HashSet<>(visiting);
+            result.addAll(collectFixedChildren(reference(alternative, scope), scope));
+        }
+        return result;
+    }
+
+    private Set<String> nodeChildren(
+            SchemaDefinition definition,
+            Set<String> externalChildren,
+            Set<String> visiting
+    ) {
+        Set<String> result = new HashSet<>(externalChildren);
+        result.addAll(collectFixedChildren(definition, new HashSet<>(visiting)));
+        return result;
+    }
+
+    private List<String> alternatives(SchemaDefinition definition) {
+        return definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
+    }
+
+    /**
+     * The outcome of one union alternative. {@code nodeWarnings} holds the warnings the branch
+     * committed for the union node itself, and {@code result} carries the branch errors together
+     * with the warnings its descendant nodes committed on their own.
+     */
+    private record BranchOutcome(
+            ValidationResult result,
+            LinkedHashSet<ValidationWarning> nodeWarnings
+    ) {
+    }
+
+    private void validateUnion(
+            String path,
+            Object value,
+            SchemaDefinition definition,
+            Set<String> sharedChildren
+    ) {
+        List<String> alternatives = alternatives(definition);
+        List<BranchOutcome> successful = new ArrayList<>();
+        for (String alternative : alternatives) {
+            TomlSchemaValidator branch = new TomlSchemaValidator(schema);
+            branch.suppressWarnings = suppressWarnings;
+            SchemaDefinition alternativeDefinition = branch.reference(alternative, new HashSet<>());
+            Set<String> alternativeChildren =
+                    branch.collectFixedChildren(alternativeDefinition, new HashSet<>());
+            Set<String> branchClosure = new HashSet<>(alternativeChildren);
+            branchClosure.addAll(sharedChildren);
+            LinkedHashSet<ValidationWarning> branchNodeWarnings = new LinkedHashSet<>();
+            branch.validateComposedNode(path, value, alternativeDefinition,
+                    sharedChildren, branchClosure, true, branchNodeWarnings);
+            ValidationResult branchResult = branch.result();
+            if (branchResult.isValid()) {
+                successful.add(new BranchOutcome(branchResult, branchNodeWarnings));
+            }
+        }
+        if (!definition.oneOf().isEmpty() && successful.size() != 1) {
+            add("oneof", path,
+                    "expected exactly one matching type from oneof but found " + successful.size());
             return;
         }
-        SchemaType type = resolved.type() == null ? SchemaType.ANY : resolved.type();
-        validateType(path, value, type);
-        if (!isType(value, type)) {
+        if (!definition.anyOf().isEmpty() && successful.isEmpty()) {
+            add("anyof", path, "expected at least one matching type from anyof");
             return;
         }
-        validateCommonConstraints(path, value, resolved);
-        switch (type) {
-            case TABLE -> validateTableValue(path, (TomlTable) value, resolved);
-            case COLLECTION -> validateCollection(path, (TomlTable) value, resolved);
-            case ARRAY -> validateArray(path, (TomlArray) value, resolved);
-            default -> {
+        if (!suppressWarnings) {
+            for (BranchOutcome outcome : successful) {
+                warnings.addAll(outcome.result().warnings());
+                nodeWarnings.addAll(outcome.nodeWarnings());
             }
         }
     }
 
-    private void validateUnion(String path, Object value, SchemaDefinition definition) {
-        List<String> alternatives = definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
-        long matches = alternatives.stream()
-                .map(reference -> validateAgainst(path, value, resolveReference(reference, new HashSet<>())))
-                .filter(List::isEmpty)
-                .count();
-        if (!definition.oneOf().isEmpty() && matches != 1) {
-            add(path, "expected exactly one matching type from oneof but found " + matches);
-        }
-        if (!definition.anyOf().isEmpty() && matches == 0) {
-            add(path, "expected at least one matching type from anyof");
-        }
+    private void validateTableContributor(String path, TomlTable table, SchemaDefinition definition) {
+        validateFixedChildren(path, table, definition.children());
+        validatePresenceRules(path, table, definition);
     }
 
-    private List<ValidationError> validateAgainst(String path, Object value, SchemaDefinition definition) {
-        TomlSchemaValidator validator = new TomlSchemaValidator(schema);
-        validator.validateValue(path, value, definition);
-        return validator.errors;
-    }
-
-    private void validateTableValue(String path, TomlTable table, SchemaDefinition definition) {
-        if (definition.children().isEmpty()) {
-            return;
-        }
-        validateTable(path, table, definition.children());
-        for (String key : table.keySet()) {
-            if (!definition.children().containsKey(key)) {
-                add(appendPath(path, key), "unexpected key");
-            }
-        }
-    }
-
-    private void validateCollection(String path, TomlTable table, SchemaDefinition definition) {
+    private void validateCollectionContributor(
+            String path,
+            TomlTable table,
+            SchemaDefinition definition,
+            Set<String> fixedChildren
+    ) {
+        validateFixedChildren(path, table, definition.children());
+        validatePresenceRules(path, table, definition);
         int dynamicEntries = 0;
         for (Map.Entry<String, Object> entry : table.entrySet()) {
             String key = entry.getKey();
-            String childPath = appendPath(path, key);
-            SchemaDefinition fixedChild = definition.children().get(key);
-            if (fixedChild != null) {
-                validateValue(childPath, entry.getValue(), fixedChild);
+            if (fixedChildren.contains(key)) {
                 continue;
             }
             dynamicEntries++;
-            if (definition.keyPattern() != null && !definition.keyPattern().matcher(key).find()) {
-                add(childPath, "key does not match keypattern " + definition.keyPattern().pattern());
+            String childPath = appendPath(path, key);
+            if (definition.keyPattern() != null
+                    && !definition.keyPattern().matcher(key).find()) {
+                add("keypattern", childPath,
+                        "key does not match keypattern " + definition.keyPattern().pattern());
             }
-            String reference = definition.itemReference();
-            if (reference == null) {
-                add(childPath, "collection entry has no itemtype reference");
-                continue;
+            if (definition.itemReference() != null) {
+                validateNode(childPath, entry.getValue(),
+                        reference(definition.itemReference(), new HashSet<>()));
             }
-            validateValue(childPath, entry.getValue(), resolveReference(reference, new HashSet<>()));
         }
         validateLength(path, dynamicEntries, definition);
-        for (Map.Entry<String, SchemaDefinition> entry : definition.children().entrySet()) {
-            if (!table.contains(List.of(entry.getKey())) && !resolve(entry.getValue(), new HashSet<>()).optional()) {
-                add(appendPath(path, entry.getKey()), "required value is missing");
+    }
+
+    private void validatePresenceRules(String path, TomlTable table, SchemaDefinition definition) {
+        for (Map.Entry<String, List<String>> dependency : definition.dependentRequired().entrySet()) {
+            if (!table.contains(List.of(dependency.getKey()))) {
+                continue;
+            }
+            for (String required : dependency.getValue()) {
+                if (!table.contains(List.of(required))) {
+                    add("dependentrequired", appendPath(path, required),
+                            required + " is required when " + dependency.getKey() + " is present");
+                }
+            }
+        }
+        for (List<String> group : definition.mutuallyExclusive()) {
+            long present = group.stream().filter(name -> table.contains(List.of(name))).count();
+            if (present > 1) {
+                add("mutuallyexclusive", path,
+                        "at most one of " + group + " may be present");
+            }
+        }
+        for (List<String> group : definition.exactlyOne()) {
+            long present = group.stream().filter(name -> table.contains(List.of(name))).count();
+            if (present != 1) {
+                add("exactlyone", path,
+                        "exactly one of " + group + " must be present");
             }
         }
     }
 
     private void validateArray(String path, TomlArray array, SchemaDefinition definition) {
         validateLength(path, array.size(), definition);
-        if (!definition.items().isEmpty()) {
-            validateTupleArray(path, array, definition);
-            return;
+        if (Boolean.TRUE.equals(definition.uniqueItems())) {
+            validateUniqueItems(path, array);
         }
-        SchemaDefinition itemDefinition = definition.itemReference() == null
-                ? null
-                : resolveReference(definition.itemReference(), new HashSet<>());
-        if (itemDefinition == null && definition.allowedValues().isEmpty()) {
+        if (!definition.items().isEmpty()) {
+            if (array.size() != definition.items().size()) {
+                add("tuple-length", path,
+                        "expected array length " + definition.items().size()
+                                + " but found " + array.size());
+            }
+            int upperBound = Math.min(array.size(), definition.items().size());
+            for (int i = 0; i < upperBound; i++) {
+                validateNode(path + "[" + i + "]", array.get(i),
+                        reference(definition.items().get(i), new HashSet<>()));
+            }
             return;
         }
         for (int i = 0; i < array.size(); i++) {
             Object item = array.get(i);
             String itemPath = path + "[" + i + "]";
-            if (itemDefinition != null) {
-                validateValue(itemPath, item, itemDefinition);
+            if (definition.itemReference() != null) {
+                validateNode(itemPath, item,
+                        reference(definition.itemReference(), new HashSet<>()));
             }
             if (!definition.allowedValues().isEmpty()) {
                 validateAllowedValues(itemPath, item, definition);
@@ -154,6 +374,74 @@ final class TomlSchemaValidator {
                     && boundariesAreComparableWith(item, definition)) {
                 validateRange(itemPath, item, definition);
             }
+        }
+    }
+
+    private void validateUniqueItems(String path, TomlArray array) {
+        for (int i = 0; i < array.size(); i++) {
+            for (int j = 0; j < i; j++) {
+                if (ValueSemantics.valuesEqual(array.get(i), array.get(j))) {
+                    add("uniqueitems", path + "[" + i + "]",
+                            "array item duplicates item at index " + j);
+                    break;
+                }
+            }
+        }
+    }
+
+    private void validateCommonConstraints(String path, Object value, SchemaDefinition definition) {
+        if (value instanceof TomlArray) {
+            return;
+        }
+        validateAllowedValues(path, value, definition);
+        if (definition.allowedValues().isEmpty()) {
+            validateRange(path, value, definition);
+        }
+        if (value instanceof String stringValue) {
+            validateLength(path, stringValue.codePointCount(0, stringValue.length()), definition);
+            if (definition.pattern() != null
+                    && !definition.pattern().matcher(stringValue).find()) {
+                add("pattern", path,
+                        "does not match pattern " + definition.pattern().pattern());
+            }
+        }
+    }
+
+    private void validateAllowedValues(String path, Object value, SchemaDefinition definition) {
+        if (!definition.allowedValues().isEmpty()
+                && definition.allowedValues().stream()
+                .noneMatch(allowed -> ValueSemantics.valuesEqual(allowed, value))) {
+            add("allowedvalues", path, "value is not in allowedvalues");
+        }
+    }
+
+    private void validateRange(String path, Object value, SchemaDefinition definition) {
+        if (definition.min() != null) {
+            try {
+                if (ValueSemantics.compare(value, definition.min()) < 0) {
+                    add("min", path, "value is less than min");
+                }
+            } catch (SchemaException error) {
+                add("min", path, error.getMessage());
+            }
+        }
+        if (definition.max() != null) {
+            try {
+                if (ValueSemantics.compare(value, definition.max()) > 0) {
+                    add("max", path, "value is greater than max");
+                }
+            } catch (SchemaException error) {
+                add("max", path, error.getMessage());
+            }
+        }
+    }
+
+    private void validateLength(String path, int length, SchemaDefinition definition) {
+        if (definition.minLength() != null && length < definition.minLength()) {
+            add("minlength", path, "length is less than minlength");
+        }
+        if (definition.maxLength() != null && length > definition.maxLength()) {
+            add("maxlength", path, "length is greater than maxlength");
         }
     }
 
@@ -172,28 +460,105 @@ final class TomlSchemaValidator {
         return value instanceof Comparable<?> && value.getClass().isInstance(boundary);
     }
 
-    private void validateTupleArray(String path, TomlArray array, SchemaDefinition definition) {
-        if (array.size() != definition.items().size()) {
-            add(path, "expected array length " + definition.items().size() + " but found " + array.size());
+    private Set<String> collectFixedChildren(SchemaDefinition definition, Set<String> visiting) {
+        Set<String> result = new HashSet<>(definition.children().keySet());
+        if (definition.reference() != null) {
+            result.addAll(collectFixedChildren(reference(definition.reference(), visiting),
+                    new HashSet<>(visiting)));
         }
-        int upperBound = Math.min(array.size(), definition.items().size());
-        for (int i = 0; i < upperBound; i++) {
-            String itemPath = path + "[" + i + "]";
-            SchemaDefinition itemDefinition;
-            try {
-                itemDefinition = resolveReference(definition.items().get(i), new HashSet<>());
-            } catch (SchemaException e) {
-                add(itemPath, e.getMessage());
-                continue;
-            }
-            validateValue(itemPath, array.get(i), itemDefinition);
+        List<String> alternatives = definition.oneOf().isEmpty()
+                ? definition.anyOf() : definition.oneOf();
+        for (String alternative : alternatives) {
+            result.addAll(collectFixedChildren(reference(alternative, visiting),
+                    new HashSet<>(visiting)));
         }
+        for (String component : definition.allOf()) {
+            result.addAll(collectFixedChildren(reference(component, visiting),
+                    new HashSet<>(visiting)));
+        }
+        return result;
     }
 
-    private void validateType(String path, Object value, SchemaType type) {
-        if (!isType(value, type)) {
-            add(path, "expected " + type.schemaName() + " but found " + typeName(value));
+    private SchemaType effectiveKind(SchemaDefinition definition, Set<String> visiting) {
+        if (definition.reference() != null) {
+            return effectiveKind(reference(definition.reference(), visiting), new HashSet<>(visiting));
         }
+        if (!definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
+            List<String> alternatives = definition.oneOf().isEmpty()
+                    ? definition.anyOf() : definition.oneOf();
+            SchemaType kind = null;
+            for (String alternative : alternatives) {
+                SchemaType candidate = effectiveKind(reference(alternative, visiting),
+                        new HashSet<>(visiting));
+                if (kind == null) {
+                    kind = candidate;
+                } else if (kind != candidate) {
+                    return SchemaType.ANY;
+                }
+            }
+            return kind == null ? SchemaType.ANY : kind;
+        }
+        return definition.type() == null ? SchemaType.ANY : definition.type();
+    }
+
+    private boolean resolvesToUnionSelector(SchemaDefinition definition, Set<String> visiting) {
+        if (!definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
+            return true;
+        }
+        return definition.reference() != null
+                && resolvesToUnionSelector(
+                reference(definition.reference(), visiting), new HashSet<>(visiting));
+    }
+
+    private boolean isOptional(SchemaDefinition definition, Set<String> visiting) {
+        if (definition.optional()) {
+            return true;
+        }
+        return definition.reference() != null
+                && isOptional(reference(definition.reference(), visiting), new HashSet<>(visiting));
+    }
+
+    private boolean isDeprecatedWithoutAlternatives(
+            SchemaDefinition definition,
+            Set<String> visiting
+    ) {
+        if (definition.deprecated()) {
+            return true;
+        }
+        if (definition.reference() != null
+                && isDeprecatedWithoutAlternatives(
+                reference(definition.reference(), visiting), new HashSet<>(visiting))) {
+            return true;
+        }
+        for (String component : definition.allOf()) {
+            if (isDeprecatedWithoutAlternatives(
+                    reference(component, visiting), new HashSet<>(visiting))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private SchemaDefinition reference(String reference, Set<String> visiting) {
+        String normalized = normalizeReference(reference);
+        SchemaType builtIn = SchemaType.fromSchemaNameOptional(normalized).orElse(null);
+        if (builtIn != null) {
+            return builtIn(normalized, builtIn);
+        }
+        if (!visiting.add(normalized)) {
+            throw new SchemaException("Cyclic schema reference involving types." + normalized);
+        }
+        SchemaDefinition definition = schema.types().get(normalized);
+        if (definition == null) {
+            throw new SchemaException("Unknown schema type reference: types." + normalized);
+        }
+        return definition;
+    }
+
+    private SchemaDefinition builtIn(String name, SchemaType type) {
+        return new SchemaDefinition(name, type, null, null, null, List.of(), false,
+                List.of(), null, null, null, null, null, null, List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), null, false, null, false, Map.of());
     }
 
     private boolean isType(Object value, SchemaType type) {
@@ -210,134 +575,6 @@ final class TomlSchemaValidator {
             case ARRAY -> value instanceof TomlArray;
             case TABLE, COLLECTION -> value instanceof TomlTable;
         };
-    }
-
-    private void validateCommonConstraints(String path, Object value, SchemaDefinition definition) {
-        if (value instanceof TomlArray array) {
-            validateLength(path, array.size(), definition);
-            return;
-        }
-        validateAllowedValues(path, value, definition);
-        if (!definition.allowedValues().isEmpty()) {
-            return;
-        }
-        validateRange(path, value, definition);
-        if (value instanceof String stringValue) {
-            validateLength(path, stringLength(stringValue), definition);
-            if (definition.pattern() != null && !definition.pattern().matcher(stringValue).find()) {
-                add(path, "does not match pattern " + definition.pattern().pattern());
-            }
-        }
-    }
-
-    private void validateAllowedValues(String path, Object value, SchemaDefinition definition) {
-        if (!definition.allowedValues().isEmpty() && definition.allowedValues().stream().noneMatch(allowed -> valuesEqual(allowed, value))) {
-            add(path, "value is not in allowedvalues");
-        }
-    }
-
-    private void validateRange(String path, Object value, SchemaDefinition definition) {
-        Object min = definition.min();
-        Object max = definition.max();
-        if (min != null) {
-            try {
-                if (ValueSemantics.compare(value, min) < 0) {
-                    add(path, "value is less than min");
-                }
-            } catch (SchemaException error) {
-                add(path, error.getMessage());
-            }
-        }
-        if (max != null) {
-            try {
-                if (ValueSemantics.compare(value, max) > 0) {
-                    add(path, "value is greater than max");
-                }
-            } catch (SchemaException error) {
-                add(path, error.getMessage());
-            }
-        }
-    }
-
-    private void validateLength(String path, int length, SchemaDefinition definition) {
-        if (definition.minLength() != null && length < definition.minLength()) {
-            add(path, "length is less than minlength");
-        }
-        if (definition.maxLength() != null && length > definition.maxLength()) {
-            add(path, "length is greater than maxlength");
-        }
-    }
-
-    private boolean valuesEqual(Object allowed, Object value) {
-        return ValueSemantics.valuesEqual(allowed, value);
-    }
-
-    private SchemaDefinition resolve(SchemaDefinition definition, Set<String> seenReferences) {
-        if (definition.reference() == null) {
-            return definition;
-        }
-        SchemaDefinition referenced = resolveReference(definition.reference(), seenReferences);
-        return new SchemaDefinition(
-                definition.name(),
-                referenced.type(),
-                null,
-                definition.description(),
-                referenced.itemReference(),
-                referenced.items(),
-                definition.optional() || referenced.optional(),
-                referenced.allowedValues(),
-                referenced.pattern(),
-                referenced.keyPattern(),
-                referenced.min(),
-                referenced.max(),
-                referenced.minLength(),
-                referenced.maxLength(),
-                referenced.oneOf(),
-                referenced.anyOf(),
-                referenced.children()
-        );
-    }
-
-    private SchemaDefinition resolveReference(String reference, Set<String> seenReferences) {
-        String normalizedReference = normalizeReference(reference);
-        SchemaType builtInType = SchemaType.fromSchemaNameOptional(normalizedReference).orElse(null);
-        if (builtInType != null) {
-            return builtInReference(normalizedReference, builtInType);
-        }
-        if (!seenReferences.add(normalizedReference)) {
-            throw new SchemaException("Cyclic schema reference involving types." + normalizedReference);
-        }
-        SchemaDefinition referenced = schema.types().get(normalizedReference);
-        if (referenced == null) {
-            throw new SchemaException("Unknown schema type reference: types." + normalizedReference);
-        }
-        return resolve(referenced, seenReferences);
-    }
-
-    private SchemaDefinition builtInReference(String reference, SchemaType type) {
-        return new SchemaDefinition(
-                reference,
-                type,
-                null,
-                null,
-                null,
-                List.of(),
-                false,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                List.of(),
-                Map.of()
-        );
-    }
-
-    private String normalizeReference(String reference) {
-        return reference.startsWith("types.") ? reference.substring("types.".length()) : reference;
     }
 
     private String typeName(Object value) {
@@ -357,8 +594,8 @@ final class TomlSchemaValidator {
         };
     }
 
-    private int stringLength(String value) {
-        return value.codePointCount(0, value.length());
+    private String normalizeReference(String reference) {
+        return reference.startsWith("types.") ? reference.substring("types.".length()) : reference;
     }
 
     private String appendPath(String path, String key) {
@@ -372,7 +609,12 @@ final class TomlSchemaValidator {
         return "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
     }
 
-    private void add(String path, String message) {
-        errors.add(new ValidationError(path, message));
+    private void add(String code, String path, String message) {
+        errors.add(new ValidationError(code, path, message));
+    }
+
+    private void warn(String path) {
+        nodeWarnings.add(new ValidationWarning(
+                "deprecated", path, "value is deprecated"));
     }
 }

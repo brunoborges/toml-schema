@@ -163,7 +163,7 @@ class TomlSchemaTest {
 
         assertDoesNotThrow(() -> TomlSchema.load(compatiblePatchSchema));
 
-        for (String version : List.of("1", "1.0", "01.0.0", "1.1.0", "2.0.0")) {
+        for (String version : List.of("1", "1.0", "01.0.0", "1.2.0", "2.0.0")) {
             Path schema = write("invalid-version-" + version.replace('.', '-') + ".tosd", """
                     [toml-schema]
                     version = "%s"
@@ -386,7 +386,6 @@ class TomlSchemaTest {
                 "max = 1",
                 "minlength = 1",
                 "maxlength = 1",
-                "default = \"name\"",
                 "[elements.name.child]\ntype = \"string\""
         );
 
@@ -723,7 +722,7 @@ class TomlSchemaTest {
     }
 
     @Test
-    void rejectsPatternOnNonStringAndUndocumentedDefault() throws IOException {
+    void rejectsPatternOnNonStringType() throws IOException {
         Path patternSchema = write("pattern-integer.tosd", """
                 [toml-schema]
                 version = "1.0.0"
@@ -732,17 +731,8 @@ class TomlSchemaTest {
                 type = "integer"
                 pattern = "^[0-9]+$"
                 """);
-        Path defaultSchema = write("default.tosd", """
-                [toml-schema]
-                version = "1.0.0"
-
-                [elements.value]
-                type = "string"
-                default = "value"
-                """);
 
         assertThrows(SchemaException.class, () -> TomlSchema.load(patternSchema));
-        assertThrows(SchemaException.class, () -> TomlSchema.load(defaultSchema));
     }
 
     @Test
@@ -1034,6 +1024,9 @@ class TomlSchemaTest {
 
                 [elements.plugin.type]
                 type = "string"
+
+                [elements.plugin.default]
+                type = "boolean"
                 """);
         Path document = write("special-keys.toml", """
                 "" = "blank"
@@ -1044,6 +1037,7 @@ class TomlSchemaTest {
 
                 [plugin]
                 type = "npm"
+                default = true
                 """);
 
         ValidationResult result = TomlSchema.load(schema).validate(document);
@@ -1948,6 +1942,752 @@ class TomlSchemaTest {
                 """);
         ValidationResult tourResult = TomlSchema.load(tourSchema).validate(tourDocument);
         assertTrue(tourResult.isValid(), () -> tourResult.errors().toString());
+    }
+
+    @Test
+    void validatesDirectSiblingPresenceRules() throws IOException {
+        Path schema = write("presence-rules.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.source]
+                type = "table"
+                dependentrequired = { branch = ["git"], tag = ["git"] }
+                mutuallyexclusive = [["git", "path"], ["branch", "tag"]]
+                exactlyone = [["git", "path"]]
+
+                [elements.source.git]
+                type = "string"
+                optional = true
+                [elements.source.path]
+                type = "string"
+                optional = true
+                [elements.source.branch]
+                type = "string"
+                optional = true
+                [elements.source.tag]
+                type = "string"
+                optional = true
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        assertTrue(loaded.validate(write("presence-valid.toml", """
+                [source]
+                git = "url"
+                branch = "main"
+                """)).isValid());
+        ValidationResult missingDependency = loaded.validate(write("presence-missing.toml", """
+                [source]
+                branch = "main"
+                """));
+        assertTrue(missingDependency.errors().stream()
+                .anyMatch(error -> error.code().equals("dependentrequired")));
+        ValidationResult exclusive = loaded.validate(write("presence-exclusive.toml", """
+                [source]
+                git = "url"
+                path = "."
+                """));
+        assertTrue(exclusive.errors().stream()
+                .anyMatch(error -> error.code().equals("mutuallyexclusive")));
+    }
+
+    @Test
+    void composesDefinitionsConjunctivelyWithUnionClosure() throws IOException {
+        Path schema = write("allof.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.base]
+                type = "table"
+                [types.base.name]
+                type = "string"
+                minlength = 2
+
+                [types.extension]
+                type = "table"
+                [types.extension.name]
+                type = "string"
+                maxlength = 4
+                [types.extension.enabled]
+                type = "boolean"
+
+                [elements.value]
+                type = "table"
+                allof = ["types.base", "types.extension"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        assertTrue(loaded.validate(write("allof-valid.toml", """
+                [value]
+                name = "abc"
+                enabled = true
+                """)).isValid());
+        ValidationResult invalid = loaded.validate(write("allof-invalid.toml", """
+                [value]
+                name = "toolong"
+                enabled = true
+                """));
+        assertTrue(invalid.errors().stream()
+                .anyMatch(error -> error.code().equals("maxlength")));
+    }
+
+    @Test
+    void keepsStructuralKeysInEveryUnionBranchClosure() throws IOException {
+        Path schema = write("composed-union-closure.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.base]
+                type = "table"
+                [types.base.name]
+                type = "string"
+
+                [types.withName]
+                type = "table"
+                [types.withName.name]
+                type = "string"
+                [types.withName.git]
+                type = "string"
+
+                [types.plain]
+                type = "table"
+                [types.plain.path]
+                type = "string"
+
+                [types.identity]
+                oneof = ["types.withName", "types.plain"]
+
+                [elements.element]
+                type = "table"
+                allof = ["types.base", "types.identity"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult shared = loaded.validate(write("composed-union-shared.toml", """
+                [element]
+                name = "alpha"
+                path = "./src"
+                """));
+        assertTrue(shared.isValid(), () -> shared.errors().toString());
+
+        ValidationResult owned = loaded.validate(write("composed-union-owned.toml", """
+                [element]
+                name = "alpha"
+                git = "https://example.invalid/repo.git"
+                """));
+        assertTrue(owned.isValid(), () -> owned.errors().toString());
+
+        ValidationResult mixed = loaded.validate(write("composed-union-mixed.toml", """
+                [element]
+                name = "alpha"
+                git = "https://example.invalid/repo.git"
+                path = "./src"
+                """));
+        assertFalse(mixed.isValid());
+        assertTrue(mixed.errors().stream().anyMatch(error -> error.code().equals("oneof")));
+
+        ValidationResult missing = loaded.validate(write("composed-union-missing.toml", """
+                [element]
+                path = "./src"
+                """));
+        assertFalse(missing.isValid());
+        assertTrue(missing.errors().stream().anyMatch(error ->
+                error.code().equals("required") && error.path().equals("$.element.name")));
+    }
+
+    @Test
+    void keepsSiblingAlternativesExclusiveInAnyofClosure() throws IOException {
+        Path schema = write("composed-anyof-closure.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.base]
+                type = "table"
+                [types.base.name]
+                type = "string"
+
+                [types.withName]
+                type = "table"
+                [types.withName.name]
+                type = "string"
+                [types.withName.git]
+                type = "string"
+
+                [types.plain]
+                type = "table"
+                [types.plain.path]
+                type = "string"
+
+                [types.identity]
+                anyof = ["types.withName", "types.plain"]
+
+                [elements.element]
+                type = "table"
+                allof = ["types.base", "types.identity"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult shared = loaded.validate(write("composed-anyof-shared.toml", """
+                [element]
+                name = "alpha"
+                path = "./src"
+                """));
+        assertTrue(shared.isValid(), () -> shared.errors().toString());
+
+        ValidationResult mixed = loaded.validate(write("composed-anyof-mixed.toml", """
+                [element]
+                name = "alpha"
+                git = "https://example.invalid/repo.git"
+                path = "./src"
+                """));
+        assertFalse(mixed.isValid());
+        assertTrue(mixed.errors().stream().anyMatch(error -> error.code().equals("anyof")));
+    }
+
+    @Test
+    void resolvesClosureProvenanceThroughNestedComposition() throws IOException {
+        Path schema = write("nested-union-closure.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.base]
+                type = "table"
+                [types.base.name]
+                type = "string"
+
+                [types.core]
+                type = "table"
+                [types.core.id]
+                type = "string"
+
+                [types.remote]
+                type = "table"
+                [types.remote.url]
+                type = "string"
+                [types.remote.name]
+                type = "string"
+
+                [types.local]
+                type = "table"
+                [types.local.dir]
+                type = "string"
+                [types.local.id]
+                type = "string"
+
+                [types.locationChoice]
+                oneof = ["types.remote", "types.local"]
+
+                [types.detailed]
+                type = "table"
+                allof = ["types.core", "types.locationChoice"]
+
+                [types.simple]
+                type = "table"
+                [types.simple.alias]
+                type = "string"
+
+                [types.sourceChoice]
+                oneof = ["types.detailed", "types.simple"]
+
+                [types.composedSource]
+                type = "table"
+                allof = ["types.base", "types.sourceChoice"]
+
+                [elements.source]
+                type = "types.composedSource"
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult nested = loaded.validate(write("nested-union-valid.toml", """
+                [source]
+                name = "alpha"
+                id = "core-1"
+                url = "https://example.invalid/repo.git"
+                """));
+        assertTrue(nested.isValid(), () -> nested.errors().toString());
+
+        ValidationResult simple = loaded.validate(write("nested-union-simple.toml", """
+                [source]
+                name = "alpha"
+                alias = "a"
+                """));
+        assertTrue(simple.isValid(), () -> simple.errors().toString());
+
+        ValidationResult mixed = loaded.validate(write("nested-union-mixed.toml", """
+                [source]
+                name = "alpha"
+                id = "core-1"
+                url = "https://example.invalid/repo.git"
+                dir = "./src"
+                """));
+        assertFalse(mixed.isValid());
+        assertTrue(mixed.errors().stream().anyMatch(error -> error.code().equals("oneof")));
+    }
+
+    @Test
+    void closesOpenTableAlternativesWhenCompositionDefinesChildren() throws IOException {
+        Path schema = write("composed-open-union.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.base]
+                type = "table"
+                [types.base.name]
+                type = "string"
+
+                [types.open]
+                type = "table"
+
+                [types.closed]
+                type = "table"
+                [types.closed.known]
+                type = "string"
+
+                [types.choice]
+                anyof = ["types.open", "types.closed"]
+                allof = ["types.base"]
+
+                [elements.element]
+                type = "types.choice"
+                """);
+
+        TomlSchema loaded = TomlSchema.load(schema);
+        ValidationResult valid = loaded.validate(write("composed-open-union-valid.toml", """
+                [element]
+                name = "alpha"
+                """));
+        assertTrue(valid.isValid(), () -> valid.errors().toString());
+
+        ValidationResult result = loaded.validate(write("composed-open-union.toml", """
+                [element]
+                name = "alpha"
+                arbitrary = true
+                """));
+
+        assertFalse(result.isValid());
+        assertTrue(result.errors().stream().anyMatch(error -> error.code().equals("anyof")));
+    }
+
+    @Test
+    void enforcesRecursiveUniqueItemsEquality() throws IOException {
+        Path schema = write("unique.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.values]
+                type = "array"
+                itemtype = "any"
+                uniqueitems = true
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult numeric = loaded.validate(write(
+                "unique-numeric.toml", "values = [1, 1.0]\n"));
+        assertTrue(numeric.errors().stream()
+                .anyMatch(error -> error.code().equals("uniqueitems")));
+        ValidationResult tables = loaded.validate(write("unique-tables.toml", """
+                values = [{ a = 1, b = [2] }, { b = [2.0], a = 1.0 }]
+                """));
+        assertTrue(tables.errors().stream()
+                .anyMatch(error -> error.code().equals("uniqueitems")));
+    }
+
+    @Test
+    void validatesAndExposesEffectiveDefaultsWithoutApplyingThem() throws IOException {
+        Path schema = write("defaults.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.name]
+                type = "string"
+                default = "inherited"
+
+                [types.settings]
+                type = "table"
+                default = { enabled = true }
+                [types.settings.enabled]
+                type = "boolean"
+
+                [elements.inherited]
+                type = "types.name"
+                optional = true
+
+                [elements.local]
+                type = "types.name"
+                optional = true
+                default = "local"
+
+                [elements.settings]
+                type = "types.settings"
+                optional = true
+
+                [elements.required]
+                type = "string"
+                default = "not inserted"
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        assertEquals("inherited", loaded.defaultValue("inherited").orElseThrow());
+        assertEquals("local", loaded.defaultValue("local").orElseThrow());
+        assertTrue(loaded.defaultValue("settings").orElseThrow() instanceof org.tomlj.TomlTable);
+        ValidationResult result = loaded.validate(write("defaults.toml", ""));
+        assertFalse(result.isValid());
+        assertTrue(result.errors().stream()
+                .anyMatch(error -> error.path().equals("$.required")));
+    }
+
+    @Test
+    void reportsDeduplicatedWarningsOnlyFromSuccessfulAlternatives() throws IOException {
+        Path schema = write("deprecated.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.oldString]
+                type = "string"
+                deprecated = true
+
+                [types.oldInteger]
+                type = "integer"
+                deprecated = true
+
+                [elements.value]
+                anyof = ["types.oldString", "string", "types.oldInteger"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult result = loaded.validate(write("deprecated.toml", "value = \"old\"\n"));
+        assertTrue(result.isValid());
+        assertEquals(1, result.warnings().size());
+        assertEquals(DiagnosticSeverity.WARNING, result.warnings().getFirst().severity());
+        assertEquals("deprecated", result.warnings().getFirst().code());
+        assertEquals("$.value", result.warnings().getFirst().path());
+    }
+
+    @Test
+    void dropsBranchWarningsWhenALaterAllofComponentFails() throws IOException {
+        Path schema = write("union-allof-deprecated.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.legacyName]
+                type = "string"
+                pattern = "^old-"
+                deprecated = true
+
+                [types.modernName]
+                type = "string"
+                pattern = "^new-"
+
+                [types.shortName]
+                type = "string"
+                maxlength = 8
+
+                [elements.name]
+                oneof = ["types.legacyName", "types.modernName"]
+                allof = ["types.shortName"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult result = loaded.validate(
+                write("union-allof-deprecated.toml", "name = \"old-name-is-too-long\"\n"));
+
+        assertFalse(result.isValid());
+        assertEquals(1, result.errors().size());
+        assertEquals("maxlength", result.errors().getFirst().code());
+        assertEquals("$.name", result.errors().getFirst().path());
+        assertTrue(result.warnings().isEmpty());
+
+        ValidationResult accepted = loaded.validate(
+                write("union-allof-deprecated-valid.toml", "name = \"old-tag\"\n"));
+
+        assertTrue(accepted.isValid());
+        assertEquals(1, accepted.warnings().size());
+        assertEquals("deprecated", accepted.warnings().getFirst().code());
+        assertEquals("$.name", accepted.warnings().getFirst().path());
+    }
+
+    @Test
+    void keepsDescendantBranchWarningsWhenALaterAllofComponentFails() throws IOException {
+        Path schema = write("union-descendant-warning.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.legacySection]
+                type = "table"
+                deprecated = true
+
+                [types.legacySection.name]
+                type = "string"
+                deprecated = true
+
+                [types.modernSection]
+                type = "table"
+
+                [types.modernSection.title]
+                type = "string"
+
+                [types.counted]
+                type = "table"
+
+                [types.counted.count]
+                type = "integer"
+
+                [elements.section]
+                oneof = ["types.legacySection", "types.modernSection"]
+                allof = ["types.counted"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult result = loaded.validate(write("union-descendant-warning.toml", """
+                [section]
+                name = "old"
+                """));
+
+        assertFalse(result.isValid());
+        assertEquals(1, result.errors().size());
+        assertEquals("required", result.errors().getFirst().code());
+        assertEquals("$.section.count", result.errors().getFirst().path());
+        assertEquals(List.of("$.section.name"),
+                result.warnings().stream().map(ValidationWarning::path).toList());
+
+        ValidationResult accepted = loaded.validate(write("union-descendant-warning-valid.toml", """
+                [section]
+                name = "old"
+                count = 1
+                """));
+
+        assertTrue(accepted.isValid());
+        assertEquals(List.of("$.section.name", "$.section"),
+                accepted.warnings().stream().map(ValidationWarning::path).toList());
+    }
+
+    @Test
+    void keepsBranchWarningsOfValidNodesWhenSiblingNodesFail() throws IOException {        Path schema = write("union-sibling-warning.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.legacyName]
+                type = "string"
+                pattern = "^old-"
+                deprecated = true
+
+                [types.modernName]
+                type = "string"
+                pattern = "^new-"
+
+                [elements.section]
+                type = "table"
+
+                [elements.section.name]
+                oneof = ["types.legacyName", "types.modernName"]
+
+                [elements.section.count]
+                type = "integer"
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult result = loaded.validate(write("union-sibling-warning.toml", """
+                [section]
+                name = "old-tag"
+                count = "not an integer"
+                """));
+
+        assertFalse(result.isValid());
+        assertEquals(1, result.errors().size());
+        assertEquals("$.section.count", result.errors().getFirst().path());
+        assertEquals(1, result.warnings().size());
+        assertEquals("deprecated", result.warnings().getFirst().code());
+        assertEquals("$.section.name", result.warnings().getFirst().path());
+    }
+
+    @Test
+    void rejectsMalformedFeatureSchemas() throws IOException {
+        List<String> definitions = List.of(
+                "type = \"table\"\ndependentrequired = {}",
+                "type = \"table\"\nmutuallyexclusive = []",
+                "type = \"table\"\nexactlyone = [[\"a\", \"a\"]]",
+                "type = \"array\"\nuniqueitems = \"yes\"",
+                "type = \"string\"\nallof = [\"integer\"]",
+                "type = \"string\"\ndefault = 1");
+        for (int i = 0; i < definitions.size(); i++) {
+            Path schema = write("malformed-1-0-" + i + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [elements.value]
+                    %s
+                    """.formatted(definitions.get(i)));
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+    }
+
+    @Test
+    void rejectsInvalidCompositionRulesAndDefaultConflicts() throws IOException {
+        List<String> schemas = List.of(
+                """
+                [types.base]
+                type = "table"
+                [elements.value]
+                type = "table"
+                allof = ["types.missing"]
+                """,
+                """
+                [types.a]
+                type = "table"
+                allof = ["types.b"]
+                [types.b]
+                type = "table"
+                allof = ["types.a"]
+                [elements.value]
+                type = "types.a"
+                """,
+                """
+                [elements.value]
+                type = "table"
+                dependentrequired = { a = ["missing"] }
+                [elements.value.a]
+                type = "string"
+                optional = true
+                """,
+                """
+                [types.a]
+                type = "string"
+                default = "a"
+                [types.b]
+                type = "string"
+                default = "b"
+                [elements.value]
+                type = "string"
+                allof = ["types.a", "types.b"]
+                """);
+        for (int i = 0; i < schemas.size(); i++) {
+            Path schema = write("invalid-composition-" + i + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    %s
+                    """.formatted(schemas.get(i)));
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+    }
+
+    @Test
+    void cliKeepsWarningOnlyValidationSuccessful() throws IOException {
+        Path schema = write("cli-warning.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.old]
+                type = "string"
+                deprecated = true
+                """);
+        Path document = write("cli-warning.toml", "old = \"value\"\n");
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"validate", schema.toString(), document.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(0, exitCode);
+        assertTrue(out.toString(StandardCharsets.UTF_8).contains("is valid"));
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains("Warning:"));
+    }
+
+    @Test
+    void rejectsAssertionKeywordsBesideNamedReferencesAndUnionSelectors() throws IOException {
+        List<String> assertions = List.of(
+                "dependentrequired = { a = [\"b\"] }",
+                "mutuallyexclusive = [[\"a\", \"b\"]]",
+                "exactlyone = [[\"a\", \"b\"]]",
+                "uniqueitems = true");
+        for (int i = 0; i < assertions.size(); i++) {
+            Path namedReferenceSchema = write("named-reference-assertion-" + i + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [types.base]
+                    type = "string"
+
+                    [elements.value]
+                    type = "types.base"
+                    %s
+                    """.formatted(assertions.get(i)));
+            SchemaException namedReferenceError =
+                    assertThrows(SchemaException.class, () -> TomlSchema.load(namedReferenceSchema));
+            assertTrue(namedReferenceError.getMessage().contains("named type reference"));
+
+            Path unionSchema = write("union-assertion-" + i + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [elements.value]
+                    oneof = ["string", "integer"]
+                    %s
+                    """.formatted(assertions.get(i)));
+            SchemaException unionError =
+                    assertThrows(SchemaException.class, () -> TomlSchema.load(unionSchema));
+            assertTrue(unionError.getMessage().contains("union cannot define"));
+        }
+    }
+
+    @Test
+    void allowsSchemaKeywordNamesInCustomMetadata() throws IOException {
+        Path schema = write("one-zero-keyword-metadata.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [toml-schema.meta]
+                dependentrequired = "metadata"
+                mutuallyexclusive = "metadata"
+                exactlyone = "metadata"
+                allof = "metadata"
+                uniqueitems = "metadata"
+                default = "metadata"
+                deprecated = "metadata"
+
+                [elements.value]
+                type = "string"
+                """);
+
+        assertDoesNotThrow(() -> TomlSchema.load(schema));
+    }
+
+    @Test
+    void unionSelectorsPreserveOpenTableBranches() throws IOException {
+        Path schema = write("open-table-unions.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.open]
+                type = "table"
+
+                [types.closed]
+                type = "table"
+                [types.closed.known]
+                type = "string"
+
+                [types.oneChoice]
+                oneof = ["types.open", "types.closed"]
+
+                [elements.one]
+                type = "types.oneChoice"
+
+                [elements.any]
+                anyof = ["types.open", "types.closed"]
+                """);
+        Path document = write("open-table-unions.toml", """
+                [one]
+                arbitrary = true
+
+                [any]
+                another = 42
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
     }
 
     private Path write(String fileName, String content) throws IOException {

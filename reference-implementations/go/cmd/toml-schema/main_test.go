@@ -130,11 +130,36 @@ ports = [8080, 8081]
 	if exitCode != 0 {
 		t.Fatalf("expected exit code 0, got %d: %s", exitCode, errOut.String())
 	}
+
 	if !strings.Contains(out.String(), "Extracted schema to") {
 		t.Fatalf("expected extract output, got %q", out.String())
 	}
 	if _, err := os.Stat(extractedSchema); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCLIDeprecationWarningDoesNotFailValidation(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := writeFile(t, dir, "deprecated.tosd", `
+[toml-schema]
+version = "1.0.0"
+[elements.legacy]
+type = "string"
+deprecated = true
+`)
+	documentPath := writeFile(t, dir, "deprecated.toml", `legacy = "value"`)
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+
+	exitCode := run([]string{"validate", schemaPath, documentPath}, &out, &errOut)
+
+	if exitCode != 0 || !strings.Contains(out.String(), "is valid") {
+		t.Fatalf("warning-only validation must succeed: exit=%d out=%q err=%q",
+			exitCode, out.String(), errOut.String())
+	}
+	if !strings.Contains(errOut.String(), "warning[deprecated] $.legacy") {
+		t.Fatalf("expected structured deprecation warning, got %q", errOut.String())
 	}
 }
 

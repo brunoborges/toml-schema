@@ -91,7 +91,8 @@ function buildGeneratePrompt(desc) {
         '- Include a [toml-schema] table with version = "1.0.0".',
         "- Describe the document's top-level structure under [elements]; use nested tables like [elements.<name>.<child>] for sub-tables.",
         '- Put reusable definitions under [types.<name>] and reference them with type = "types.<name>". Use itemtype = "types.<name>" for array and collection members.',
-        "- Use only TOSD property keys: type (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, collection), optional, min, max, minlength, maxlength, pattern, keypattern, allowedvalues, itemtype, items, oneof, anyof.",
+        "- Keep `type`, `oneof`, and `anyof` as mutually exclusive selectors. Use `allof` only as an additive list of compatible type references.",
+        "- Use only TOML Schema property keys: type (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, collection), optional, min, max, minlength, maxlength, pattern, keypattern, allowedvalues, itemtype, items, oneof, anyof, allof, uniqueitems, dependentrequired, mutuallyexclusive, exactlyone, default, deprecated, description.",
         "- Mark fields that may be omitted with optional = true; everything is required by default.",
     ].join("\n");
 }

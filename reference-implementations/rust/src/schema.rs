@@ -11,6 +11,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use regex::Regex;
+use toml::de::{DeTable, DeValue};
 use toml::value::{Datetime, Offset};
 use toml::{Table, Value};
 use url::Url;
@@ -105,6 +106,13 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "maxlength",
     "oneof",
     "anyof",
+    "dependentrequired",
+    "mutuallyexclusive",
+    "exactlyone",
+    "allof",
+    "uniqueitems",
+    "default",
+    "deprecated",
 ];
 
 pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0";
@@ -133,7 +141,33 @@ pub struct Definition {
     max_length: Option<i64>,
     one_of: Vec<String>,
     any_of: Vec<String>,
+    all_of: Vec<String>,
+    dependent_required: BTreeMap<String, Vec<String>>,
+    mutually_exclusive: Vec<Vec<String>>,
+    exactly_one: Vec<Vec<String>>,
+    unique_items: Option<bool>,
+    default_value: Option<Value>,
+    deprecated: bool,
     children: BTreeMap<String, Definition>,
+}
+
+impl Definition {
+    /// Returns the definition's fully-qualified schema name.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    /// Returns the default declared directly on this definition, if any.
+    ///
+    /// Use [`Schema::effective_default`] when inherited defaults should be included.
+    pub fn declared_default(&self) -> Option<&Value> {
+        self.default_value.as_ref()
+    }
+
+    /// Returns a direct fixed-child definition.
+    pub fn child_definition(&self, name: &str) -> Option<&Definition> {
+        self.children.get(name)
+    }
 }
 
 /// A single validation error.
@@ -147,12 +181,36 @@ pub struct ValidationError {
 #[derive(Debug, Clone, Default)]
 pub struct ValidationResult {
     pub errors: Vec<ValidationError>,
+    pub warnings: Vec<ValidationWarning>,
 }
 
 impl ValidationResult {
     pub fn valid(&self) -> bool {
         self.errors.is_empty()
     }
+
+    pub fn errors(&self) -> &[ValidationError] {
+        &self.errors
+    }
+
+    pub fn warnings(&self) -> &[ValidationWarning] {
+        &self.warnings
+    }
+}
+
+/// Severity of a non-fatal validation diagnostic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Warning,
+}
+
+/// A structured non-fatal validation diagnostic.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidationWarning {
+    pub severity: DiagnosticSeverity,
+    pub code: String,
+    pub path: String,
+    pub message: String,
 }
 
 /// A loaded TOML Schema document.
@@ -165,17 +223,118 @@ pub struct Schema {
     elements: BTreeMap<String, Definition>,
 }
 
+/// Records which table-valued keys were written as inline tables in the schema
+/// source.
+///
+/// The TOML value model erases the difference between `default = { ... }` and
+/// `[<path>.default]`, yet the two mean different things in a schema document:
+/// the first is the `default` annotation property, the second is a child
+/// definition that happens to be named `default`. Spans reported by
+/// [`DeTable`] are used to recover that syntax before it is lost.
+#[derive(Debug, Default, Clone)]
+struct SourceSyntax {
+    inline_tables: HashSet<Vec<String>>,
+}
+
+impl SourceSyntax {
+    /// Records every inline-table occurrence in `text`. A source that cannot be
+    /// parsed contributes no occurrences; the caller reports the parse error.
+    fn from_source(text: &str) -> Self {
+        let mut syntax = SourceSyntax::default();
+        if let Ok(document) = DeTable::parse(text) {
+            syntax.record_table(document.get_ref(), text, &mut Vec::new());
+        }
+        syntax
+    }
+
+    fn record_table(&mut self, table: &DeTable<'_>, text: &str, path: &mut Vec<String>) {
+        for (key, value) in table.iter() {
+            path.push(key.get_ref().as_ref().to_string());
+            if let DeValue::Table(child) = value.get_ref() {
+                if text.as_bytes().get(value.span().start) == Some(&b'{') {
+                    self.inline_tables.insert(path.clone());
+                }
+                self.record_table(child, text, path);
+            }
+            path.pop();
+        }
+    }
+
+    fn is_inline_table(&self, path: &[String], key: &str) -> bool {
+        let mut candidate = Vec::with_capacity(path.len() + 1);
+        candidate.extend_from_slice(path);
+        candidate.push(key.to_string());
+        self.inline_tables.contains(&candidate)
+    }
+}
+
+/// The syntax recorded for one definition, used to tell annotation properties
+/// apart from child definitions.
+#[derive(Clone, Copy)]
+struct SyntaxContext<'a> {
+    syntax: &'a SourceSyntax,
+    path: &'a [String],
+}
+
+impl<'a> SyntaxContext<'a> {
+    fn child_path(&self, key: &str) -> Vec<String> {
+        let mut path = Vec::with_capacity(self.path.len() + 1);
+        path.extend_from_slice(self.path);
+        path.push(key.to_string());
+        path
+    }
+
+    fn child(&self, path: &'a [String]) -> SyntaxContext<'a> {
+        SyntaxContext {
+            syntax: self.syntax,
+            path,
+        }
+    }
+
+    /// Returns true when `key` carries an annotation property value rather than
+    /// a child definition. Table values only qualify when the source wrote them
+    /// as an inline table.
+    fn is_property(&self, table: &Table, key: &str) -> bool {
+        match table.get(key) {
+            None => false,
+            Some(Value::Table(_)) => self.syntax.is_inline_table(self.path, key),
+            Some(_) => true,
+        }
+    }
+}
+
 impl Schema {
     /// Loads a TOML Schema document from a filesystem path.
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, String> {
         let path = path.as_ref();
-        let parsed = parse_toml_file(path)
+        let content = read_toml_source(path)
             .map_err(|error| format!("unable to parse schema {}: {}", path.display(), error))?;
-        Self::from_table(path.to_path_buf(), parsed)
+        Self::from_source(path.to_path_buf(), &content)
+    }
+
+    /// Builds a schema from the schema document source text.
+    ///
+    /// This is the syntax-preserving entry point: inline-table annotations such
+    /// as `default = { min = 1 }` are distinguished from child definitions such
+    /// as `[elements.thing.default]` using source spans.
+    pub fn from_source(source: PathBuf, text: &str) -> Result<Self, String> {
+        let parsed = parse_toml_str(&source, text)
+            .map_err(|error| format!("unable to parse schema {}: {}", source.display(), error))?;
+        let syntax = SourceSyntax::from_source(text);
+        Self::from_parts(source, parsed, &syntax)
     }
 
     /// Builds a schema from an already-parsed TOML Schema root table.
+    ///
+    /// The TOML value model has already erased the difference between inline
+    /// tables and table headers, so every table-valued schema keyword is read as
+    /// a child definition. Use [`Schema::from_source`] when inline-table
+    /// annotations such as `default = { ... }` must be honoured.
     pub fn from_table(source: PathBuf, table: Table) -> Result<Self, String> {
+        Self::from_parts(source, table, &SourceSyntax::default())
+    }
+
+    fn from_parts(source: PathBuf, table: Table, syntax: &SourceSyntax) -> Result<Self, String> {
         if !matches!(table.get("toml-schema"), Some(Value::Table(_))) {
             return Err("schema must contain a [toml-schema] table".to_string());
         }
@@ -206,8 +365,8 @@ impl Schema {
         }
         let types_table = table.get("types").and_then(Value::as_table);
         let elements_table = table.get("elements").and_then(Value::as_table);
-        let types = parse_definitions("types", types_table, false)?;
-        let elements = parse_definitions("elements", elements_table, true)?;
+        let types = parse_definitions("types", types_table, false, syntax)?;
+        let elements = parse_definitions("elements", elements_table, true, syntax)?;
         let schema = Schema {
             source,
             version,
@@ -218,7 +377,9 @@ impl Schema {
         schema.validate_references(&schema.types)?;
         schema.validate_references(&schema.elements)?;
         schema.validate_selector_cycles()?;
+        schema.validate_definition_semantics()?;
         schema.validate_array_range_definitions()?;
+        schema.validate_defaults()?;
         Ok(schema)
     }
 
@@ -230,6 +391,22 @@ impl Schema {
     /// Returns non-fatal warnings produced while discovering this schema.
     pub fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// Returns a root element definition.
+    pub fn element_definition(&self, name: &str) -> Option<&Definition> {
+        self.elements.get(name)
+    }
+
+    /// Returns a reusable type definition.
+    pub fn type_definition(&self, name: &str) -> Option<&Definition> {
+        self.types.get(&normalize_reference(name.to_string()))
+    }
+
+    /// Resolves the effective default for a definition, including defaults
+    /// inherited through `type` and `allof`.
+    pub fn effective_default(&self, definition: &Definition) -> Result<Option<Value>, String> {
+        self.resolve_effective_default(definition, &mut HashSet::new())
     }
 
     fn validate_schema_version(value: &Value) -> Result<(), String> {
@@ -273,6 +450,7 @@ impl Schema {
                 .chain(definition.items.iter())
                 .chain(definition.one_of.iter())
                 .chain(definition.any_of.iter())
+                .chain(definition.all_of.iter())
             {
                 if SchemaType::parse(reference).is_none() && !self.types.contains_key(reference) {
                     return Err(format!(
@@ -314,11 +492,337 @@ impl Schema {
         if let Some(reference) = definition.reference.as_deref() {
             self.validate_selector_cycle(reference, visiting, visited)?;
         }
-        for reference in definition.one_of.iter().chain(definition.any_of.iter()) {
+        for reference in definition
+            .one_of
+            .iter()
+            .chain(definition.any_of.iter())
+            .chain(definition.all_of.iter())
+        {
             self.validate_selector_cycle(reference, visiting, visited)?;
         }
         visiting.remove(type_name);
         visited.insert(type_name.to_string());
+        Ok(())
+    }
+
+    fn validate_definition_semantics(&self) -> Result<(), String> {
+        for definition in self.types.values().chain(self.elements.values()) {
+            self.validate_definition_semantic(definition)?;
+        }
+        Ok(())
+    }
+
+    fn validate_definition_semantic(&self, definition: &Definition) -> Result<(), String> {
+        let has_sibling_rules = !definition.dependent_required.is_empty()
+            || !definition.mutually_exclusive.is_empty()
+            || !definition.exactly_one.is_empty();
+        let kind = if definition.unique_items.is_some()
+            || has_sibling_rules
+            || !definition.all_of.is_empty()
+            || definition.type_name == Some(SchemaType::Collection)
+        {
+            Some(self.effective_kind(definition, &mut HashSet::new())?)
+        } else {
+            None
+        };
+        if definition.unique_items.is_some() && kind != Some(SchemaType::Array) {
+            return Err(format!(
+                "{} can only define uniqueitems when its effective type is array",
+                definition.name
+            ));
+        }
+        if kind == Some(SchemaType::Collection)
+            && !self.has_collection_item_constraint(definition, &mut HashSet::new())
+        {
+            return Err(format!(
+                "{} effective collection must define at least one itemtype",
+                definition.name
+            ));
+        }
+        if has_sibling_rules && !matches!(kind, Some(SchemaType::Table | SchemaType::Collection)) {
+            return Err(format!(
+                "{} can only define sibling rules when its effective type is table or collection",
+                definition.name
+            ));
+        }
+        if has_sibling_rules {
+            let mut children = HashSet::new();
+            self.collect_effective_child_names(definition, &mut HashSet::new(), &mut children)?;
+            for (trigger, required) in &definition.dependent_required {
+                if !children.contains(trigger) {
+                    return Err(format!(
+                        "{} dependentrequired references unknown fixed child {trigger}",
+                        definition.name
+                    ));
+                }
+                for child in required {
+                    if !children.contains(child) {
+                        return Err(format!(
+                            "{} dependentrequired references unknown fixed child {child}",
+                            definition.name
+                        ));
+                    }
+                }
+            }
+            for (property, groups) in [
+                ("mutuallyexclusive", &definition.mutually_exclusive),
+                ("exactlyone", &definition.exactly_one),
+            ] {
+                for group in groups {
+                    for child in group {
+                        if !children.contains(child) {
+                            return Err(format!(
+                                "{} {property} references unknown fixed child {child}",
+                                definition.name
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+        for child in definition.children.values() {
+            self.validate_definition_semantic(child)?;
+        }
+        Ok(())
+    }
+
+    /// Reports whether a definition supplies a collection item constraint
+    /// locally or through any composed, referenced, or alternative definition.
+    fn has_collection_item_constraint(
+        &self,
+        definition: &Definition,
+        seen: &mut HashSet<String>,
+    ) -> bool {
+        if definition.item_reference.is_some() {
+            return true;
+        }
+        let alternatives = if definition.one_of.is_empty() {
+            &definition.any_of
+        } else {
+            &definition.one_of
+        };
+        definition
+            .reference
+            .iter()
+            .chain(alternatives.iter())
+            .chain(definition.all_of.iter())
+            .any(|reference| self.reference_has_collection_item_constraint(reference, seen))
+    }
+
+    fn reference_has_collection_item_constraint(
+        &self,
+        reference: &str,
+        seen: &mut HashSet<String>,
+    ) -> bool {
+        let normalized = normalize_reference(reference.to_string());
+        if SchemaType::parse(&normalized).is_some() {
+            return false;
+        }
+        if !seen.insert(normalized.clone()) {
+            return false;
+        }
+        let found = self
+            .types
+            .get(&normalized)
+            .is_some_and(|definition| self.has_collection_item_constraint(definition, seen));
+        seen.remove(&normalized);
+        found
+    }
+
+    fn effective_kind(
+        &self,
+        definition: &Definition,
+        seen: &mut HashSet<String>,
+    ) -> Result<SchemaType, String> {
+        let base_kind = if let Some(type_name) = definition.type_name {
+            type_name
+        } else if let Some(reference) = definition.reference.as_deref() {
+            self.reference_kind(reference, seen)?
+        } else {
+            let alternatives = if !definition.one_of.is_empty() {
+                &definition.one_of
+            } else {
+                &definition.any_of
+            };
+            let mut kinds = HashSet::new();
+            for reference in alternatives {
+                kinds.insert(self.reference_kind(reference, seen)?);
+            }
+            if kinds.len() != 1 {
+                return Err(format!(
+                    "{} alternatives do not have one compatible effective type",
+                    definition.name
+                ));
+            }
+            *kinds.iter().next().expect("one alternative kind")
+        };
+        if !definition.all_of.is_empty() {
+            if matches!(base_kind, SchemaType::Any) {
+                return Err(format!(
+                    "{} cannot compose an indeterminate any type with allof",
+                    definition.name
+                ));
+            }
+            for reference in &definition.all_of {
+                let component_kind = self.reference_kind(reference, seen)?;
+                if component_kind == SchemaType::Any || component_kind != base_kind {
+                    return Err(format!(
+                        "{} allof component {reference} has incompatible effective type",
+                        definition.name
+                    ));
+                }
+            }
+        }
+        Ok(base_kind)
+    }
+
+    fn reference_kind(
+        &self,
+        reference: &str,
+        seen: &mut HashSet<String>,
+    ) -> Result<SchemaType, String> {
+        let normalized = normalize_reference(reference.to_string());
+        if let Some(kind) = SchemaType::parse(&normalized) {
+            return Ok(kind);
+        }
+        if !seen.insert(normalized.clone()) {
+            return Err(format!("cyclic type reference: {normalized}"));
+        }
+        let definition = self
+            .types
+            .get(&normalized)
+            .ok_or_else(|| format!("unknown type reference: {reference}"))?;
+        let result = self.effective_kind(definition, seen);
+        seen.remove(&normalized);
+        result
+    }
+
+    fn collect_effective_child_names(
+        &self,
+        definition: &Definition,
+        seen: &mut HashSet<String>,
+        names: &mut HashSet<String>,
+    ) -> Result<(), String> {
+        names.extend(definition.children.keys().cloned());
+        if let Some(reference) = definition.reference.as_deref() {
+            self.collect_reference_child_names(reference, seen, names)?;
+        }
+        for reference in definition
+            .one_of
+            .iter()
+            .chain(definition.any_of.iter())
+            .chain(definition.all_of.iter())
+        {
+            self.collect_reference_child_names(reference, seen, names)?;
+        }
+        Ok(())
+    }
+
+    fn collect_reference_child_names(
+        &self,
+        reference: &str,
+        seen: &mut HashSet<String>,
+        names: &mut HashSet<String>,
+    ) -> Result<(), String> {
+        let normalized = normalize_reference(reference.to_string());
+        if SchemaType::parse(&normalized).is_some() {
+            return Ok(());
+        }
+        if !seen.insert(normalized.clone()) {
+            return Err(format!("cyclic type reference: {normalized}"));
+        }
+        let definition = self
+            .types
+            .get(&normalized)
+            .ok_or_else(|| format!("unknown type reference: {reference}"))?;
+        let result = self.collect_effective_child_names(definition, seen, names);
+        seen.remove(&normalized);
+        result
+    }
+
+    fn resolve_effective_default(
+        &self,
+        definition: &Definition,
+        seen: &mut HashSet<String>,
+    ) -> Result<Option<Value>, String> {
+        if let Some(value) = &definition.default_value {
+            return Ok(Some(value.clone()));
+        }
+        let mut inherited = Vec::new();
+        if let Some(reference) = definition.reference.as_deref() {
+            if let Some(value) = self.reference_effective_default(reference, seen)? {
+                inherited.push(value);
+            }
+        }
+        for reference in &definition.all_of {
+            if let Some(value) = self.reference_effective_default(reference, seen)? {
+                inherited.push(value);
+            }
+        }
+        let Some(first) = inherited.first().cloned() else {
+            return Ok(None);
+        };
+        if inherited[1..]
+            .iter()
+            .any(|candidate| !values_equal(&first, candidate))
+        {
+            return Err(format!(
+                "{} inherits conflicting defaults through allof",
+                definition.name
+            ));
+        }
+        Ok(Some(first))
+    }
+
+    fn reference_effective_default(
+        &self,
+        reference: &str,
+        seen: &mut HashSet<String>,
+    ) -> Result<Option<Value>, String> {
+        let normalized = normalize_reference(reference.to_string());
+        if SchemaType::parse(&normalized).is_some() {
+            return Ok(None);
+        }
+        if !seen.insert(normalized.clone()) {
+            return Err(format!("cyclic default reference: {normalized}"));
+        }
+        let definition = self
+            .types
+            .get(&normalized)
+            .ok_or_else(|| format!("unknown type reference: {reference}"))?;
+        let result = self.resolve_effective_default(definition, seen);
+        seen.remove(&normalized);
+        result
+    }
+
+    fn validate_defaults(&self) -> Result<(), String> {
+        for definition in self.types.values().chain(self.elements.values()) {
+            self.validate_definition_defaults(definition)?;
+        }
+        Ok(())
+    }
+
+    fn validate_definition_defaults(&self, definition: &Definition) -> Result<(), String> {
+        if let Some(default) = self.effective_default(definition)? {
+            let mut validator = Validator::new(self);
+            validator.emit_deprecations = false;
+            validator.validate_value("$default", &default, definition);
+            if !validator.errors.is_empty() {
+                let details = validator
+                    .errors
+                    .iter()
+                    .map(|error| format!("{}: {}", error.path, error.message))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+                return Err(format!(
+                    "{} has invalid effective default: {details}",
+                    definition.name
+                ));
+            }
+        }
+        for child in definition.children.values() {
+            self.validate_definition_defaults(child)?;
+        }
         Ok(())
     }
 
@@ -412,6 +916,7 @@ impl Schema {
                     path: "$".to_string(),
                     message: error,
                 }],
+                warnings: Vec::new(),
             },
         }
     }
@@ -427,6 +932,7 @@ impl Schema {
         }
         ValidationResult {
             errors: validator.errors,
+            warnings: validator.warnings,
         }
     }
 }
@@ -555,22 +1061,35 @@ fn compare_document_schema_version(value: &Value, actual: &str) -> Result<Option
     Ok(None)
 }
 
+fn read_toml_source(path: &Path) -> Result<String, String> {
+    fs::read_to_string(path).map_err(|error| format!("{}: {}", path.display(), error))
+}
+
+fn parse_toml_str(path: &Path, content: &str) -> Result<Table, String> {
+    toml::from_str::<Table>(content).map_err(|error| format!("{}: {}", path.display(), error))
+}
+
 fn parse_toml_file(path: &Path) -> Result<Table, String> {
-    let content =
-        fs::read_to_string(path).map_err(|error| format!("{}: {}", path.display(), error))?;
-    toml::from_str::<Table>(&content).map_err(|error| format!("{}: {}", path.display(), error))
+    let content = read_toml_source(path)?;
+    parse_toml_str(path, &content)
 }
 
 fn parse_definitions(
     prefix: &str,
     table: Option<&Table>,
     required: bool,
+    syntax: &SourceSyntax,
 ) -> Result<BTreeMap<String, Definition>, String> {
     let Some(table) = table else {
         if required {
             return Err(format!("missing required [{prefix}] table"));
         }
         return Ok(BTreeMap::new());
+    };
+    let root = [prefix.to_string()];
+    let context = SyntaxContext {
+        syntax,
+        path: &root,
     };
     let mut definitions = BTreeMap::new();
     for (key, value) in table.iter() {
@@ -580,13 +1099,19 @@ fn parse_definitions(
         let value_map = value
             .as_table()
             .ok_or_else(|| format!("[{prefix}] entry must be a table: {key}"))?;
-        let definition = parse_definition(&format!("{prefix}.{key}"), value_map)?;
+        let path = context.child_path(key);
+        let definition =
+            parse_definition(&format!("{prefix}.{key}"), value_map, context.child(&path))?;
         definitions.insert(key.clone(), definition);
     }
     Ok(definitions)
 }
 
-fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
+fn parse_definition(
+    name: &str,
+    table: &Table,
+    context: SyntaxContext<'_>,
+) -> Result<Definition, String> {
     if property_value(table, "arraytype").is_some() {
         return Err(format!("{name} contains unsupported property: arraytype"));
     }
@@ -598,7 +1123,10 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         .map(|selector| normalize_reference(selector.to_string()));
     if reference.is_some() {
         for key in table.keys() {
-            if !matches!(key.as_str(), "type" | "description" | "optional") {
+            if !matches!(
+                key.as_str(),
+                "type" | "description" | "optional" | "allof" | "default" | "deprecated"
+            ) {
                 return Err(format!("{name} named type reference cannot define {key}"));
             }
         }
@@ -617,6 +1145,18 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let has_any_of = property_value(table, "anyof").is_some();
     let one_of = get_string_array_values(name, table, "oneof")?;
     let any_of = get_string_array_values(name, table, "anyof")?;
+    let has_all_of = property_value(table, "allof").is_some();
+    let all_of = get_string_array_values(name, table, "allof")?;
+    let dependent_required = get_dependent_required(name, table, context)?;
+    let mutually_exclusive = get_name_groups(name, table, "mutuallyexclusive")?;
+    let exactly_one = get_name_groups(name, table, "exactlyone")?;
+    let unique_items = get_bool(name, table, "uniqueitems")?;
+    let deprecated = get_bool(name, table, "deprecated")?.unwrap_or(false);
+    let default_value = if context.is_property(table, "default") {
+        table.get("default").cloned()
+    } else {
+        None
+    };
     if has_one_of && one_of.is_empty() {
         return Err(format!(
             "{name} oneof must contain at least one type reference"
@@ -627,10 +1167,16 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             "{name} anyof must contain at least one type reference"
         ));
     }
+    if has_all_of && all_of.is_empty() {
+        return Err(format!(
+            "{name} allof must contain at least one type reference"
+        ));
+    }
     reject_bare_collection_reference(name, "itemtype", item_reference.as_deref())?;
     reject_bare_collection_references(name, "items", &items)?;
     validate_alternative_references(name, "oneof", &one_of)?;
     validate_alternative_references(name, "anyof", &any_of)?;
+    validate_composition_references(name, &all_of)?;
     if type_selector.as_deref().is_some_and(|selector| {
         type_name != Some(SchemaType::Collection)
             && normalize_reference(selector.to_string()) == SchemaType::Collection.schema_name()
@@ -648,11 +1194,19 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     }
     let mut children: BTreeMap<String, Definition> = BTreeMap::new();
     for (key, value) in table.iter() {
+        if is_definition_key(key) && context.is_property(table, key) {
+            continue;
+        }
         if let Some(child_table) = value.as_table() {
             if children.contains_key(key) {
                 return Err(format!("{name} defines child {key} more than once"));
             }
-            let child = parse_definition(&format!("{name}.{key}"), child_table)?;
+            let child_path = context.child_path(key);
+            let child = parse_definition(
+                &format!("{name}.{key}"),
+                child_table,
+                context.child(&child_path),
+            )?;
             children.insert(key.clone(), child);
         } else if !is_definition_key(key) {
             return Err(format!("{name} contains unsupported property: {key}"));
@@ -660,7 +1214,10 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     }
     if has_one_of || has_any_of {
         for key in table.keys() {
-            if !matches!(key.as_str(), "oneof" | "anyof" | "description" | "optional") {
+            if !matches!(
+                key.as_str(),
+                "oneof" | "anyof" | "description" | "optional" | "allof" | "default" | "deprecated"
+            ) {
                 return Err(format!("{name} union cannot define {key}"));
             }
         }
@@ -735,7 +1292,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
             "{name} can only define minlength or maxlength when type is string, array, or collection"
         ));
     }
-    if type_name == Some(SchemaType::Collection) && item_reference.is_none() {
+    if type_name == Some(SchemaType::Collection) && item_reference.is_none() && all_of.is_empty() {
         return Err(format!(
             "{name} must define itemtype when type is collection"
         ));
@@ -777,6 +1334,13 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         max_length,
         one_of: normalize_references(one_of),
         any_of: normalize_references(any_of),
+        all_of: normalize_references(all_of),
+        dependent_required,
+        mutually_exclusive,
+        exactly_one,
+        unique_items,
+        default_value,
+        deprecated,
         children,
     })
 }
@@ -819,6 +1383,104 @@ fn validate_alternative_references(
         }
     }
     Ok(())
+}
+
+fn validate_composition_references(name: &str, references: &[String]) -> Result<(), String> {
+    for reference in references {
+        let normalized = normalize_reference(reference.clone());
+        if matches!(
+            SchemaType::parse(&normalized),
+            Some(SchemaType::Any | SchemaType::Collection)
+        ) {
+            return Err(format!("{name} cannot use {normalized} directly in allof"));
+        }
+    }
+    Ok(())
+}
+
+fn get_dependent_required(
+    name: &str,
+    table: &Table,
+    context: SyntaxContext<'_>,
+) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let Some(value) = table.get("dependentrequired") else {
+        return Ok(BTreeMap::new());
+    };
+    if !context.is_property(table, "dependentrequired") {
+        return Ok(BTreeMap::new());
+    }
+    let mapping = value
+        .as_table()
+        .ok_or_else(|| format!("{name}.dependentrequired must be an inline table"))?;
+    if mapping.is_empty() {
+        return Err(format!(
+            "{name}.dependentrequired must contain at least one mapping"
+        ));
+    }
+    let mut result = BTreeMap::new();
+    for (trigger, required_value) in mapping {
+        let required = required_value.as_array().ok_or_else(|| {
+            format!("{name}.dependentrequired.{trigger} must be an array of child names")
+        })?;
+        if required.is_empty() {
+            return Err(format!(
+                "{name}.dependentrequired.{trigger} must not be empty"
+            ));
+        }
+        let mut names = Vec::with_capacity(required.len());
+        let mut unique = HashSet::new();
+        for required_name in required {
+            let required_name = required_name.as_str().ok_or_else(|| {
+                format!("{name}.dependentrequired.{trigger} must contain only strings")
+            })?;
+            if !unique.insert(required_name.to_string()) {
+                return Err(format!(
+                    "{name}.dependentrequired.{trigger} contains duplicate child {required_name}"
+                ));
+            }
+            names.push(required_name.to_string());
+        }
+        result.insert(trigger.clone(), names);
+    }
+    Ok(result)
+}
+
+fn get_name_groups(name: &str, table: &Table, key: &str) -> Result<Vec<Vec<String>>, String> {
+    let Some(value) = property_value(table, key) else {
+        return Ok(Vec::new());
+    };
+    let groups = value
+        .as_array()
+        .ok_or_else(|| format!("{name}.{key} must be an array of child-name groups"))?;
+    if groups.is_empty() {
+        return Err(format!("{name}.{key} must contain at least one group"));
+    }
+    let mut result = Vec::with_capacity(groups.len());
+    for (index, group) in groups.iter().enumerate() {
+        let group = group
+            .as_array()
+            .ok_or_else(|| format!("{name}.{key}[{index}] must be an array"))?;
+        if group.len() < 2 {
+            return Err(format!(
+                "{name}.{key}[{index}] must contain at least two child names"
+            ));
+        }
+        let mut names = Vec::with_capacity(group.len());
+        let mut unique = HashSet::new();
+        for value in group {
+            let child = value
+                .as_str()
+                .ok_or_else(|| format!("{name}.{key}[{index}] must contain only strings"))?;
+            if !unique.insert(child.to_string()) {
+                return Err(format!(
+                    "{name}.{key}[{index}] contains duplicate child {child}"
+                ));
+            }
+            names.push(child.to_string());
+        }
+        result.push(names);
+    }
+    Ok(result)
 }
 
 fn validate_range_constraints(
@@ -971,6 +1633,8 @@ fn validate_allowed_values_constraints(
 struct Validator<'schema> {
     schema: &'schema Schema,
     errors: Vec<ValidationError>,
+    warnings: Vec<ValidationWarning>,
+    emit_deprecations: bool,
 }
 
 impl<'schema> Validator<'schema> {
@@ -978,6 +1642,8 @@ impl<'schema> Validator<'schema> {
         Self {
             schema,
             errors: Vec::new(),
+            warnings: Vec::new(),
+            emit_deprecations: true,
         }
     }
 
@@ -1008,133 +1674,231 @@ impl<'schema> Validator<'schema> {
     }
 
     fn validate_value(&mut self, path: &str, value: &Value, definition: &Definition) {
-        let resolved = match self.resolve(definition, &mut HashSet::new()) {
-            Ok(resolved) => resolved,
+        let components = match self.collect_components(definition, &mut HashSet::new()) {
+            Ok(components) => components,
             Err(error) => {
                 self.add(path, &error);
                 return;
             }
         };
-        if !resolved.one_of.is_empty() || !resolved.any_of.is_empty() {
-            self.validate_union(path, value, &resolved);
+        self.validate_component_set(path, value, components);
+    }
+
+    fn collect_components(
+        &self,
+        definition: &Definition,
+        seen: &mut HashSet<String>,
+    ) -> Result<Vec<Definition>, String> {
+        let mut resolved = self.resolve(definition, &mut HashSet::new())?;
+        let all_of = std::mem::take(&mut resolved.all_of);
+        let mut components = vec![resolved];
+        for reference in all_of {
+            let normalized = normalize_reference(reference.clone());
+            if !seen.insert(normalized.clone()) {
+                return Err(format!("cyclic allof reference: {normalized}"));
+            }
+            let component = self.resolve_reference(&reference, &mut HashSet::new())?;
+            components.extend(self.collect_components(&component, seen)?);
+            seen.remove(&normalized);
+        }
+        Ok(components)
+    }
+
+    fn validate_component_set(
+        &mut self,
+        path: &str,
+        value: &Value,
+        mut components: Vec<Definition>,
+    ) {
+        if let Some(index) = components
+            .iter()
+            .position(|component| !component.one_of.is_empty() || !component.any_of.is_empty())
+        {
+            let union = components.remove(index);
+            let alternatives = if !union.one_of.is_empty() {
+                &union.one_of
+            } else {
+                &union.any_of
+            };
+            let mut successful = Vec::new();
+            for reference in alternatives {
+                let alternative = match self.resolve_reference(reference, &mut HashSet::new()) {
+                    Ok(alternative) => alternative,
+                    Err(error) => {
+                        self.add(path, &error);
+                        return;
+                    }
+                };
+                let mut candidate_components = components.clone();
+                let mut union_assertions = union.clone();
+                union_assertions.one_of.clear();
+                union_assertions.any_of.clear();
+                union_assertions.type_name =
+                    match self.schema.reference_kind(reference, &mut HashSet::new()) {
+                        Ok(kind) => Some(kind),
+                        Err(error) => {
+                            self.add(path, &error);
+                            return;
+                        }
+                    };
+                candidate_components.push(union_assertions);
+                match self.collect_components(&alternative, &mut HashSet::new()) {
+                    Ok(expanded) => candidate_components.extend(expanded),
+                    Err(error) => {
+                        self.add(path, &error);
+                        return;
+                    }
+                }
+                let mut candidate = Validator::new(self.schema);
+                candidate.emit_deprecations = self.emit_deprecations;
+                candidate.validate_component_set(path, value, candidate_components);
+                if candidate.errors.is_empty() {
+                    successful.push(candidate);
+                }
+            }
+            let success = if !union.one_of.is_empty() {
+                if successful.len() != 1 {
+                    self.add(
+                        path,
+                        &format!(
+                            "expected exactly one matching type from oneof but found {}",
+                            successful.len()
+                        ),
+                    );
+                    false
+                } else {
+                    true
+                }
+            } else if successful.is_empty() {
+                self.add(path, "expected at least one matching type from anyof");
+                false
+            } else {
+                true
+            };
+            if success {
+                for candidate in successful {
+                    self.merge_warnings(candidate.warnings);
+                }
+                if union.deprecated {
+                    self.add_deprecation(path);
+                }
+            }
             return;
         }
-        let type_name = resolved.type_name.unwrap_or(SchemaType::Any);
-        self.validate_type(path, value, type_name);
-        if !value_matches_type(value, type_name) {
+
+        let error_start = self.errors.len();
+        let Some(type_name) = components.first().and_then(|component| component.type_name) else {
+            self.add(path, "definition has no effective type");
+            return;
+        };
+        for component in &components {
+            let component_type = component.type_name.unwrap_or(SchemaType::Any);
+            self.validate_type(path, value, component_type);
+        }
+        if self.errors.len() != error_start {
             return;
         }
-        self.validate_common_constraints(path, value, &resolved);
+        for component in &components {
+            self.validate_common_constraints(path, value, component);
+        }
         match type_name {
             SchemaType::Table => {
                 if let Value::Table(table) = value {
-                    self.validate_table_value(path, table, &resolved);
+                    self.validate_table_value(path, table, &components);
                 }
             }
             SchemaType::Collection => {
                 if let Value::Table(table) = value {
-                    self.validate_collection(path, table, &resolved);
+                    self.validate_collection(path, table, &components);
                 }
             }
             SchemaType::Array => {
                 if let Value::Array(array) = value {
-                    self.validate_array(path, array, &resolved);
+                    for component in &components {
+                        self.validate_array(path, array, component);
+                    }
                 }
             }
             _ => {}
         }
-    }
-
-    fn validate_union(&mut self, path: &str, value: &Value, definition: &Definition) {
-        let alternatives = if !definition.one_of.is_empty() {
-            &definition.one_of
-        } else {
-            &definition.any_of
-        };
-        let mut matches = 0usize;
-        for reference in alternatives {
-            let referenced = match self.resolve_reference(reference, &mut HashSet::new()) {
-                Ok(referenced) => referenced,
-                Err(error) => {
-                    self.add(path, &error);
-                    return;
-                }
-            };
-            let mut candidate = Validator::new(self.schema);
-            candidate.validate_value(path, value, &referenced);
-            if candidate.errors.is_empty() {
-                matches += 1;
-            }
-        }
-        if !definition.one_of.is_empty() && matches != 1 {
-            self.add(
-                path,
-                &format!("expected exactly one matching type from oneof but found {matches}"),
-            );
-        }
-        if !definition.any_of.is_empty() && matches == 0 {
-            self.add(path, "expected at least one matching type from anyof");
+        if self.errors.len() == error_start
+            && components.iter().any(|component| component.deprecated)
+        {
+            self.add_deprecation(path);
         }
     }
 
-    fn validate_table_value(&mut self, path: &str, table: &Table, definition: &Definition) {
-        if definition.children.is_empty() {
+    fn validate_table_value(&mut self, path: &str, table: &Table, components: &[Definition]) {
+        let children = collect_children(components);
+        if children.is_empty() {
             return;
         }
-        self.validate_table(path, table, &definition.children);
+        self.validate_fixed_children(path, table, &children);
         for key in table.keys() {
-            if !definition.children.contains_key(key) {
+            if !children.contains_key(key) {
                 self.add(&append_path(path, key), "unexpected key");
             }
         }
+        self.validate_sibling_rules(path, table, components);
     }
 
-    fn validate_collection(&mut self, path: &str, table: &Table, definition: &Definition) {
+    fn validate_collection(&mut self, path: &str, table: &Table, components: &[Definition]) {
+        let children = collect_children(components);
         let mut dynamic_entries = 0usize;
         for (key, value) in table.iter() {
             let child_path = append_path(path, key);
-            if let Some(fixed_child) = definition.children.get(key) {
-                self.validate_value(&child_path, value, fixed_child);
+            if let Some(fixed_children) = children.get(key) {
+                self.validate_definitions(&child_path, value, fixed_children);
                 continue;
             }
             dynamic_entries += 1;
-            if let Some(key_pattern) = &definition.key_pattern {
-                if !matches_pattern(key_pattern, key) {
-                    self.add(
-                        &child_path,
-                        &format!("key does not match keypattern {}", key_pattern.as_str()),
-                    );
+            for definition in components {
+                if let Some(key_pattern) = &definition.key_pattern {
+                    if !matches_pattern(key_pattern, key) {
+                        self.add(
+                            &child_path,
+                            &format!("key does not match keypattern {}", key_pattern.as_str()),
+                        );
+                    }
                 }
             }
-            let reference = match definition.item_reference.as_deref() {
-                Some(reference) => reference,
-                None => {
-                    self.add(&child_path, "collection entry has no itemtype reference");
+            let mut item_definitions = Vec::new();
+            let mut item_references = 0usize;
+            for definition in components {
+                let Some(reference) = definition.item_reference.as_deref() else {
                     continue;
+                };
+                item_references += 1;
+                match self.resolve_reference(reference, &mut HashSet::new()) {
+                    Ok(referenced) => item_definitions.push(referenced),
+                    Err(error) => self.add(&child_path, &error),
                 }
-            };
-            match self.resolve_reference(reference, &mut HashSet::new()) {
-                Ok(referenced) => self.validate_value(&child_path, value, &referenced),
-                Err(error) => self.add(&child_path, &error),
+            }
+            if item_references == 0 {
+                self.add(&child_path, "collection entry has no itemtype reference");
+            }
+            if !item_definitions.is_empty() {
+                self.validate_definitions(&child_path, value, &item_definitions);
             }
         }
-        self.validate_length(path, dynamic_entries, definition);
-        for (key, child) in definition.children.iter() {
-            let resolved = match self.resolve(child, &mut HashSet::new()) {
-                Ok(resolved) => resolved,
-                Err(error) => {
-                    self.add(&append_path(path, key), &error);
-                    continue;
-                }
-            };
-            if !table.contains_key(key) && !resolved.optional {
-                self.add(&append_path(path, key), "required value is missing");
-            }
+        for definition in components {
+            self.validate_length(path, dynamic_entries, definition);
         }
+        self.validate_missing_fixed_children(path, table, &children);
+        self.validate_sibling_rules(path, table, components);
     }
 
     fn validate_array(&mut self, path: &str, array: &[Value], definition: &Definition) {
-        self.validate_length(path, array.len(), definition);
+        if definition.unique_items == Some(true) {
+            for right in 1..array.len() {
+                if (0..right).any(|left| values_equal(&array[left], &array[right])) {
+                    self.add(
+                        &format!("{path}[{right}]"),
+                        "array item duplicates an earlier item while uniqueitems is true",
+                    );
+                }
+            }
+        }
         if !definition.items.is_empty() {
             self.validate_tuple_array(path, array, definition);
             return;
@@ -1290,25 +2054,35 @@ impl<'schema> Validator<'schema> {
         }
         let reference = definition.reference.as_deref().unwrap();
         let referenced = self.resolve_reference(reference, seen)?;
-        Ok(Definition {
-            name: definition.name.clone(),
-            type_name: referenced.type_name,
-            reference: None,
-            description: definition.description.clone(),
-            item_reference: referenced.item_reference,
-            items: referenced.items,
-            optional: definition.optional || referenced.optional,
-            allowed_values: referenced.allowed_values,
-            pattern: referenced.pattern,
-            key_pattern: referenced.key_pattern,
-            min: referenced.min,
-            max: referenced.max,
-            min_length: referenced.min_length,
-            max_length: referenced.max_length,
-            one_of: referenced.one_of,
-            any_of: referenced.any_of,
-            children: referenced.children,
-        })
+        let mut resolved = referenced;
+        resolved.name = definition.name.clone();
+        resolved.reference = None;
+        resolved.description = definition.description.clone().or(resolved.description);
+        resolved.optional = definition.optional || resolved.optional;
+        resolved.all_of.extend(definition.all_of.clone());
+        for (trigger, required) in &definition.dependent_required {
+            let inherited = resolved
+                .dependent_required
+                .entry(trigger.clone())
+                .or_default();
+            for child in required {
+                if !inherited.contains(child) {
+                    inherited.push(child.clone());
+                }
+            }
+        }
+        resolved
+            .mutually_exclusive
+            .extend(definition.mutually_exclusive.clone());
+        resolved.exactly_one.extend(definition.exactly_one.clone());
+        resolved.unique_items = match (definition.unique_items, resolved.unique_items) {
+            (Some(true), _) | (_, Some(true)) => Some(true),
+            (Some(false), inherited) => inherited.or(Some(false)),
+            (None, inherited) => inherited,
+        };
+        resolved.default_value = definition.default_value.clone().or(resolved.default_value);
+        resolved.deprecated = definition.deprecated || resolved.deprecated;
+        Ok(resolved)
     }
 
     fn resolve_reference(
@@ -1341,6 +2115,141 @@ impl<'schema> Validator<'schema> {
             message: message.to_string(),
         });
     }
+
+    fn validate_definitions(&mut self, path: &str, value: &Value, definitions: &[Definition]) {
+        let mut components = Vec::new();
+        for definition in definitions {
+            match self.collect_components(definition, &mut HashSet::new()) {
+                Ok(expanded) => components.extend(expanded),
+                Err(error) => {
+                    self.add(path, &error);
+                    return;
+                }
+            }
+        }
+        self.validate_component_set(path, value, components);
+    }
+
+    fn validate_fixed_children(
+        &mut self,
+        path: &str,
+        table: &Table,
+        children: &BTreeMap<String, Vec<Definition>>,
+    ) {
+        for (key, definitions) in children {
+            if let Some(value) = table.get(key) {
+                self.validate_definitions(&append_path(path, key), value, definitions);
+            }
+        }
+        self.validate_missing_fixed_children(path, table, children);
+    }
+
+    fn validate_missing_fixed_children(
+        &mut self,
+        path: &str,
+        table: &Table,
+        children: &BTreeMap<String, Vec<Definition>>,
+    ) {
+        for (key, definitions) in children {
+            if table.contains_key(key) {
+                continue;
+            }
+            let required = definitions.iter().any(|definition| {
+                self.resolve(definition, &mut HashSet::new())
+                    .map(|resolved| !resolved.optional)
+                    .unwrap_or(true)
+            });
+            if required {
+                self.add(&append_path(path, key), "required value is missing");
+            }
+        }
+    }
+
+    fn validate_sibling_rules(&mut self, path: &str, table: &Table, components: &[Definition]) {
+        for definition in components {
+            for (trigger, required) in &definition.dependent_required {
+                if !table.contains_key(trigger) {
+                    continue;
+                }
+                for child in required {
+                    if !table.contains_key(child) {
+                        self.add(
+                            &append_path(path, child),
+                            &format!("required because sibling {trigger} is present"),
+                        );
+                    }
+                }
+            }
+            for group in &definition.mutually_exclusive {
+                let present: Vec<&str> = group
+                    .iter()
+                    .filter(|child| table.contains_key(child.as_str()))
+                    .map(String::as_str)
+                    .collect();
+                if present.len() > 1 {
+                    self.add(
+                        path,
+                        &format!(
+                            "mutuallyexclusive group has multiple present children: {}",
+                            present.join(", ")
+                        ),
+                    );
+                }
+            }
+            for group in &definition.exactly_one {
+                let present: Vec<&str> = group
+                    .iter()
+                    .filter(|child| table.contains_key(child.as_str()))
+                    .map(String::as_str)
+                    .collect();
+                if present.len() != 1 {
+                    self.add(
+                        path,
+                        &format!(
+                            "exactlyone group requires one present child but found {}",
+                            present.len()
+                        ),
+                    );
+                }
+            }
+        }
+    }
+
+    fn add_deprecation(&mut self, path: &str) {
+        if !self.emit_deprecations {
+            return;
+        }
+        let warning = ValidationWarning {
+            severity: DiagnosticSeverity::Warning,
+            code: "deprecated".to_string(),
+            path: path.to_string(),
+            message: "value is deprecated".to_string(),
+        };
+        if !self.warnings.contains(&warning) {
+            self.warnings.push(warning);
+        }
+    }
+
+    fn merge_warnings(&mut self, warnings: Vec<ValidationWarning>) {
+        for warning in warnings {
+            if !self.warnings.contains(&warning) {
+                self.warnings.push(warning);
+            }
+        }
+    }
+}
+
+fn collect_children(components: &[Definition]) -> BTreeMap<String, Vec<Definition>> {
+    let mut children: BTreeMap<String, Vec<Definition>> = BTreeMap::new();
+    for component in components {
+        for (name, definition) in &component.children {
+            children
+                .entry(name.clone())
+                .or_default()
+                .push(definition.clone());
+        }
+    }
+    children
 }
 
 fn value_matches_type(value: &Value, type_name: SchemaType) -> bool {

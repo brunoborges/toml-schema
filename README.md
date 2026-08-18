@@ -7,7 +7,7 @@
 [![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
 [![Rust 1.75](https://img.shields.io/badge/Rust-1.75-dea584)](REFERENCE_IMPLEMENTATIONS.md#rust)
 
-TOML Schema is a TOML-based schema language for describing and validating the structure, names, and value types of TOML configuration files.
+TOML Schema is a TOML-based schema language for describing and validating the structure, names, value types, and common semantic relationships of TOML configuration files.
 
 A TOML Schema document is itself a valid TOML document. Validators can use it to catch misconfiguration before production and tooling can use it for editor validation, completion, and hints.
 
@@ -52,6 +52,7 @@ type = "table"
     [elements.database.ports]
     type = "array"
     itemtype = "integer"
+    uniqueitems = true
 ```
 
 ## Reference implementations

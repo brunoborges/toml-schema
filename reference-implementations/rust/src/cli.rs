@@ -72,12 +72,7 @@ fn validate_explicit(
     }
 }
 
-fn extract(
-    document_path: &str,
-    schema_path: &str,
-    out: &mut dyn Write,
-    err: &mut dyn Write,
-) -> u8 {
+fn extract(document_path: &str, schema_path: &str, out: &mut dyn Write, err: &mut dyn Write) -> u8 {
     let path = Path::new(document_path);
     let content = match fs::read_to_string(path) {
         Ok(content) => content,
@@ -108,6 +103,13 @@ fn report(
     out: &mut dyn Write,
     err: &mut dyn Write,
 ) -> u8 {
+    for warning in result.warnings() {
+        let _ = writeln!(
+            err,
+            "warning [{}] {}: {}",
+            warning.code, warning.path, warning.message
+        );
+    }
     if result.valid() {
         let _ = writeln!(out, "{document_path} is valid");
         return 0;
@@ -121,7 +123,13 @@ fn report(
 
 fn usage(stream: &mut dyn Write) {
     let _ = writeln!(stream, "Usage:");
-    let _ = writeln!(stream, "  toml-schema validate <schema.tosd> <document.toml>");
+    let _ = writeln!(
+        stream,
+        "  toml-schema validate <schema.tosd> <document.toml>"
+    );
     let _ = writeln!(stream, "  toml-schema validate <document.toml>");
-    let _ = writeln!(stream, "  toml-schema extract <document.toml> <schema.tosd>");
+    let _ = writeln!(
+        stream,
+        "  toml-schema extract <document.toml> <schema.tosd>"
+    );
 }

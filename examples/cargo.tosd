@@ -100,70 +100,7 @@ type = "table"
 
 [types.package]
 type = "table"
-
-    [types.package.version]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.authors]
-    type = "types.stringArrayOrWorkspace"
-    optional = true
-
-    [types.package.edition]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.rust-version]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.description]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.documentation]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.readme]
-    type = "types.stringOrBooleanOrWorkspace"
-    optional = true
-
-    [types.package.homepage]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.repository]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.license]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.license-file]
-    type = "types.stringOrWorkspace"
-    optional = true
-
-    [types.package.keywords]
-    type = "types.stringArrayOrWorkspace"
-    optional = true
-
-    [types.package.categories]
-    type = "types.stringArrayOrWorkspace"
-    optional = true
-
-    [types.package.exclude]
-    type = "types.stringArrayOrWorkspace"
-    optional = true
-
-    [types.package.include]
-    type = "types.stringArrayOrWorkspace"
-    optional = true
-
-    [types.package.publish]
-    type = "types.publish"
-    optional = true
+allof = [ "types.packageBase" ]
 
     [types.package.name]
     type = "string"
@@ -270,6 +207,8 @@ oneof = [ "string", "types.dependencyTable" ]
 
 [types.dependencyTable]
 type = "table"
+dependentrequired = { branch = [ "git" ], tag = [ "git" ], rev = [ "git" ] }
+mutuallyexclusive = [ [ "git", "path" ], [ "branch", "tag", "rev" ] ]
 
     [types.dependencyTable.version]
     type = "string"
@@ -306,6 +245,7 @@ type = "table"
     [types.dependencyTable.default-features]
     type = "boolean"
     optional = true
+    default = true
 
     [types.dependencyTable.features]
     type = "array"

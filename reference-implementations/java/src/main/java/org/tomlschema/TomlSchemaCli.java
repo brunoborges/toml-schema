@@ -156,6 +156,7 @@ public final class TomlSchemaCli {
     }
 
     private static int report(ValidationResult result, Path tomlPath, PrintStream out, PrintStream err) {
+        result.warnings().forEach(warning -> err.println("Warning: " + warning));
         if (result.isValid()) {
             out.println(tomlPath + " is valid");
             return 0;

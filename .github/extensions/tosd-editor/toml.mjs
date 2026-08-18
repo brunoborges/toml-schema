@@ -510,6 +510,7 @@ export function formatValue(value) {
     if (typeof value === "number") return formatNumber(value);
     if (typeof value === "string") return formatString(value);
     if (Array.isArray(value)) return "[ " + value.map(formatValue).join(", ") + " ]";
+    if (value.__rawToml) return value.value;
     if (value.__integer) return value.value;
     if (value.__float) return value.value;
     if (value.__datetime) return value.value;
@@ -558,6 +559,7 @@ export function isPlainTable(value) {
         value !== null &&
         typeof value === "object" &&
         !Array.isArray(value) &&
+        !value.__rawToml &&
         !value.__integer &&
         !value.__float &&
         !value.__datetime &&

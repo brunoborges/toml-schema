@@ -35,7 +35,6 @@ const NUMERIC_TEMPORAL = [
     "local-date",
     "local-time",
 ];
-
 const state = {
     path: null,
     model: null,
@@ -61,6 +60,7 @@ function resolvedKinds(ref, seen = new Set()) {
     const props = definition.props || {};
     if (props.type) return resolvedKinds(props.type, nextSeen);
     const alternatives = props.oneof?.length ? props.oneof : props.anyof;
+    if (!alternatives?.length && definition.children?.length) return new Set(["table"]);
     const kinds = new Set();
     for (const alternative of alternatives || []) {
         for (const kind of resolvedKinds(alternative, nextSeen)) kinds.add(kind);
@@ -330,6 +330,19 @@ function typeBadge(node) {
     return "?";
 }
 
+function nodeFlags(node) {
+    const p = node.props || {};
+    const flags = [];
+    if ((p.allof || []).length) flags.push({ text: `allof×${p.allof.length}`, title: "Conjunctive type components" });
+    if (p.uniqueitems === true) flags.push({ text: "unique", title: "Array items must be unique" });
+    if (p.default != null && String(p.default).trim() !== "") flags.push({ text: "default", title: "Has a default annotation" });
+    if (p.deprecated === true) flags.push({ text: "deprecated", title: "Deprecated annotation", tone: "warn" });
+    if (p.dependentrequired && Object.keys(p.dependentrequired).length) flags.push({ text: `deps×${Object.keys(p.dependentrequired).length}`, title: "Dependent-required rules" });
+    if ((p.mutuallyexclusive || []).length) flags.push({ text: `xor×${p.mutuallyexclusive.length}`, title: "Mutually exclusive groups" });
+    if ((p.exactlyone || []).length) flags.push({ text: `one×${p.exactlyone.length}`, title: "Exactly-one groups" });
+    return flags;
+}
+
 function typeCategory(node) {
     const p = node.props || {};
     const t = p.type;
@@ -346,7 +359,7 @@ function typeCategory(node) {
 }
 
 // --- Diagram (design view) ----------------------------------------------
-const DG = { BOX_W: 214, BOX_H: 58, H_GAP: 62, V_GAP: 16, PAD: 24 };
+const DG = { BOX_W: 214, BOX_H: 74, H_GAP: 62, V_GAP: 16, PAD: 24 };
 
 function cardinality(node) {
     const p = node.props || {};
@@ -375,6 +388,7 @@ function compositor(node) {
     if (p.type === "array" || p.type === "collection") return { glyph: "\u21bb", cls: "repeat", title: "Repeating items" };
     if (p.oneof) return { glyph: "\u25c8", cls: "choice", title: "One of \u2014 exactly one alternative" };
     if (p.anyof) return { glyph: "\u25c6", cls: "choice", title: "Any of \u2014 at least one alternative" };
+    if (p.allof) return { glyph: "\u2227", cls: "choice", title: "All of \u2014 every component applies" };
     return { glyph: "\u2630", cls: "sequence", title: "All child fields (sequence)" };
 }
 
@@ -387,6 +401,7 @@ function unresolvedRefs(node) {
     for (const r of p.items || []) refs.push(r);
     for (const r of p.oneof || []) refs.push(r);
     for (const r of p.anyof || []) refs.push(r);
+    for (const r of p.allof || []) refs.push(r);
     return refs.filter((r) => r && !isKnownRef(r));
 }
 
@@ -539,6 +554,7 @@ function diagramBox(node, depth = 1) {
     const ariaParts = [node.name, typeBadge(node), cardinalityLabel(node)];
     if (p.optional) ariaParts.push("optional");
     if (unresolved.length) ariaParts.push("unresolved reference " + unresolved.join(", "));
+    for (const flag of nodeFlags(node)) ariaParts.push(flag.title);
     box.setAttribute("aria-label", ariaParts.join(", "));
     box.style.left = node.__x + "px";
     box.style.top = (node.__cy - DG.BOX_H / 2) + "px";
@@ -573,6 +589,17 @@ function diagramBox(node, depth = 1) {
         }));
     }
     box.append(typeLine);
+
+    const flags = nodeFlags(node);
+    if (flags.length) {
+        const line = el("div", { class: "dg-flags" });
+        flags.forEach((flag) => line.append(el("span", {
+            class: "dg-flag" + (flag.tone ? " " + flag.tone : ""),
+            title: flag.title,
+            text: flag.text,
+        })));
+        box.append(line);
+    }
 
     if (kids.length) {
         box.append(el("button", {
@@ -783,6 +810,8 @@ function renderEditor() {
     }
 
     const p = (node.props = node.props || {});
+    const implicitTable = !p.type && !p.oneof && !p.anyof && (node.children || []).length > 0;
+    const effectiveLocalType = p.type || (implicitTable ? "table" : "");
 
     // Header: name + actions
     const nameId = uid("name");
@@ -809,6 +838,17 @@ function renderEditor() {
     actions.append(el("button", { class: "danger", text: "Delete", onclick: () => deleteNode(node) }));
     box.append(actions);
 
+    const flags = nodeFlags(node);
+    if (flags.length) {
+        const summary = el("div", { class: "field" });
+        summary.append(el("div", { class: "mini-badges" }, ...flags.map((flag) => el("span", {
+            class: "mini-badge" + (flag.tone ? " " + flag.tone : ""),
+            title: flag.title,
+            text: flag.text,
+        }))));
+        box.append(summary);
+    }
+
     box.append(textField("description", "Description", p.description || "", (v) => setProp(p, "description", v),
         false, "Human-readable documentation for this schema definition."));
 
@@ -818,6 +858,9 @@ function renderEditor() {
             "A built-in type or reusable type reference. Mutually exclusive with oneof/anyof."),
     );
 
+    box.append(listField("allof", "allof (must also satisfy)", p.allof || [], (arr) => setListProp(p, "allof", arr), true,
+        "Additional compatible type references."));
+
     const t = p.type;
 
     // Array-specific
@@ -826,6 +869,7 @@ function renderEditor() {
             "Validate every item against a built-in or reusable type."));
         box.append(listField("items", "Positional items (tuple)", p.items || [], (arr) => setListProp(p, "items", arr),
             true, "Ordered type refs; fixed arity. Mutually exclusive with itemtype."));
+        box.append(checkboxField("uniqueitems", "Require unique items", p.uniqueitems === true, (v) => setBoolProp(p, "uniqueitems", v)));
     }
 
     if (t === "collection") {
@@ -874,13 +918,24 @@ function renderEditor() {
         box.append(row);
     }
 
+    if (["table", "collection"].includes(effectiveLocalType)) {
+        box.append(dependentRequiredField("dependentrequired", "dependentrequired", p.dependentrequired || {},
+            (value) => setMapProp(p, "dependentrequired", value),
+            "When a trigger child is present, every listed child must also be present."));
+        box.append(groupListField("mutuallyexclusive", "mutuallyexclusive", p.mutuallyexclusive || [],
+            (groups) => setGroupProp(p, "mutuallyexclusive", groups),
+            "At most one child in each group may be present."));
+        box.append(groupListField("exactlyone", "exactlyone", p.exactlyone || [],
+            (groups) => setGroupProp(p, "exactlyone", groups),
+            "Exactly one child in each group must be present."));
+    }
+
+    box.append(tokenField("default", "Default (raw TOML value)", p.default || "", (v) => setProp(p, "default", v),
+        "Annotation only; must be a valid TOML value token."));
+    box.append(checkboxField("deprecated", "Deprecated", p.deprecated === true, (v) => setBoolProp(p, "deprecated", v)));
+
     // optional (always available)
-    box.append(checkboxField("optional", "Optional (may be omitted in the document)", !!p.optional, (v) => {
-        if (v) p.optional = true;
-        else delete p.optional;
-        markDirty();
-        renderTree();
-    }));
+    box.append(checkboxField("optional", "Optional (may be omitted in the document)", p.optional === true, (v) => setBoolProp(p, "optional", v, true)));
 
     // Show-all advanced toggle
     const toggle = el("button", {
@@ -894,7 +949,7 @@ function renderEditor() {
     box.append(toggle);
     if (state.showAll) box.append(advancedAll(p));
 
-    if (t === "table") {
+    if (effectiveLocalType === "table") {
         box.append(el("div", { class: "field hint", text: "Table fields are managed as children in the tree. A table with no children is treated as open-ended." }));
     }
 }
@@ -902,16 +957,23 @@ function renderEditor() {
 function advancedAll(p) {
     const wrap = el("div");
     wrap.append(el("div", { class: "section-title", text: "All properties" }));
-    const allProps = ["type", "itemtype", "pattern", "keypattern", "min", "max"];
+    const allProps = ["type", "description", "itemtype", "pattern", "keypattern", "min", "max", "default"];
     for (const key of allProps) {
-        wrap.append(textField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v), true));
+        wrap.append((key === "default")
+            ? tokenField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v))
+            : textField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v), true));
     }
     for (const key of ["minlength", "maxlength"]) {
         wrap.append(numField(key, key, p[key], (v) => setNumProp(p, key, v)));
     }
-    for (const key of ["items", "oneof", "anyof", "allowedvalues"]) {
+    for (const key of ["items", "oneof", "anyof", "allof", "allowedvalues"]) {
         wrap.append(listField(key, key, p[key] || [], (arr) => setListProp(p, key, arr), key !== "allowedvalues"));
     }
+    wrap.append(dependentRequiredField("dependentrequired", "dependentrequired", p.dependentrequired || {}, (value) => setMapProp(p, "dependentrequired", value)));
+    wrap.append(groupListField("mutuallyexclusive", "mutuallyexclusive", p.mutuallyexclusive || [], (groups) => setGroupProp(p, "mutuallyexclusive", groups)));
+    wrap.append(groupListField("exactlyone", "exactlyone", p.exactlyone || [], (groups) => setGroupProp(p, "exactlyone", groups)));
+    wrap.append(checkboxField("uniqueitems", "uniqueitems", p.uniqueitems === true, (v) => setBoolProp(p, "uniqueitems", v)));
+    wrap.append(checkboxField("deprecated", "deprecated", p.deprecated === true, (v) => setBoolProp(p, "deprecated", v)));
     return wrap;
 }
 
@@ -920,14 +982,47 @@ function setProp(p, key, v) {
     else p[key] = v;
     markDirty();
 }
+
+function setBoolProp(p, key, value, rerenderTree = false) {
+    if (value) p[key] = true;
+    else delete p[key];
+    markDirty();
+    if (rerenderTree) renderTree();
+}
+
 function setNumProp(p, key, v) {
     if (v === "" || v == null || Number.isNaN(v)) delete p[key];
     else p[key] = v;
     markDirty();
 }
 function setListProp(p, key, arr) {
-    const clean = arr.filter((s) => s !== "");
+    const clean = arr.map((s) => String(s).trim()).filter((s) => s !== "");
+    // An explicitly empty `allowedvalues` list is meaningful and must survive.
     if (clean.length === 0 && key !== "allowedvalues") delete p[key];
+    else p[key] = clean;
+    markDirty();
+    renderTree();
+}
+
+function setGroupProp(p, key, groups) {
+    const clean = groups
+        .map((group) => group.map((name) => String(name).trim()).filter(Boolean))
+        .filter((group) => group.length > 0);
+    if (clean.length === 0) delete p[key];
+    else p[key] = clean;
+    markDirty();
+    renderTree();
+}
+
+function setMapProp(p, key, mapping) {
+    const clean = {};
+    for (const [trigger, values] of Object.entries(mapping || {})) {
+        const name = String(trigger).trim();
+        if (!name) continue;
+        const deps = (values || []).map((value) => String(value).trim()).filter(Boolean);
+        if (deps.length) clean[name] = deps;
+    }
+    if (Object.keys(clean).length === 0) delete p[key];
     else p[key] = clean;
     markDirty();
     renderTree();
@@ -966,6 +1061,20 @@ function textField(name, label, value, onchange, mono = false, hint) {
         placeholder: name,
         oninput: (e) => onchange(e.target.value),
     }));
+    return f;
+}
+
+function tokenField(name, label, value, onchange, hint) {
+    const id = uid("tok");
+    const f = el("div", { class: "field" });
+    f.append(labelEl(label, hint, id));
+    f.append(el("textarea", {
+        id,
+        class: "mono token-input",
+        rows: 2,
+        placeholder: name,
+        oninput: (e) => onchange(e.target.value),
+    }, value));
     return f;
 }
 
@@ -1084,6 +1193,125 @@ function listField(name, label, values, onchange, isRef, hint) {
     return f;
 }
 
+function groupListField(name, label, groups, onchange, hint) {
+    const f = el("div", { class: "field" });
+    const groupId = uid("groups");
+    f.append(labelEl(label, hint, null, groupId));
+    const arr = groups.map((group) => [...group]);
+    const container = el("div", { role: "group", "aria-labelledby": groupId });
+    const rerender = () => {
+        container.textContent = "";
+        arr.forEach((group, idx) => {
+            const row = el("div", { class: "list-row" });
+            row.append(el("input", {
+                type: "text",
+                class: "mono",
+                value: group.join(", "),
+                placeholder: "child-a, child-b",
+                "aria-label": `${label} group ${idx + 1}`,
+                oninput: (e) => {
+                    arr[idx] = csvNames(e.target.value);
+                    onchange(arr.map((item) => [...item]));
+                },
+            }));
+            row.append(el("button", {
+                class: "icon danger",
+                text: "\u2715",
+                title: "Remove",
+                "aria-label": `Remove ${label} group ${idx + 1}`,
+                onclick: () => {
+                    arr.splice(idx, 1);
+                    onchange(arr.map((item) => [...item]));
+                    rerender();
+                },
+            }));
+            container.append(row);
+        });
+    };
+    rerender();
+    f.append(container);
+    f.append(el("button", {
+        class: "icon add-row",
+        text: "+ add group",
+        "aria-label": "Add " + label + " group",
+        onclick: () => {
+            arr.push([]);
+            onchange(arr.map((item) => [...item]));
+            rerender();
+        },
+    }));
+    return f;
+}
+
+function dependentRequiredField(name, label, mapping, onchange, hint) {
+    const f = el("div", { class: "field" });
+    const groupId = uid("deps");
+    f.append(labelEl(label, hint, null, groupId));
+    const entries = Object.entries(mapping || {}).map(([trigger, values]) => [trigger, [...values]]);
+    const container = el("div", { role: "group", "aria-labelledby": groupId });
+    const emit = () => onchange(Object.fromEntries(entries.map(([trigger, values]) => [trigger, [...values]])));
+    const rerender = () => {
+        container.textContent = "";
+        entries.forEach((entry, idx) => {
+            const row = el("div", { class: "list-row list-row-2" });
+            row.append(el("input", {
+                type: "text",
+                class: "mono",
+                value: entry[0],
+                placeholder: "trigger child",
+                "aria-label": `${label} trigger ${idx + 1}`,
+                oninput: (e) => {
+                    entries[idx][0] = e.target.value;
+                    emit();
+                },
+            }));
+            row.append(el("input", {
+                type: "text",
+                class: "mono",
+                value: entry[1].join(", "),
+                placeholder: "required-a, required-b",
+                "aria-label": `${label} required children ${idx + 1}`,
+                oninput: (e) => {
+                    entries[idx][1] = csvNames(e.target.value);
+                    emit();
+                },
+            }));
+            row.append(el("button", {
+                class: "icon danger",
+                text: "\u2715",
+                title: "Remove",
+                "aria-label": `Remove ${label} entry ${idx + 1}`,
+                onclick: () => {
+                    entries.splice(idx, 1);
+                    emit();
+                    rerender();
+                },
+            }));
+            container.append(row);
+        });
+    };
+    rerender();
+    f.append(container);
+    f.append(el("button", {
+        class: "icon add-row",
+        text: "+ add dependency",
+        "aria-label": "Add " + label + " entry",
+        onclick: () => {
+            entries.push(["", []]);
+            emit();
+            rerender();
+        },
+    }));
+    return f;
+}
+
+function csvNames(value) {
+    return String(value)
+        .split(",")
+        .map((part) => part.trim())
+        .filter(Boolean);
+}
+
 function labelEl(text, hint, forId, id) {
     const attrs = {};
     if (forId) attrs.for = forId;
@@ -1107,6 +1335,10 @@ function renderMetaEditor(box) {
         state.model.version = v;
         markDirty();
     }, true, "Full MAJOR.MINOR.PATCH, e.g. 1.0.0"));
+    box.append(el("div", {
+        class: "field hint",
+        text: "This editor targets the unreleased TOML Schema 1.0.0 language.",
+    }));
 
     box.append(el("div", { class: "section-title", text: "[toml-schema.meta] (custom metadata)" }));
     const meta = state.model.meta || {};

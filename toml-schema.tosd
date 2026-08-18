@@ -8,7 +8,8 @@ version = "1.0.0"
     # This is intentionally an open structural definition. Schema property
     # names can also be document child keys, so modeling fixed properties here
     # would collide with this definition's own type and itemtype keys. Schema
-    # loaders enforce property types and conditional applicability.
+    # loaders enforce property types, composition, sibling rules, annotations,
+    # and conditional applicability.
     [types.schemaDef]
     type = "table"
 

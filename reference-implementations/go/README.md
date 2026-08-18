@@ -1,6 +1,6 @@
 # TOML Schema — Go reference implementation
 
-Go reference implementation of [TOML Schema](../../SPEC.md). It parses TOML with [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1` (TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+Go reference implementation of [TOML Schema](../../SPEC.md). It targets the current, unreleased TOML Schema language version 1.0.0. It parses TOML with [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1` (TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
 
 - Module path: `tomlschema.org/go`
 - CLI package: `tomlschema.org/go/cmd/toml-schema`
@@ -50,7 +50,7 @@ go -C reference-implementations/go run ./cmd/toml-schema validate ../../toml-sch
 Extract a starter schema from a sample TOML document:
 
 ```shell
-go -C reference-implementations/go run ./cmd/toml-schema extract ../../config.toml /tmp/config.generated.tosd
+go -C reference-implementations/go run ./cmd/toml-schema extract ../../config.toml target/config.generated.tosd
 ```
 
 ## Library usage
@@ -69,8 +69,14 @@ func main() {
     if !result.Valid() {
         panic(result.Errors)
     }
+    for _, warning := range result.Warnings {
+        println(string(warning.Severity), warning.Code, warning.Path, warning.Message)
+    }
 }
 ```
+
+Validation never applies `default` annotations to documents. Use `schema.Element(name)` or
+`schema.Type(name)`, followed by `definition.Default()`, to inspect an effective default.
 
 ## Conformance
 

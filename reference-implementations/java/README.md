@@ -1,6 +1,6 @@
 # TOML Schema — Java reference implementation
 
-Java 25 reference implementation of [TOML Schema](../../SPEC.md). It parses TOML with [Tomlj](https://github.com/tomlj/tomlj) `1.1.1` (TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+Java 25 reference implementation targeting the current, unreleased [TOML Schema 1.0.0](../../SPEC.md). It parses TOML with [Tomlj](https://github.com/tomlj/tomlj) `1.1.1` (TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
 
 - Coordinates: `org.tomlschema:toml-schema`
 - Java package: `org.tomlschema`
@@ -72,7 +72,13 @@ import org.tomlschema.ValidationResult;
 ValidationResult result = TomlSchema
     .load(Path.of("config.tosd"))
     .validate(Path.of("config.toml"));
+
+result.errors();   // structured validation errors
+result.warnings(); // warning-only diagnostics, including deprecations
 ```
+
+`TomlSchema.defaultValue(...)` and `typeDefaultValue(...)` expose effective
+default annotations. Validation never inserts defaults or mutates parsed TOML.
 
 ## Conformance
 

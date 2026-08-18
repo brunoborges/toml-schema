@@ -7,6 +7,7 @@ import org.tomlj.TomlParseResult;
 import org.tomlj.TomlTable;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -27,14 +28,19 @@ final class SchemaLoader {
     static final Set<String> DEFINITION_KEYS = Set.of(
             "type", "description", "itemtype", "items", "allowedvalues", "pattern",
             "keypattern", "optional", "min", "max", "minlength", "maxlength",
-            "oneof", "anyof"
+            "oneof", "anyof", "dependentrequired", "mutuallyexclusive", "exactlyone",
+            "allof", "uniqueitems", "default", "deprecated"
     );
-    private static final Set<String> NAMED_REFERENCE_KEYS = Set.of("type", "description", "optional");
-    private static final Set<String> UNION_KEYS = Set.of("oneof", "anyof", "description", "optional");
+    private static final Set<String> NAMED_REFERENCE_KEYS = Set.of(
+            "type", "description", "optional", "allof", "default", "deprecated");
+    private static final Set<String> UNION_KEYS = Set.of(
+            "oneof", "anyof", "description", "optional", "allof", "default", "deprecated");
+    private List<String> sourceLines = List.of();
 
     TomlSchema load(Path schemaPath) {
         TomlParseResult parsed;
         try {
+            sourceLines = Files.readAllLines(schemaPath);
             parsed = Toml.parse(schemaPath);
         } catch (IOException e) {
             throw new SchemaException("Unable to read schema: " + schemaPath, e);
@@ -50,7 +56,12 @@ final class SchemaLoader {
         validateSelectorCycles(types);
         validateArrayRangeConstraints(types, types);
         validateArrayRangeConstraints(types, elements);
-        return new TomlSchema(schemaPath, version, types, elements);
+        validateDefinitionSemantics(types, types);
+        validateDefinitionSemantics(types, elements);
+        TomlSchema schema = new TomlSchema(schemaPath, version, types, elements);
+        validateDefaults(schema, types);
+        validateDefaults(schema, elements);
+        return schema;
     }
 
     private String validateTopLevel(TomlTable schema) {
@@ -130,6 +141,19 @@ final class SchemaLoader {
         boolean hasAnyOf = getPropertyValue(table, "anyof") != null;
         List<String> oneOf = getStringArrayValues(table, "oneof");
         List<String> anyOf = getStringArrayValues(table, "anyof");
+        boolean hasAllOf = getPropertyValue(table, "allof") != null;
+        List<String> allOf = getStringArrayValues(table, "allof");
+        if (hasAllOf && allOf.isEmpty()) {
+            throw new SchemaException(name + " allof must contain at least one type reference");
+        }
+        validateAlternativeReferences(name, "allof", allOf);
+        Map<String, List<String>> dependentRequired = getDependentRequired(name, table);
+        List<List<String>> mutuallyExclusive = getNameGroups(name, table, "mutuallyexclusive");
+        List<List<String>> exactlyOne = getNameGroups(name, table, "exactlyone");
+        Boolean uniqueItems = getBoolean(table, "uniqueitems");
+        boolean hasDefault = isProperty(table, "default");
+        Object defaultValue = hasDefault ? table.get(List.of("default")) : null;
+        Boolean deprecated = getBoolean(table, "deprecated");
         if (hasOneOf && oneOf.isEmpty()) {
             throw new SchemaException(name + " oneof must contain at least one type reference");
         }
@@ -155,6 +179,10 @@ final class SchemaLoader {
         Map<String, SchemaDefinition> children = new LinkedHashMap<>();
         for (String key : table.keySet()) {
             Object value = table.get(List.of(key));
+            if (DEFINITION_KEYS.contains(key)
+                    && isProperty(table, key)) {
+                continue;
+            }
             if (value instanceof TomlTable childTable) {
                 if (children.containsKey(key)) {
                     throw new SchemaException(name + " defines child " + key + " more than once");
@@ -216,7 +244,7 @@ final class SchemaLoader {
             throw new SchemaException(name
                     + " can only define minlength or maxlength when type is string, array, or collection");
         }
-        if (type == SchemaType.COLLECTION && itemReference == null) {
+        if (type == SchemaType.COLLECTION && itemReference == null && allOf.isEmpty()) {
             throw new SchemaException(name + " must define itemtype when type is collection");
         }
         Object min = getPropertyValue(table, "min");
@@ -240,6 +268,14 @@ final class SchemaLoader {
                 maxLength,
                 oneOf.stream().map(this::normalizeReference).toList(),
                 anyOf.stream().map(this::normalizeReference).toList(),
+                allOf.stream().map(this::normalizeReference).toList(),
+                dependentRequired,
+                mutuallyExclusive,
+                exactlyOne,
+                uniqueItems,
+                hasDefault,
+                defaultValue,
+                deprecated != null && deprecated,
                 children
         );
     }
@@ -258,6 +294,9 @@ final class SchemaLoader {
                 validateReference(types, definition.name(), reference);
             }
             for (String reference : definition.anyOf()) {
+                validateReference(types, definition.name(), reference);
+            }
+            for (String reference : definition.allOf()) {
                 validateReference(types, definition.name(), reference);
             }
             validateReferences(types, definition.children());
@@ -309,6 +348,9 @@ final class SchemaLoader {
         for (String reference : definition.anyOf()) {
             validateSelectorCycle(reference, types, visiting, visited);
         }
+        for (String reference : definition.allOf()) {
+            validateSelectorCycle(reference, types, visiting, visited);
+        }
         visiting.remove(typeName);
         visited.add(typeName);
     }
@@ -333,6 +375,77 @@ final class SchemaLoader {
                 throw new SchemaException(name + " cannot use any directly in " + property);
             }
         }
+    }
+
+    private Map<String, List<String>> getDependentRequired(String name, TomlTable table) {
+    if (!isProperty(table, "dependentrequired")) {
+        return Map.of();
+    }
+    Object value = table.get(List.of("dependentrequired"));
+    if (!(value instanceof TomlTable dependencies)) {
+        throw new SchemaException(name + " dependentrequired must be an inline table");
+    }
+    if (dependencies.isEmpty()) {
+        throw new SchemaException(name + " dependentrequired must not be empty");
+    }
+    Map<String, List<String>> result = new LinkedHashMap<>();
+    for (String trigger : dependencies.keySet()) {
+        Object requiredValue = dependencies.get(List.of(trigger));
+        if (!(requiredValue instanceof TomlArray requiredArray)) {
+            throw new SchemaException(name + " dependentrequired." + trigger + " must be an array");
+        }
+        List<String> required = stringValues(name + " dependentrequired." + trigger, requiredArray);
+        if (required.isEmpty()) {
+            throw new SchemaException(name + " dependentrequired." + trigger + " must not be empty");
+        }
+        rejectDuplicates(name + " dependentrequired." + trigger, required);
+        result.put(trigger, required);
+    }
+    return result;
+    }
+
+    private List<List<String>> getNameGroups(String name, TomlTable table, String key) {
+    if (!isProperty(table, key)) {
+        return List.of();
+    }
+    Object value = table.get(List.of(key));
+    if (!(value instanceof TomlArray groups)) {
+        throw new SchemaException(name + " " + key + " must be an array");
+    }
+    if (groups.isEmpty()) {
+        throw new SchemaException(name + " " + key + " must not be empty");
+    }
+    List<List<String>> result = new ArrayList<>();
+    for (int i = 0; i < groups.size(); i++) {
+        Object groupValue = groups.get(i);
+        if (!(groupValue instanceof TomlArray groupArray)) {
+            throw new SchemaException(name + " " + key + "[" + i + "] must be an array");
+        }
+        List<String> group = stringValues(name + " " + key + "[" + i + "]", groupArray);
+        if (group.size() < 2) {
+            throw new SchemaException(name + " " + key + "[" + i + "] must contain at least two names");
+        }
+        rejectDuplicates(name + " " + key + "[" + i + "]", group);
+        result.add(group);
+    }
+    return result;
+    }
+
+    private List<String> stringValues(String property, TomlArray array) {
+    List<String> result = new ArrayList<>();
+    for (int i = 0; i < array.size(); i++) {
+        if (!(array.get(i) instanceof String stringValue)) {
+            throw new SchemaException(property + " must contain only strings");
+        }
+        result.add(stringValue);
+    }
+    return result;
+    }
+
+    private void rejectDuplicates(String property, List<String> values) {
+    if (new HashSet<>(values).size() != values.size()) {
+        throw new SchemaException(property + " must contain unique names");
+    }
     }
 
     private Object getPropertyValue(TomlTable table, String key) {
@@ -605,6 +718,271 @@ final class SchemaLoader {
                 }
             }
         }
+    }
+
+    private boolean isProperty(TomlTable table, String key) {
+        if (!table.contains(List.of(key))) {
+            return false;
+        }
+        Object value = table.get(List.of(key));
+        if (!(value instanceof TomlTable)) {
+            return true;
+        }
+        var position = table.inputPositionOf(List.of(key));
+        if (position == null || position.line() < 1 || position.line() > sourceLines.size()) {
+            return false;
+        }
+        String line = sourceLines.get(position.line() - 1);
+        int index = position.column() - 1;
+        if (index < 0 || index >= line.length() || line.charAt(index) == '[') {
+            return false;
+        }
+        int equals = line.indexOf('=', index);
+        if (equals < 0) {
+            return false;
+        }
+        int valueStart = equals + 1;
+        while (valueStart < line.length() && Character.isWhitespace(line.charAt(valueStart))) {
+            valueStart++;
+        }
+        return valueStart < line.length() && line.charAt(valueStart) == '{';
+    }
+
+    private void validateDefinitionSemantics(
+            Map<String, SchemaDefinition> types,
+            Map<String, SchemaDefinition> definitions
+    ) {
+        for (SchemaDefinition definition : definitions.values()) {
+            Set<SchemaType> kinds = effectiveKinds(definition, types, new HashSet<>());
+            if (!definition.allOf().isEmpty() && kinds.size() != 1) {
+                throw new SchemaException(definition.name() + " allof components must resolve to one compatible kind");
+            }
+            boolean hasPresenceRules = !definition.dependentRequired().isEmpty()
+                    || !definition.mutuallyExclusive().isEmpty()
+                    || !definition.exactlyOne().isEmpty();
+            if (hasPresenceRules && kinds.stream().anyMatch(kind ->
+                    kind != SchemaType.TABLE && kind != SchemaType.COLLECTION)) {
+                throw new SchemaException(definition.name()
+                        + " presence rules require an effective table or collection");
+            }
+            if (definition.uniqueItems() != null
+                    && (kinds.size() != 1 || !kinds.contains(SchemaType.ARRAY))) {
+                throw new SchemaException(definition.name() + " uniqueitems requires an effective array");
+            }
+            if (kinds.size() == 1 && kinds.contains(SchemaType.COLLECTION)
+                    && !hasCollectionItemConstraint(definition, types, new HashSet<>())) {
+                throw new SchemaException(definition.name()
+                        + " effective collection must define at least one itemtype");
+            }
+            if (hasPresenceRules) {
+                Set<String> fixedChildren = effectiveFixedChildren(definition, types, new HashSet<>());
+                validateRuleNames(definition, fixedChildren);
+            }
+            validateDefinitionSemantics(types, definition.children());
+        }
+    }
+
+    private Set<SchemaType> effectiveKinds(
+            SchemaDefinition definition,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting
+    ) {
+        Set<SchemaType> localKinds = new HashSet<>();
+        if (definition.reference() != null) {
+            localKinds.addAll(effectiveKinds(referenceDefinition(definition.reference(), types), types,
+                    addVisit(definition.reference(), visiting)));
+        } else if (!definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
+            List<String> alternatives = definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
+            for (String alternative : alternatives) {
+                localKinds.addAll(effectiveKinds(referenceDefinition(alternative, types), types,
+                        new HashSet<>(visiting)));
+            }
+        } else if (definition.type() != null) {
+            localKinds.add(definition.type());
+        }
+        for (String reference : definition.allOf()) {
+            Set<SchemaType> componentKinds = effectiveKinds(referenceDefinition(reference, types), types,
+                    addVisit(reference, visiting));
+            if (localKinds.size() != 1 || componentKinds.size() != 1
+                    || !localKinds.equals(componentKinds)) {
+                throw new SchemaException(definition.name()
+                        + " allof components must resolve to compatible effective TOML kinds");
+            }
+        }
+        return localKinds;
+    }
+
+    private Set<String> effectiveFixedChildren(
+            SchemaDefinition definition,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting
+    ) {
+        Set<String> children = new HashSet<>(definition.children().keySet());
+        if (definition.reference() != null) {
+            children.addAll(effectiveFixedChildren(referenceDefinition(definition.reference(), types), types,
+                    addVisit(definition.reference(), visiting)));
+        }
+        List<String> alternatives = definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
+        for (String alternative : alternatives) {
+            children.addAll(effectiveFixedChildren(referenceDefinition(alternative, types), types,
+                    addVisit(alternative, visiting)));
+        }
+        for (String component : definition.allOf()) {
+            children.addAll(effectiveFixedChildren(referenceDefinition(component, types), types,
+                    addVisit(component, visiting)));
+        }
+        return children;
+    }
+
+    private boolean hasCollectionItemConstraint(
+            SchemaDefinition definition,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting
+    ) {
+        if (definition.itemReference() != null) {
+            return true;
+        }
+        if (definition.reference() != null
+                && hasCollectionItemConstraint(
+                referenceDefinition(definition.reference(), types), types,
+                addVisit(definition.reference(), visiting))) {
+            return true;
+        }
+        List<String> alternatives = definition.oneOf().isEmpty()
+                ? definition.anyOf() : definition.oneOf();
+        for (String alternative : alternatives) {
+            if (hasCollectionItemConstraint(referenceDefinition(alternative, types), types,
+                    addVisit(alternative, visiting))) {
+                return true;
+            }
+        }
+        for (String component : definition.allOf()) {
+            if (hasCollectionItemConstraint(referenceDefinition(component, types), types,
+                    addVisit(component, visiting))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private SchemaDefinition referenceDefinition(String reference, Map<String, SchemaDefinition> types) {
+        SchemaType builtIn = SchemaType.fromSchemaNameOptional(reference).orElse(null);
+        if (builtIn != null) {
+            return builtInDefinition(reference, builtIn);
+        }
+        SchemaDefinition definition = types.get(reference);
+        if (definition == null) {
+            throw new SchemaException("Unknown schema type reference: types." + reference);
+        }
+        return definition;
+    }
+
+    private Set<String> addVisit(String reference, Set<String> visiting) {
+        Set<String> next = new HashSet<>(visiting);
+        if (SchemaType.fromSchemaNameOptional(reference).isEmpty() && !next.add(reference)) {
+            throw new SchemaException("Cyclic schema reference involving types." + reference);
+        }
+        return next;
+    }
+
+    private SchemaDefinition builtInDefinition(String name, SchemaType type) {
+        return new SchemaDefinition(name, type, null, null, null, List.of(), false,
+                List.of(), null, null, null, null, null, null, List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), null, false, null, false, Map.of());
+    }
+
+    private void validateRuleNames(SchemaDefinition definition, Set<String> fixedChildren) {
+        for (Map.Entry<String, List<String>> entry : definition.dependentRequired().entrySet()) {
+            requireFixedChild(definition.name(), "dependentrequired", entry.getKey(), fixedChildren);
+            for (String required : entry.getValue()) {
+                requireFixedChild(definition.name(), "dependentrequired", required, fixedChildren);
+            }
+        }
+        for (List<String> group : definition.mutuallyExclusive()) {
+            for (String operand : group) {
+                requireFixedChild(definition.name(), "mutuallyexclusive", operand, fixedChildren);
+            }
+        }
+        for (List<String> group : definition.exactlyOne()) {
+            for (String operand : group) {
+                requireFixedChild(definition.name(), "exactlyone", operand, fixedChildren);
+            }
+        }
+    }
+
+    private void requireFixedChild(String name, String property, String operand, Set<String> fixedChildren) {
+        if (!fixedChildren.contains(operand)) {
+            throw new SchemaException(name + " " + property + " operand " + operand
+                    + " is not an effective fixed child");
+        }
+    }
+
+    private void validateDefaults(TomlSchema schema, Map<String, SchemaDefinition> definitions) {
+        for (SchemaDefinition definition : definitions.values()) {
+            EffectiveDefault effective = effectiveDefault(definition, schema.types(), new HashSet<>());
+            if (effective.present()) {
+                ValidationResult result = new TomlSchemaValidator(schema)
+                        .validateDefinitionDefault(effective.value(), definition);
+                if (!result.isValid()) {
+                    throw new SchemaException(definition.name() + " has invalid default: "
+                            + result.errors().getFirst().message());
+                }
+            }
+            validateDefaults(schema, definition.children());
+        }
+    }
+
+    static EffectiveDefault effectiveDefault(
+            SchemaDefinition definition,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting
+    ) {
+        if (definition.hasDefault()) {
+            return new EffectiveDefault(true, definition.defaultValue());
+        }
+        List<Object> inherited = new ArrayList<>();
+        if (definition.reference() != null) {
+            EffectiveDefault candidate = effectiveDefaultReference(definition.reference(), types, visiting);
+            if (candidate.present()) {
+                inherited.add(candidate.value());
+            }
+        }
+        for (String component : definition.allOf()) {
+            EffectiveDefault candidate = effectiveDefaultReference(component, types, new HashSet<>(visiting));
+            if (candidate.present()) {
+                inherited.add(candidate.value());
+            }
+        }
+        if (inherited.isEmpty()) {
+            return new EffectiveDefault(false, null);
+        }
+        Object first = inherited.getFirst();
+        if (inherited.stream().skip(1).anyMatch(value -> !ValueSemantics.valuesEqual(first, value))) {
+            throw new SchemaException(definition.name() + " inherits conflicting allof defaults");
+        }
+        return new EffectiveDefault(true, first);
+    }
+
+    private static EffectiveDefault effectiveDefaultReference(
+            String reference,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting
+    ) {
+        if (SchemaType.fromSchemaNameOptional(reference).isPresent()) {
+            return new EffectiveDefault(false, null);
+        }
+        Set<String> next = new HashSet<>(visiting);
+        if (!next.add(reference)) {
+            throw new SchemaException("Cyclic schema reference involving types." + reference);
+        }
+        SchemaDefinition referenced = types.get(reference);
+        if (referenced == null) {
+            throw new SchemaException("Unknown schema type reference: types." + reference);
+        }
+        return effectiveDefault(referenced, types, next);
+    }
+
+    record EffectiveDefault(boolean present, Object value) {
     }
 
     private String normalizeReference(String reference) {

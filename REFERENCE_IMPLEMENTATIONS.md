@@ -216,6 +216,11 @@ Every reference implementation should:
 1. Validate `config.tosd` against `toml-schema.tosd`.
 1. Validate `toml-schema.tosd` against itself.
 1. Keep supported schema vocabulary aligned with `toml-schema.abnf` and `toml-schema.tosd`.
+1. Implement the TOML Schema 1.0 semantic vocabulary, including sibling
+   presence rules, conjunctive composition, array uniqueness, defaults, and
+   deprecation warnings.
+1. Keep validation non-mutating and expose warnings separately from errors;
+   warning-only validation remains valid.
 
 The GitHub Actions workflow in `.github/workflows/reference-implementations.yml` currently enforces these expectations for Java, Go, and Rust.
 
@@ -246,5 +251,7 @@ Each implementation should expose the same practical surfaces as Java where poss
 1. A library API that accepts a schema path and a TOML document path.
 1. A CLI validation command suitable for automation and editor/tool integration.
 1. A CLI extraction command that can generate a starter schema from a sample TOML document.
-1. Tests for the checked-in example, self-schema validation, schema-location lookup, unions, arrays, collections, and key-escaping behavior.
+1. Tests for the checked-in example, self-schema validation, schema-location
+   lookup, unions, composition, arrays, collections, sibling rules,
+   annotations, diagnostics, and key-escaping behavior.
 1. A vocabulary conformance check against `toml-schema.abnf` or an equivalent generated/derived assertion.
