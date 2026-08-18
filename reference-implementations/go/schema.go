@@ -726,6 +726,9 @@ func parseDefinitions(prefix string, table map[string]any, required bool, source
 			if _, ok := parseSchemaType(key); ok {
 				return nil, fmt.Errorf("[types.%s] uses a reserved built-in type name", key)
 			}
+			if strings.HasPrefix(key, "types.") {
+				return nil, fmt.Errorf("[types.%s] uses the reserved type-reference prefix", key)
+			}
 		}
 		valueMap, ok := asMap(value)
 		if !ok {

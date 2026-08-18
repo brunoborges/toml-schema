@@ -806,6 +806,54 @@ type = "string"
 	}
 }
 
+func TestRejectsTypesNamedWithReferencePrefix(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types."types.name"]
+type = "string"
+
+[elements.value]
+type = "name"
+`)
+
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected reserved type-reference prefix to be rejected")
+	}
+}
+
+func TestResolvesQuotedDottedTypeNamesInBothReferenceForms(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types."network.endpoint"]
+type = "string"
+
+[elements.short]
+type = "network.endpoint"
+
+[elements.qualified]
+type = "types.network.endpoint"
+`)
+	documentPath := write(t, dir, "document.toml", `
+short = "one"
+qualified = "two"
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatalf("load schema: %v", err)
+	}
+	result := schema.ValidateFile(documentPath)
+	if !result.Valid() {
+		t.Fatalf("expected dotted type references to validate: %#v", result.Errors)
+	}
+}
+
 func TestRejectsRemovedTableCollectionAliasAsUnknownReference(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `

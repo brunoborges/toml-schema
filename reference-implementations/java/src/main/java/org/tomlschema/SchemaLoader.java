@@ -101,6 +101,9 @@ final class SchemaLoader {
             if (prefix.equals("types") && SchemaType.fromSchemaNameOptional(key).isPresent()) {
                 throw new SchemaException("[types." + key + "] uses a reserved built-in type name");
             }
+            if (prefix.equals("types") && key.startsWith("types.")) {
+                throw new SchemaException("[types." + key + "] uses the reserved type-reference prefix");
+            }
             if (!(table.get(List.of(key)) instanceof TomlTable definitionTable)) {
                 throw new SchemaException("[" + prefix + "] entry must be a table: " + key);
             }

@@ -1167,6 +1167,47 @@ class TomlSchemaTest {
     }
 
     @Test
+    void rejectsTypesNamedWithReferencePrefix() throws IOException {
+        Path schema = write("reserved-reference-prefix.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types."types.name"]
+                type = "string"
+
+                [elements.value]
+                type = "name"
+                """);
+
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+    }
+
+    @Test
+    void resolvesQuotedDottedTypeNamesInBothReferenceForms() throws IOException {
+        Path schema = write("dotted-type-name.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types."network.endpoint"]
+                type = "string"
+
+                [elements.short]
+                type = "network.endpoint"
+
+                [elements.qualified]
+                type = "types.network.endpoint"
+                """);
+        Path document = write("dotted-type-name.toml", """
+                short = "one"
+                qualified = "two"
+                """);
+
+        ValidationResult result = TomlSchema.load(schema).validate(document);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
     void reportsUnionValidationFailures() throws IOException {
         Path schema = write("union-failure.tosd", """
                 [toml-schema]
