@@ -351,14 +351,6 @@ type = "table"
     [types.idBinding.id]
     type = "string"
 
-[types.nameBinding]
-
-    [types.nameBinding.binding]
-    type = "string"
-
-    [types.nameBinding.name]
-    type = "string"
-
 [types.namespaceBinding]
 
     [types.namespaceBinding.binding]
@@ -741,17 +733,9 @@ type = "table"
 type = "array"
 itemtype = "types.container"
 
-[types.arrayOfSimpleBindings]
-type = "array"
-itemtype = "types.simpleBinding"
-
 [types.arrayOfIdBindings]
 type = "array"
 itemtype = "types.idBinding"
-
-[types.arrayOfNameBindings]
-type = "array"
-itemtype = "types.nameBinding"
 
 [types.arrayOfNamespaceBindings]
 type = "array"

@@ -19,9 +19,6 @@ oneof = [ "string", "types.workspaceInherited" ]
 [types.stringArrayOrWorkspace]
 oneof = [ "types.stringArray", "types.workspaceInherited" ]
 
-[types.booleanOrWorkspace]
-oneof = [ "boolean", "types.workspaceInherited" ]
-
 [types.stringOrBoolean]
 oneof = [ "string", "boolean" ]
 
