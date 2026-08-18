@@ -70,7 +70,7 @@ type = "boolean"
 
 [elements.database.ports]
 type = "array"
-arraytype = "integer"</code></pre>
+itemtype = "integer"</code></pre>
         </aside>
       </section>
 
@@ -140,7 +140,7 @@ type = "boolean"</code></pre>
             </div>
             <pre><code>[elements.database.ports]
 type = "array"
-arraytype = "integer"
+itemtype = "integer"
 minlength = 1</code></pre>
           </article>
           <article class="tour-step">
@@ -199,7 +199,7 @@ max = 10</code></pre>
           <div class="spec-item"><strong>Type references</strong><span><code>type</code>, <code>itemtype</code>, <code>items</code>, <code>oneof</code>, and <code>anyof</code> can reference built-in type names or reusable <code>[types]</code>.</span></div>
           <div class="spec-item"><strong>Dynamic keys</strong><span><code>collection</code> validates user-provided table keys.</span></div>
           <div class="spec-item"><strong>Union shapes</strong><span><code>oneof</code> and <code>anyof</code> model alternative valid forms.</span></div>
-          <div class="spec-item"><strong>Containers and tuples</strong><span><code>itemtype</code> validates array and collection members; <code>arraytype</code> and <code>items</code> cover homogeneous and positional arrays.</span></div>
+          <div class="spec-item"><strong>Containers and tuples</strong><span><code>itemtype</code> validates homogeneous array and collection members; <code>items</code> defines positional arrays.</span></div>
           <div class="spec-item"><strong>Media type</strong><span>TOML Schema files use <code>.tosd</code> and <code>application/tosd</code>.</span></div>
         </div>
         <div class="actions">

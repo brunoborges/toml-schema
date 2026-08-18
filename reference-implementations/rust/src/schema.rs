@@ -92,7 +92,6 @@ impl fmt::Display for SchemaType {
 pub const DEFINITION_KEYS: &[&str] = &[
     "type",
     "description",
-    "arraytype",
     "itemtype",
     "items",
     "allowedvalues",
@@ -122,7 +121,6 @@ pub struct Definition {
     type_name: Option<SchemaType>,
     reference: Option<String>,
     description: Option<String>,
-    array_type: Option<SchemaType>,
     item_reference: Option<String>,
     items: Vec<String>,
     optional: bool,
@@ -204,11 +202,13 @@ impl Schema {
         let elements_table = table.get("elements").and_then(Value::as_table);
         let types = parse_definitions("types", types_table, false)?;
         let elements = parse_definitions("elements", elements_table, true)?;
-        Ok(Schema {
+        let schema = Schema {
             source,
             types,
             elements,
-        })
+        };
+        schema.validate_array_range_definitions()?;
+        Ok(schema)
     }
 
     /// Returns the path the schema was loaded from.
@@ -235,6 +235,93 @@ impl Schema {
         if captures.get(2).map(|minor| minor.as_str()) != Some("0") {
             return Err(format!("unsupported TOML Schema minor version: {version}"));
         }
+        Ok(())
+    }
+
+    fn validate_array_range_definitions(&self) -> Result<(), String> {
+        for definition in self.types.values().chain(self.elements.values()) {
+            self.validate_array_range_definition(definition)?;
+        }
+        Ok(())
+    }
+
+    fn validate_array_range_definition(&self, definition: &Definition) -> Result<(), String> {
+        if definition.type_name == Some(SchemaType::Array)
+            && (definition.min.is_some() || definition.max.is_some())
+        {
+            let item_type = self.array_range_item_type(definition)?;
+            validate_boundary_matches_type(
+                &definition.name,
+                "min",
+                definition.min.as_ref(),
+                item_type,
+            )?;
+            validate_boundary_matches_type(
+                &definition.name,
+                "max",
+                definition.max.as_ref(),
+                item_type,
+            )?;
+        }
+        for child in definition.children.values() {
+            self.validate_array_range_definition(child)?;
+        }
+        Ok(())
+    }
+
+    fn array_range_item_type(&self, definition: &Definition) -> Result<SchemaType, String> {
+        let Some(reference) = definition.item_reference.as_deref() else {
+            return Err(format!(
+                "{} can only define min or max when itemtype resolves to one comparable built-in type",
+                definition.name
+            ));
+        };
+        let mut types = HashSet::new();
+        self.collect_reference_types(reference, &mut HashSet::new(), &mut types)?;
+        if types.len() != 1 {
+            return Err(format!(
+                "{} cannot define min or max when itemtype has mixed alternatives",
+                definition.name
+            ));
+        }
+        let item_type = *types.iter().next().expect("one item type");
+        if !item_type.is_range_comparable() {
+            return Err(format!(
+                "{} can only define min or max when itemtype resolves to one comparable built-in type",
+                definition.name
+            ));
+        }
+        Ok(item_type)
+    }
+
+    fn collect_reference_types(
+        &self,
+        reference: &str,
+        seen: &mut HashSet<String>,
+        types: &mut HashSet<SchemaType>,
+    ) -> Result<(), String> {
+        let normalized = normalize_reference(reference.to_string());
+        if let Some(type_name) = SchemaType::parse(&normalized) {
+            types.insert(type_name);
+            return Ok(());
+        }
+        if !seen.insert(normalized.clone()) {
+            return Err(format!("cyclic type reference: {normalized}"));
+        }
+        let definition = self
+            .types
+            .get(&normalized)
+            .ok_or_else(|| format!("unknown type reference: {reference}"))?;
+        if let Some(reference) = definition.reference.as_deref() {
+            self.collect_reference_types(reference, seen, types)?;
+        } else if !definition.one_of.is_empty() || !definition.any_of.is_empty() {
+            for alternative in definition.one_of.iter().chain(definition.any_of.iter()) {
+                self.collect_reference_types(alternative, seen, types)?;
+            }
+        } else if let Some(type_name) = definition.type_name {
+            types.insert(type_name);
+        }
+        seen.remove(&normalized);
         Ok(())
     }
 
@@ -321,6 +408,9 @@ fn parse_definitions(
 }
 
 fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
+    if property_value(table, "arraytype").is_some() {
+        return Err(format!("{name} contains unsupported property: arraytype"));
+    }
     let type_selector = get_string(name, table, "type")?;
     let mut type_name = type_selector.as_deref().and_then(SchemaType::parse);
     let reference = type_selector
@@ -335,7 +425,6 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         }
     }
     let description = get_string(name, table, "description")?;
-    let array_type = get_schema_type(name, table, "arraytype")?;
     let item_reference = get_string(name, table, "itemtype")?;
     let items = get_string_array_values(name, table, "items")?;
     let optional = get_bool(name, table, "optional")?.unwrap_or(false);
@@ -374,11 +463,6 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         }
         type_name = Some(SchemaType::Table);
     }
-    if type_name != Some(SchemaType::Array) && array_type.is_some() {
-        return Err(format!(
-            "{name} can only define arraytype when type is array"
-        ));
-    }
     if !matches!(type_name, Some(SchemaType::Array | SchemaType::Collection))
         && item_reference.is_some()
     {
@@ -390,15 +474,17 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         return Err(format!("{name} can only define items when type is array"));
     }
     if !items.is_empty() {
-        if array_type.is_some() {
-            return Err(format!("{name} cannot define both items and arraytype"));
-        }
         if item_reference.is_some() {
             return Err(format!("{name} cannot define both items and itemtype"));
         }
         if min_length.is_some() || max_length.is_some() {
             return Err(format!(
                 "{name} cannot define minlength or maxlength together with items"
+            ));
+        }
+        if property_value(table, "min").is_some() || property_value(table, "max").is_some() {
+            return Err(format!(
+                "{name} cannot define min or max together with items"
             ));
         }
     }
@@ -421,14 +507,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     }
     let min = property_value(table, "min").cloned();
     let max = property_value(table, "max").cloned();
-    validate_range_constraints(
-        name,
-        type_name,
-        array_type,
-        item_reference.as_deref(),
-        min.as_ref(),
-        max.as_ref(),
-    )?;
+    validate_range_constraints(name, type_name, min.as_ref(), max.as_ref())?;
     validate_allowed_values_constraints(
         name,
         type_name,
@@ -444,7 +523,6 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         type_name,
         reference,
         description,
-        array_type,
         item_reference: item_reference.map(normalize_reference),
         items: normalize_references(items),
         optional,
@@ -464,8 +542,6 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
 fn validate_range_constraints(
     name: &str,
     type_name: Option<SchemaType>,
-    array_type: Option<SchemaType>,
-    item_reference: Option<&str>,
     min: Option<&Value>,
     max: Option<&Value>,
 ) -> Result<(), String> {
@@ -484,19 +560,6 @@ fn validate_range_constraints(
         return Err(format!("{name} cannot define min or max when type is any"));
     }
     if type_name == Some(SchemaType::Array) {
-        if item_reference.is_some() {
-            return Err(format!(
-                "{name} cannot define min or max together with itemtype"
-            ));
-        }
-        let item_type = array_type.unwrap_or(SchemaType::Any);
-        if !item_type.is_range_comparable() {
-            return Err(format!(
-                "{name} can only define min or max for arrays with integer, float, or temporal arraytype"
-            ));
-        }
-        validate_boundary_matches_type(name, "min", min, item_type)?;
-        validate_boundary_matches_type(name, "max", max, item_type)?;
         return Ok(());
     }
     if let Some(type_name) = type_name {
@@ -792,7 +855,6 @@ impl<'schema> Validator<'schema> {
             self.validate_tuple_array(path, array, definition);
             return;
         }
-        let array_type = definition.array_type.unwrap_or(SchemaType::Any);
         let item_definition = match definition.item_reference.as_deref() {
             Some(reference) => match self.resolve_reference(reference, &mut HashSet::new()) {
                 Ok(referenced) => Some(referenced),
@@ -803,25 +865,28 @@ impl<'schema> Validator<'schema> {
             },
             None => None,
         };
-        if array_type == SchemaType::Any && item_definition.is_none() {
+        if item_definition.is_none() && definition.allowed_values.is_empty() {
             return;
         }
+        let range_type = if definition.min.is_some() || definition.max.is_some() {
+            match self.schema.array_range_item_type(definition) {
+                Ok(item_type) => Some(item_type),
+                Err(error) => {
+                    self.add(path, &error);
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         for (index, item) in array.iter().enumerate() {
             let item_path = format!("{path}[{index}]");
-            let mut matches_array_type = true;
-            if array_type != SchemaType::Any {
-                self.validate_type(&item_path, item, array_type);
-                matches_array_type = value_matches_type(item, array_type);
+            if let Some(item_definition) = &item_definition {
+                self.validate_value(&item_path, item, item_definition);
             }
-            if !matches_array_type {
-                continue;
-            }
-            match &item_definition {
-                Some(item_definition) => self.validate_value(&item_path, item, item_definition),
-                None => {
-                    self.validate_allowed_values(&item_path, item, definition);
-                    self.validate_range(&item_path, item, definition);
-                }
+            self.validate_allowed_values(&item_path, item, definition);
+            if range_type.is_some_and(|item_type| value_matches_type(item, item_type)) {
+                self.validate_range(&item_path, item, definition);
             }
         }
     }
@@ -946,7 +1011,6 @@ impl<'schema> Validator<'schema> {
             type_name: referenced.type_name,
             reference: None,
             description: definition.description.clone(),
-            array_type: referenced.array_type,
             item_reference: referenced.item_reference,
             items: referenced.items,
             optional: definition.optional || referenced.optional,
@@ -1218,15 +1282,6 @@ fn normalize_references(references: Vec<String>) -> Vec<String> {
 
 fn is_nan(value: Option<&Value>) -> bool {
     matches!(value, Some(Value::Float(float)) if float.is_nan())
-}
-
-fn get_schema_type(name: &str, table: &Table, key: &str) -> Result<Option<SchemaType>, String> {
-    let Some(value) = get_string(name, table, key)? else {
-        return Ok(None);
-    };
-    SchemaType::parse(&value)
-        .map(Some)
-        .ok_or_else(|| format!("{name} has unsupported schema type: {value}"))
 }
 
 fn property_value<'a>(table: &'a Table, key: &str) -> Option<&'a Value> {

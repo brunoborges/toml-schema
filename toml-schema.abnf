@@ -21,18 +21,17 @@ metadata-table    = toml-table-header-toml-schema-meta *toml-keyval
 
 schema-definition = schema-definition-table *definition-property *schema-definition
 
-schema-key = type / description / arraytype / itemtype / items / oneof / anyof
+schema-key = type / description / itemtype / items / oneof / anyof
            / allowedvalues / pattern / keypattern / optional / default / min / max
            / minlength / maxlength
 
-definition-property = type / description / arraytype / itemtype / items / oneof / anyof
+definition-property = type / description / itemtype / items / oneof / anyof
                     / allowedvalues / pattern / keypattern / optional / default / min / max
                     / minlength / maxlength
 
 version       = "version" keyval-sep semver-string
 type          = "type" keyval-sep type-reference
 description   = "description" keyval-sep toml-string
-arraytype     = "arraytype" keyval-sep array-built-in-type
 itemtype      = "itemtype" keyval-sep type-reference
 items         = "items" keyval-sep type-reference-array ; ordered type references for positional array validation
 oneof         = "oneof" keyval-sep type-reference-array
@@ -49,11 +48,7 @@ maxlength     = "maxlength" keyval-sep toml-integer ; strings count Unicode scal
 
 built-in-type = anytype / stringtype / integertype / floattype / booleantype
               / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
-              / arraytype-name / tabletype / collectiontype
-
-array-built-in-type = anytype / stringtype / integertype / floattype / booleantype
-                    / offsetdatetimetype / localdatetimetype / localdatetype / localtimetype
-                    / arraytype-name / tabletype
+              / array-type-name / tabletype / collectiontype
 
 type-reference       = built-in-type / toml-string
 type-reference-array = toml-array ; semantically intended to contain only type-reference values; element types are not constrained by this ABNF
@@ -69,7 +64,7 @@ offsetdatetimetype  = DQUOTE %x6f.66.66.73.65.74.2d.64.61.74.65.2d.74.69.6d.65 D
 localdatetimetype   = DQUOTE %x6c.6f.63.61.6c.2d.64.61.74.65.2d.74.69.6d.65 DQUOTE    ; "local-date-time"
 localdatetype       = DQUOTE %x6c.6f.63.61.6c.2d.64.61.74.65 DQUOTE                   ; "local-date"
 localtimetype       = DQUOTE %x6c.6f.63.61.6c.2d.74.69.6d.65 DQUOTE                   ; "local-time"
-arraytype-name      = DQUOTE %x61.72.72.61.79 DQUOTE                                  ; "array"
+array-type-name     = DQUOTE %x61.72.72.61.79 DQUOTE                                  ; "array"
 tabletype           = DQUOTE %x74.61.62.6c.65 DQUOTE                                  ; "table"
 collectiontype      = DQUOTE %x63.6f.6c.6c.65.63.74.69.6f.6e DQUOTE                   ; "collection"
 

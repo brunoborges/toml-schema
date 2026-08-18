@@ -13,6 +13,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +25,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "description", "arraytype", "itemtype", "items", "allowedvalues", "pattern",
+            "type", "description", "itemtype", "items", "allowedvalues", "pattern",
             "keypattern", "optional", "default", "min", "max", "minlength", "maxlength",
             "oneof", "anyof"
     );
@@ -43,6 +44,8 @@ final class SchemaLoader {
         String version = validateTopLevel(parsed);
         Map<String, SchemaDefinition> types = parseDefinitions("types", parsed.getTable("types"), false);
         Map<String, SchemaDefinition> elements = parseDefinitions("elements", parsed.getTable("elements"), true);
+        validateArrayRangeConstraints(types, types);
+        validateArrayRangeConstraints(types, elements);
         return new TomlSchema(schemaPath, version, types, elements);
     }
 
@@ -92,6 +95,9 @@ final class SchemaLoader {
     }
 
     private SchemaDefinition parseDefinition(String name, TomlTable table) {
+        if (getPropertyValue(table, "arraytype") != null) {
+            throw new SchemaException(name + " contains unsupported property: arraytype");
+        }
         String typeSelector = getString(table, "type");
         SchemaType type = typeSelector == null
                 ? null
@@ -107,7 +113,6 @@ final class SchemaLoader {
             }
         }
         String description = getString(table, "description");
-        SchemaType arrayType = getSchemaType(table, "arraytype");
         String itemReference = normalizeReference(getString(table, "itemtype"));
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
         Boolean optional = getBoolean(table, "optional");
@@ -143,9 +148,6 @@ final class SchemaLoader {
             }
             type = SchemaType.TABLE;
         }
-        if (type != SchemaType.ARRAY && arrayType != null) {
-            throw new SchemaException(name + " can only define arraytype when type is array");
-        }
         if (type != SchemaType.ARRAY && type != SchemaType.COLLECTION && itemReference != null) {
             throw new SchemaException(name + " can only define itemtype when type is array or collection");
         }
@@ -153,9 +155,6 @@ final class SchemaLoader {
             throw new SchemaException(name + " can only define items when type is array");
         }
         if (!items.isEmpty()) {
-            if (arrayType != null) {
-                throw new SchemaException(name + " cannot define both items and arraytype");
-            }
             if (itemReference != null) {
                 throw new SchemaException(name + " cannot define both items and itemtype");
             }
@@ -174,14 +173,13 @@ final class SchemaLoader {
         }
         Object min = getPropertyValue(table, "min");
         Object max = getPropertyValue(table, "max");
-        validateRangeConstraints(name, type, arrayType, itemReference, min, max);
+        validateRangeConstraints(name, type, itemReference, min, max);
         validateAllowedValuesConstraints(name, type, allowedValues, pattern, min, max, minLength, maxLength);
         return new SchemaDefinition(
                 name,
                 type,
                 normalizedReference,
                 description,
-                arrayType,
                 itemReference,
                 items,
                 optional != null && optional,
@@ -196,11 +194,6 @@ final class SchemaLoader {
                 anyOf.stream().map(this::normalizeReference).toList(),
                 children
         );
-    }
-
-    private SchemaType getSchemaType(TomlTable table, String key) {
-        String value = getString(table, key);
-        return value == null ? null : SchemaType.fromSchemaName(value);
     }
 
     private Object getPropertyValue(TomlTable table, String key) {
@@ -283,7 +276,7 @@ final class SchemaLoader {
         return strings;
     }
 
-    private void validateRangeConstraints(String name, SchemaType type, SchemaType arrayType, String itemReference, Object min, Object max) {
+    private void validateRangeConstraints(String name, SchemaType type, String itemReference, Object min, Object max) {
         if (min == null && max == null) {
             return;
         }
@@ -295,15 +288,9 @@ final class SchemaLoader {
             throw new SchemaException(name + " cannot define min or max when type is any");
         }
         if (type == SchemaType.ARRAY) {
-            if (itemReference != null) {
-                throw new SchemaException(name + " cannot define min or max together with itemtype");
+            if (itemReference == null) {
+                throw new SchemaException(name + " can only define min or max when itemtype resolves to one comparable built-in type");
             }
-            SchemaType itemType = arrayType == null ? SchemaType.ANY : arrayType;
-            if (!isRangeComparable(itemType)) {
-                throw new SchemaException(name + " can only define min or max for arrays with integer, float, or temporal arraytype");
-            }
-            validateBoundaryMatchesType(name, "min", min, itemType);
-            validateBoundaryMatchesType(name, "max", max, itemType);
             return;
         }
         if (type != null && !isRangeComparable(type)) {
@@ -313,6 +300,55 @@ final class SchemaLoader {
             validateBoundaryMatchesType(name, "min", min, type);
             validateBoundaryMatchesType(name, "max", max, type);
         }
+    }
+
+    private void validateArrayRangeConstraints(
+            Map<String, SchemaDefinition> types,
+            Map<String, SchemaDefinition> definitions
+    ) {
+        for (SchemaDefinition definition : definitions.values()) {
+            if (definition.type() == SchemaType.ARRAY && (definition.min() != null || definition.max() != null)) {
+                Set<SchemaType> itemTypes = resolveItemTypes(definition.itemReference(), types, new HashSet<>());
+                if (itemTypes.size() != 1 || !isRangeComparable(itemTypes.iterator().next())) {
+                    throw new SchemaException(definition.name()
+                            + " can only define min or max when itemtype resolves to one comparable built-in type");
+                }
+                SchemaType itemType = itemTypes.iterator().next();
+                validateBoundaryMatchesType(definition.name(), "min", definition.min(), itemType);
+                validateBoundaryMatchesType(definition.name(), "max", definition.max(), itemType);
+            }
+            validateArrayRangeConstraints(types, definition.children());
+        }
+    }
+
+    private Set<SchemaType> resolveItemTypes(
+            String reference,
+            Map<String, SchemaDefinition> types,
+            Set<String> seenReferences
+    ) {
+        SchemaType builtIn = SchemaType.fromSchemaNameOptional(reference).orElse(null);
+        if (builtIn != null) {
+            return Set.of(builtIn);
+        }
+        if (!seenReferences.add(reference)) {
+            throw new SchemaException("Cyclic schema reference involving types." + reference);
+        }
+        SchemaDefinition definition = types.get(reference);
+        if (definition == null) {
+            throw new SchemaException("Unknown schema type reference: types." + reference);
+        }
+        if (definition.reference() != null) {
+            return resolveItemTypes(definition.reference(), types, seenReferences);
+        }
+        List<String> alternatives = definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
+        if (!alternatives.isEmpty()) {
+            Set<SchemaType> itemTypes = new HashSet<>();
+            for (String alternative : alternatives) {
+                itemTypes.addAll(resolveItemTypes(alternative, types, new HashSet<>(seenReferences)));
+            }
+            return itemTypes;
+        }
+        return Set.of(definition.type());
     }
 
     private void validateRangeBoundary(String name, String key, Object value) {

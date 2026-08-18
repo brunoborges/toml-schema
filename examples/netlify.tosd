@@ -5,7 +5,7 @@ version = "1.0.0"
 
 [types.stringArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 
 [types.stringMap]
 type = "collection"
@@ -24,7 +24,7 @@ allowedvalues = [ "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS" ]
 
 [types.httpMethodArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 allowedvalues = [ "GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS" ]
 
 [types.httpMethodOrArray]
@@ -127,7 +127,6 @@ type = "table"
 
 [types.plugins]
 type = "array"
-arraytype = "table"
 itemtype = "types.plugin"
 
 [types.integration]
@@ -142,7 +141,6 @@ type = "table"
 
 [types.integrations]
 type = "array"
-arraytype = "table"
 itemtype = "types.integration"
 
 [types.context]
@@ -232,7 +230,6 @@ type = "table"
 
 [types.redirects]
 type = "array"
-arraytype = "table"
 itemtype = "types.redirect"
 
 [types.header]
@@ -246,7 +243,6 @@ type = "table"
 
 [types.headers]
 type = "array"
-arraytype = "table"
 itemtype = "types.header"
 
 [types.functionConfig]
@@ -259,17 +255,17 @@ type = "table"
 
     [types.functionConfig.external_node_modules]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.functionConfig.included_files]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.functionConfig.excluded_files]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.functions]
@@ -287,17 +283,17 @@ itemtype = "types.functionConfig"
 
     [types.functions.external_node_modules]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.functions.included_files]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.functions.excluded_files]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.edgeHeaderCondition]
@@ -344,7 +340,6 @@ type = "table"
 
 [types.edgeFunctions]
 type = "array"
-arraytype = "table"
 itemtype = "types.edgeFunction"
 
 [types.devHttps]
@@ -409,7 +404,7 @@ type = "table"
 
     [types.dev.envFiles]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.dev.https]
@@ -421,12 +416,12 @@ type = "table"
 
     [types.template."incoming-hooks"]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.template."required-extensions"]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.template.environment]
@@ -438,7 +433,7 @@ type = "table"
 
     [types.images.remote_images]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [elements]

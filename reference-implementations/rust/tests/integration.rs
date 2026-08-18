@@ -468,6 +468,51 @@ maxlength = 2
 }
 
 #[test]
+fn validates_array_allowedvalues_without_itemtype() {
+    let directory = tempfile_dir("array-allowedvalues");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.values]
+type = "array"
+allowedvalues = [ 1, 2 ]
+
+[elements.unrestricted]
+type = "array"
+allowedvalues = []
+"#,
+    );
+    let valid_document = write_file(
+        &directory,
+        "valid.toml",
+        r#"
+values = [ 1, 2 ]
+unrestricted = [ 1, "two", true ]
+"#,
+    );
+    let invalid_document = write_file(
+        &directory,
+        "invalid.toml",
+        r#"
+values = [ 1, 3 ]
+unrestricted = [ 1, "two", true ]
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load array allowedvalues schema");
+    assert!(schema.validate_file(valid_document).valid());
+
+    let result = schema.validate_file(invalid_document);
+    assert_eq!(result.errors.len(), 1, "{:#?}", result.errors);
+    assert_eq!(result.errors[0].path, "$.values[1]");
+    assert_eq!(result.errors[0].message, "value is not in allowedvalues");
+}
+
+#[test]
 fn pattern_matches_unanchored() {
     let directory = tempfile_dir("pattern-unanchored");
     let schema_path = write_file(
@@ -553,7 +598,6 @@ anyof = [ "types.stringId", "types.intId" ]
 
 [elements.entries]
 type = "array"
-arraytype = "table"
 itemtype = "types.namedOrNumbered"
 "#,
     );
@@ -580,7 +624,7 @@ entries = [
 }
 
 #[test]
-fn requires_array_items_when_arraytype_is_array() {
+fn validates_nested_arrays_with_itemtype() {
     let directory = tempfile_dir("nested-arrays");
     let schema_path = write_file(
         &directory,
@@ -591,7 +635,7 @@ version = "1.0.0"
 
 [elements.nested]
 type = "array"
-arraytype = "array"
+itemtype = "array"
 
 [elements.mixed]
 type = "array"
@@ -626,6 +670,135 @@ mixed = [1, "two", [true]]
     let invalid_result = schema.validate_file(&invalid_path);
     assert!(!invalid_result.valid());
     assert!(has_path(&invalid_result, "$.nested[1]"));
+}
+
+#[test]
+fn validates_array_ranges_with_comparable_itemtypes() {
+    let directory = tempfile_dir("array-ranges");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.boundedInteger]
+type = "integer"
+min = 3
+max = 8
+
+[types.lowInteger]
+type = "integer"
+max = 6
+
+[types.integerAlternative]
+anyof = [ "types.boundedInteger", "types.lowInteger" ]
+
+[elements.direct]
+type = "array"
+itemtype = "integer"
+min = 2
+max = 4
+
+[elements.named]
+type = "array"
+itemtype = "types.boundedInteger"
+min = 0
+max = 20
+
+[elements.alternative]
+type = "array"
+itemtype = "types.integerAlternative"
+min = 4
+max = 5
+"#,
+    );
+    let valid_path = write_file(
+        &directory,
+        "valid.toml",
+        r#"
+direct = [2, 4]
+named = [3, 8]
+alternative = [4, 5]
+"#,
+    );
+    let invalid_path = write_file(
+        &directory,
+        "invalid.toml",
+        r#"
+direct = [1, 5]
+named = [2]
+alternative = [3, 6]
+"#,
+    );
+
+    let schema = Schema::load(&schema_path).expect("load comparable array ranges");
+    assert!(schema.validate_file(&valid_path).valid());
+
+    let result = schema.validate_file(&invalid_path);
+    for path in [
+        "$.direct[0]",
+        "$.direct[1]",
+        "$.named[0]",
+        "$.alternative[0]",
+        "$.alternative[1]",
+    ] {
+        assert!(
+            has_path(&result, path),
+            "expected error at {path}: {:#?}",
+            result.errors
+        );
+    }
+}
+
+#[test]
+fn rejects_array_ranges_with_mixed_itemtype_alternatives() {
+    let directory = tempfile_dir("mixed-array-ranges");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.mixed]
+oneof = [ "integer", "string" ]
+
+[elements.values]
+type = "array"
+itemtype = "types.mixed"
+min = 1
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("reject mixed array range itemtype");
+    assert!(
+        error.contains("mixed alternatives"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn rejects_removed_arraytype_property() {
+    let directory = tempfile_dir("removed-arraytype");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.values]
+type = "array"
+arraytype = "integer"
+"#,
+    );
+
+    let error = Schema::load(&schema_path).expect_err("arraytype must be unsupported");
+    assert!(
+        error.contains("unsupported property"),
+        "unexpected error: {error}"
+    );
 }
 
 #[test]
@@ -862,7 +1035,6 @@ optional = true
 #[test]
 fn rejects_constraints_and_children_on_named_type_reference() {
     let invalid_siblings = [
-        r#"arraytype = "string""#,
         r#"itemtype = "string""#,
         r#"items = [ "string" ]"#,
         r#"allowedvalues = [ "name" ]"#,
@@ -1010,7 +1182,7 @@ version = "1.0.0"
 
 [elements.values]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 {alias} = 1
 "#
             ),
@@ -1132,7 +1304,7 @@ version = "1.0.0"
 [elements.value]
 type = "array"
 items = [ "types.coordinate", "types.label" ]
-arraytype = "string"
+itemtype = "string"
 "#,
         r#"
 [toml-schema]
@@ -1282,7 +1454,7 @@ location = "ignored.tosd"
         "[elements.owner]",
         "[elements.owner.name]",
         "[elements.site.\"google.com\"]",
-        "arraytype = \"integer\"",
+        "itemtype = \"integer\"",
     ] {
         assert!(
             schema_text.contains(expected),

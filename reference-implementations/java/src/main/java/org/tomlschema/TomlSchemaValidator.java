@@ -136,31 +136,41 @@ final class TomlSchemaValidator {
             validateTupleArray(path, array, definition);
             return;
         }
-        SchemaType arrayType = definition.arrayType() == null ? SchemaType.ANY : definition.arrayType();
         SchemaDefinition itemDefinition = definition.itemReference() == null
                 ? null
                 : resolveReference(definition.itemReference(), new HashSet<>());
-        if (arrayType == SchemaType.ANY && itemDefinition == null) {
+        if (itemDefinition == null && definition.allowedValues().isEmpty()) {
             return;
         }
         for (int i = 0; i < array.size(); i++) {
             Object item = array.get(i);
             String itemPath = path + "[" + i + "]";
-            boolean matchesArrayType = true;
-            if (arrayType != SchemaType.ANY) {
-                validateType(itemPath, item, arrayType);
-                matchesArrayType = isType(item, arrayType);
-            }
-            if (!matchesArrayType) {
-                continue;
-            }
-            if (itemDefinition == null) {
-                validateAllowedValues(itemPath, item, definition);
-                validateRange(itemPath, item, definition);
-            } else {
+            if (itemDefinition != null) {
                 validateValue(itemPath, item, itemDefinition);
             }
+            if (!definition.allowedValues().isEmpty()) {
+                validateAllowedValues(itemPath, item, definition);
+            }
+            if ((definition.min() != null || definition.max() != null)
+                    && boundariesAreComparableWith(item, definition)) {
+                validateRange(itemPath, item, definition);
+            }
         }
+    }
+
+    private boolean boundariesAreComparableWith(Object value, SchemaDefinition definition) {
+        return boundaryIsComparableWith(value, definition.min())
+                && boundaryIsComparableWith(value, definition.max());
+    }
+
+    private boolean boundaryIsComparableWith(Object value, Object boundary) {
+        if (boundary == null) {
+            return true;
+        }
+        if (value instanceof Number && boundary instanceof Number) {
+            return true;
+        }
+        return value instanceof Comparable<?> && value.getClass().isInstance(boundary);
     }
 
     private void validateTupleArray(String path, TomlArray array, SchemaDefinition definition) {
@@ -275,7 +285,6 @@ final class TomlSchemaValidator {
                 referenced.type(),
                 null,
                 definition.description(),
-                referenced.arrayType(),
                 referenced.itemReference(),
                 referenced.items(),
                 definition.optional() || referenced.optional(),
@@ -312,7 +321,6 @@ final class TomlSchemaValidator {
         return new SchemaDefinition(
                 reference,
                 type,
-                null,
                 null,
                 null,
                 null,

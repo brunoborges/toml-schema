@@ -48,7 +48,7 @@ type = "table"
 
     [elements.database.ports]
     type = "array"
-    arraytype = "integer"
+    itemtype = "integer"
 ```
 
 ## Reference implementations

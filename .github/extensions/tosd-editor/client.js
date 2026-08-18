@@ -35,7 +35,6 @@ const NUMERIC_TEMPORAL = [
     "local-date",
     "local-time",
 ];
-const ARRAY_TYPES = BUILTIN_TYPES.filter((t) => t !== "collection");
 
 const state = {
     path: null,
@@ -48,6 +47,24 @@ const state = {
     view: "elements",
     zoom: 1,
 };
+
+function resolvedKinds(ref, seen = new Set()) {
+    if (!ref) return new Set();
+    const name = ref.startsWith("types.") ? ref.slice(6) : ref;
+    if (BUILTIN_TYPES.includes(name)) return new Set([name]);
+    if (seen.has(name)) return new Set();
+    const definition = (state.model?.types || []).find((candidate) => candidate.name === name);
+    if (!definition) return new Set();
+    const nextSeen = new Set(seen).add(name);
+    const props = definition.props || {};
+    if (props.type) return resolvedKinds(props.type, nextSeen);
+    const alternatives = props.oneof?.length ? props.oneof : props.anyof;
+    const kinds = new Set();
+    for (const alternative of alternatives || []) {
+        for (const kind of resolvedKinds(alternative, nextSeen)) kinds.add(kind);
+    }
+    return kinds;
+}
 
 const $ = (sel, root = document) => root.querySelector(sel);
 function el(tag, attrs = {}, ...kids) {
@@ -539,14 +556,10 @@ function renderEditor() {
 
     // Array-specific
     if (t === "array") {
-        box.append(
-            selectField("arraytype", p.arraytype || "", ["", ...ARRAY_TYPES], (v) => setProp(p, "arraytype", v),
-                "Built-in type of each array item."),
-        );
-        box.append(refField("itemtype", "Item type (reference)", p.itemtype || "", (v) => setProp(p, "itemtype", v),
-            "Validate each item against a reusable type (required for arrays of tables)."));
+        box.append(refField("itemtype", "Item type", p.itemtype || "", (v) => setProp(p, "itemtype", v),
+            "Validate every item against a built-in or reusable type."));
         box.append(listField("items", "Positional items (tuple)", p.items || [], (arr) => setListProp(p, "items", arr),
-            true, "Ordered type refs; fixed arity. Mutually exclusive with arraytype/itemtype."));
+            true, "Ordered type refs; fixed arity. Mutually exclusive with itemtype."));
     }
 
     if (t === "collection") {
@@ -577,7 +590,9 @@ function renderEditor() {
     }
 
     // min / max for numeric/temporal (or arrays thereof)
-    const showRange = NUMERIC_TEMPORAL.includes(t) || (t === "array" && NUMERIC_TEMPORAL.includes(p.arraytype));
+    const itemKinds = t === "array" ? resolvedKinds(p.itemtype) : new Set();
+    const showRange = NUMERIC_TEMPORAL.includes(t)
+        || (itemKinds.size === 1 && NUMERIC_TEMPORAL.includes([...itemKinds][0]));
     if (showRange) {
         const row = el("div", { class: "row-2" });
         row.append(textField("min", "min", p.min || "", (v) => setProp(p, "min", v), true));
@@ -622,7 +637,7 @@ function renderEditor() {
 function advancedAll(p) {
     const wrap = el("div");
     wrap.append(el("div", { class: "section-title", text: "All properties" }));
-    const allProps = ["type", "arraytype", "itemtype", "pattern", "keypattern", "min", "max", "default"];
+    const allProps = ["type", "itemtype", "pattern", "keypattern", "min", "max", "default"];
     for (const key of allProps) {
         wrap.append(textField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v), true));
     }

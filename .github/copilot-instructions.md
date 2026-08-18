@@ -31,10 +31,10 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - Use full SemVer strings for `[toml-schema].version`; the current TOML Schema version is `1.0.0`, and shorthand values like `"1"` or `"1.0"` are invalid.
 - Custom metadata belongs under `[toml-schema.meta]`; do not add arbitrary keys or subtables directly under `[toml-schema]`.
 - Reusable definitions live under `[types.<name>]` and are referenced from `[elements]` or nested type definitions rather than duplicating structures.
-- Use `type` for built-in and named type references, `collection` for dynamic-key tables, and `itemtype` for array or collection members.
+- Use `type` for built-in and named type references, `collection` for dynamic-key tables, and `itemtype` for homogeneous array or collection members.
 - Use `itemtype = "types.<name>"` on `type = "array"` definitions when array items need structural validation, including TOML arrays of tables (`[[name]]`) and arrays of inline tables.
 - Use `oneof` for exactly-one alternative type validation and `anyof` for at-least-one validation; both select the current node's type. For array or collection members, reference a reusable alternative definition through `itemtype`.
-- `min`/`max` are inclusive and only valid for numeric/date-time types, or arrays with comparable `arraytype`; NaN is not a valid boundary.
+- `min`/`max` are inclusive and only valid for numeric/date-time types, or arrays whose `itemtype` resolves to one comparable kind; NaN is not a valid boundary.
 - String `minlength`/`maxlength` count Unicode scalar values after TOML parsing, not UTF-8 bytes, UTF-16 code units, or grapheme clusters.
 - Use quoted TOML key/table paths only when TOML syntax needs quoting, e.g. literal dotted or empty keys. Schema-key-colliding child paths like `[elements.plugin.pattern]` do not require quotes.
 - Root `[toml-schema]` in TOML documents is reserved metadata and ignored during application validation unless the schema explicitly defines `[elements.toml-schema]`.

@@ -47,7 +47,7 @@ func appendDefinition(schema *strings.Builder, path []string, value any) {
 	typeName := schemaType(value)
 	fmt.Fprintf(schema, "type = %q\n", typeName)
 	if typeName == string(TypeArray) {
-		fmt.Fprintf(schema, "arraytype = %q\n", inferArrayType(value.([]any)))
+		fmt.Fprintf(schema, "itemtype = %q\n", inferItemType(value.([]any)))
 	}
 	if table, ok := value.(map[string]any); ok {
 		for _, childKey := range sortedKeys(table) {
@@ -84,7 +84,7 @@ func schemaType(value any) string {
 	}
 }
 
-func inferArrayType(array []any) string {
+func inferItemType(array []any) string {
 	if len(array) == 0 {
 		return string(TypeAny)
 	}

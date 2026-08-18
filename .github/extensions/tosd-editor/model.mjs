@@ -11,7 +11,7 @@
 // node = { name, props: { <prop>: <editorValue> }, children: [ node, ... ] }
 //
 // Editor value encoding per property:
-//   type/arraytype/itemtype/pattern/keypattern : plain string
+//   type/itemtype/pattern/keypattern : plain string
 //   optional                               : boolean
 //   minlength/maxlength                    : number
 //   items/oneof/anyof                      : string[]  (type references)
@@ -28,7 +28,6 @@ import {
 
 export const PROP_ORDER = [
     "type",
-    "arraytype",
     "itemtype",
     "items",
     "oneof",
@@ -44,7 +43,7 @@ export const PROP_ORDER = [
     "default",
 ];
 
-const STRING_PROPS = new Set(["type", "arraytype", "itemtype", "pattern", "keypattern"]);
+const STRING_PROPS = new Set(["type", "itemtype", "pattern", "keypattern"]);
 const INT_PROPS = new Set(["minlength", "maxlength"]);
 const BOOL_PROPS = new Set(["optional"]);
 const REFLIST_PROPS = new Set(["items", "oneof", "anyof"]);
@@ -106,6 +105,9 @@ function tableToNode(name, table) {
             node.children.push(tableToNode(key, value));
         } else if (ALL_PROPS.has(key)) {
             node.props[key] = decodeProp(key, value);
+        } else if (key === "arraytype") {
+            // Preserve removed syntax long enough for validation to report it.
+            node.props[key] = String(value);
         } else {
             // A target document key that collides with nothing schema-specific
             // but holds a scalar - treat it as a child definition placeholder so
@@ -259,6 +261,7 @@ const NUMERIC_OR_TEMPORAL = new Set([
 export function validateModel(model) {
     const issues = [];
     const typeNames = new Set((model.types || []).map((t) => t.name));
+    const typesByName = new Map((model.types || []).map((t) => [t.name, t]));
 
     const refExists = (ref) => {
         if (!ref) return true;
@@ -267,9 +270,31 @@ export function validateModel(model) {
         return typeNames.has(name);
     };
 
+    const resolvedKinds = (ref, seen = new Set()) => {
+        if (!ref) return new Set();
+        const name = ref.startsWith("types.") ? ref.slice(6) : ref;
+        if (BUILTIN_TYPES.includes(name)) return new Set([name]);
+        if (seen.has(name)) return new Set();
+        const definition = typesByName.get(name);
+        if (!definition) return new Set();
+        const nextSeen = new Set(seen).add(name);
+        const props = definition.props || {};
+        if (props.type) return resolvedKinds(props.type, nextSeen);
+        const alternatives = props.oneof?.length ? props.oneof : props.anyof;
+        const kinds = new Set();
+        for (const alternative of alternatives || []) {
+            for (const kind of resolvedKinds(alternative, nextSeen)) kinds.add(kind);
+        }
+        return kinds;
+    };
+
     const walk = (node, pathLabel) => {
         const p = node.props || {};
         const label = pathLabel;
+
+        if (p.arraytype != null) {
+            issues.push({ level: "error", path: label, message: "`arraytype` is not supported; use `itemtype`." });
+        }
 
         const exclusivity = ["type", "oneof", "anyof"].filter((k) => p[k] != null && p[k] !== "" && !(Array.isArray(p[k]) && p[k].length === 0));
         if (exclusivity.length > 1) {
@@ -279,8 +304,8 @@ export function validateModel(model) {
             issues.push({ level: "warning", path: label, message: "No type, oneof, anyof, or children - defaults to an open table." });
         }
 
-        if (p.items && (p.arraytype || p.itemtype)) {
-            issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `arraytype` and `itemtype`." });
+        if (p.items && p.itemtype) {
+            issues.push({ level: "error", path: label, message: "`items` is mutually exclusive with `itemtype`." });
         }
         if (p.itemtype && !["array", "collection"].includes(p.type)) {
             issues.push({ level: "error", path: label, message: "`itemtype` requires `type = \"array\"` or `type = \"collection\"`." });
@@ -296,8 +321,9 @@ export function validateModel(model) {
         const hasMax = p.max != null && p.max !== "";
         if (hasMin || hasMax) {
             const t = p.type;
-            const at = p.arraytype;
-            const ok = NUMERIC_OR_TEMPORAL.has(t) || (t === "array" && NUMERIC_OR_TEMPORAL.has(at));
+            const itemKinds = t === "array" ? resolvedKinds(p.itemtype) : new Set();
+            const comparableItems = itemKinds.size === 1 && NUMERIC_OR_TEMPORAL.has([...itemKinds][0]);
+            const ok = NUMERIC_OR_TEMPORAL.has(t) || comparableItems;
             if (t === "any") {
                 issues.push({ level: "error", path: label, message: "`min`/`max` cannot be applied to type `any`." });
             } else if (!ok) {

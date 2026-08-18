@@ -15,11 +15,11 @@ oneof = [ "types.durationValue", "integer" ]
 
 [types.stringArray]
 type = "array"
-arraytype = "string"
+itemtype = "string"
 
 [types.integerArray]
 type = "array"
-arraytype = "integer"
+itemtype = "integer"
 
 [types.stringMap]
 type = "collection"
@@ -126,7 +126,6 @@ type = "table"
 
     [types.refereeMetrics.metric_queries]
     type = "array"
-    arraytype = "table"
     itemtype = "types.anyMap"
     optional = true
 
@@ -168,22 +167,21 @@ type = "table"
 
     [types.dockerService.entrypoint]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.dockerService.command]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
     [types.dockerService.environment]
     type = "array"
-    arraytype = "string"
+    itemtype = "string"
     optional = true
 
 [types.dockerServices]
 type = "array"
-arraytype = "table"
 itemtype = "types.dockerService"
 
 [types.docker]
@@ -641,7 +639,6 @@ type = "table"
 
 [types.machineAutoscalings]
 type = "array"
-arraytype = "table"
 itemtype = "types.machineAutoscaling"
 
 [types.runnerMachine]
@@ -802,7 +799,6 @@ type = "table"
 
 [types.autoscalerPolicies]
 type = "array"
-arraytype = "table"
 itemtype = "types.autoscalerPolicy"
 
 [types.vmIsolation]
@@ -1244,7 +1240,6 @@ itemtype = "any"
 
 [types.runners]
 type = "array"
-arraytype = "table"
 itemtype = "types.runner"
 
 [elements]
