@@ -304,3 +304,246 @@ test("portable patterns use Unicode scalar-value semantics", () => {
     })]);
     assert.deepEqual(errors(value), []);
 });
+
+test("declared defaults are rejected when they violate the effective definition", () => {
+    const cases = [
+        // Built-in type and constraint violations.
+        model([definition("x", { type: "string", default: "1" })]),
+        model([definition("x", { type: "string", allowedvalues: ['"a"', '"b"'], default: '"c"' })]),
+        model([definition("x", { type: "string", pattern: "^[a-z]+$", default: '"A1"' })]),
+        model([definition("x", { type: "integer", min: "1", max: "10", default: "0" })]),
+        model([definition("x", { type: "string", minlength: 2, maxlength: 3, default: '"abcd"' })]),
+        // Named type reference inherits the referenced constraints.
+        model(
+            [definition("x", { type: "types.Port", default: "70000" })],
+            [definition("Port", { type: "integer", min: "1", max: "65535" })],
+        ),
+        // Inherited default is validated at the definition that inherits it.
+        model(
+            [definition("x", { type: "types.Port" })],
+            [definition("Port", { type: "integer", max: "65535", default: "70000" })],
+        ),
+        // Alternative selection.
+        model([definition("x", { oneof: ["string", "integer"], default: "true" })]),
+        model([definition("x", { anyof: ["string", "integer"], default: "true" })]),
+        // Conjunctive allof: every component must accept the default.
+        model(
+            [definition("x", { type: "string", allof: ["types.Lower", "types.Short"], default: '"abcd"' })],
+            [
+                definition("Lower", { type: "string", pattern: "^[a-z]+$" }),
+                definition("Short", { type: "string", maxlength: 3 }),
+            ],
+        ),
+        // Unequal defaults contributed by allof with no local default.
+        model(
+            [definition("x", { type: "types.A", allof: ["types.B"] })],
+            [
+                definition("A", { type: "integer", default: "1" }),
+                definition("B", { type: "integer", default: "2" }),
+            ],
+        ),
+        // Fixed children: required child missing and closure violation.
+        model([definition("x", { type: "table", default: "{ }" }, [
+            definition("name", { type: "string" }),
+        ])]),
+        model([definition("x", { type: "table", default: '{ name = "a", extra = 1 }' }, [
+            definition("name", { type: "string" }),
+        ])]),
+        // Sibling presence rules.
+        model([definition("x", {
+            type: "table",
+            dependentrequired: { cert: ["key"] },
+            default: '{ cert = "c" }',
+        }, [
+            definition("cert", { type: "string", optional: true }),
+            definition("key", { type: "string", optional: true }),
+        ])]),
+        model([definition("x", {
+            type: "table",
+            mutuallyexclusive: [["path", "url"]],
+            default: '{ path = "p", url = "u" }',
+        }, [
+            definition("path", { type: "string", optional: true }),
+            definition("url", { type: "string", optional: true }),
+        ])]),
+        model([definition("x", {
+            type: "table",
+            exactlyone: [["path", "url"]],
+            default: "{ }",
+        }, [
+            definition("path", { type: "string", optional: true }),
+            definition("url", { type: "string", optional: true }),
+        ])]),
+        // Arrays: itemtype, tuple items, uniqueitems, and length.
+        model([definition("x", { type: "array", itemtype: "integer", default: '[ 1, "two" ]' })]),
+        model([definition("x", { type: "array", items: ["string", "integer"], default: '[ "a" ]' })]),
+        model([definition("x", { type: "array", itemtype: "integer", uniqueitems: true, default: "[ 1, 1 ]" })]),
+        model([definition("x", { type: "array", itemtype: "integer", minlength: 2, default: "[ 1 ]" })]),
+        model([definition("x", { type: "array", itemtype: "integer", min: "0", default: "[ -1 ]" })]),
+        // Collections: fixed children, dynamic itemtype, and keypattern.
+        model(
+            [definition("x", { type: "collection", itemtype: "types.Entry", default: "{ }" }, [
+                definition("enabled", { type: "boolean" }),
+            ])],
+            [definition("Entry", { type: "integer" })],
+        ),
+        model(
+            [definition("x", { type: "collection", itemtype: "types.Entry", default: '{ a = "one" }' })],
+            [definition("Entry", { type: "integer" })],
+        ),
+        model(
+            [definition("x", {
+                type: "collection",
+                itemtype: "types.Entry",
+                keypattern: "^[a-z]+$",
+                default: "{ AB = 1 }",
+            })],
+            [definition("Entry", { type: "integer" })],
+        ),
+    ];
+    for (const value of cases) {
+        const found = errors(value).filter((issue) => issue.message.includes("`default`"));
+        assert.equal(found.length > 0, true, JSON.stringify(value.elements[0]));
+    }
+});
+
+test("declared defaults that satisfy the effective definition are accepted", () => {
+    const valid = [
+        model([definition("x", {
+            type: "string",
+            pattern: "^[a-z]+$",
+            minlength: 1,
+            maxlength: 4,
+            allowedvalues: ['"abc"', '"ab"'],
+            default: '"abc"',
+        })]),
+        model([definition("x", { type: "float", min: "0.0", max: "1.0", default: "0.5" })]),
+        model([definition("x", { type: "local-time", min: "12:00:00.100", default: "12:00:00.1" })]),
+        model(
+            [definition("x", { type: "types.Port", default: "8080" })],
+            [definition("Port", { type: "integer", min: "1", max: "65535" })],
+        ),
+        model(
+            [definition("x", { oneof: ["string", "integer"], default: "7" })],
+            [],
+        ),
+        model(
+            [definition("x", { type: "string", allof: ["types.Lower", "types.Short"], default: '"abc"' })],
+            [
+                definition("Lower", { type: "string", pattern: "^[a-z]+$" }),
+                definition("Short", { type: "string", maxlength: 3 }),
+            ],
+        ),
+        // Equal defaults contributed by composition are deduplicated.
+        model(
+            [definition("x", { type: "types.A", allof: ["types.B"] })],
+            [
+                definition("A", { type: "integer", default: "1" }),
+                definition("B", { type: "integer", default: "1" }),
+            ],
+        ),
+        model([definition("x", {
+            type: "table",
+            exactlyone: [["path", "url"]],
+            dependentrequired: { path: ["mode"] },
+            default: '{ path = "p", mode = "fast" }',
+        }, [
+            definition("path", { type: "string", optional: true }),
+            definition("url", { type: "string", optional: true }),
+            definition("mode", { type: "string", optional: true }),
+        ])]),
+        model([definition("x", {
+            type: "array",
+            itemtype: "integer",
+            uniqueitems: true,
+            minlength: 2,
+            min: "0",
+            default: "[ 1, 2 ]",
+        })]),
+        model([definition("x", { type: "array", items: ["string", "integer"], default: '[ "a", 1 ]' })]),
+        model(
+            [definition("x", {
+                type: "collection",
+                itemtype: "types.Entry",
+                keypattern: "^[a-z]+$",
+                default: '{ enabled = true, alpha = { port = 1 } }',
+            }, [definition("enabled", { type: "boolean" })])],
+            [definition("Entry", { type: "table" }, [definition("port", { type: "integer" })])],
+        ),
+    ];
+    for (const value of valid) {
+        assert.deepEqual(errors(value), [], JSON.stringify(value.elements[0]));
+    }
+});
+
+test("default validation suppresses deprecation warnings and tolerates cycles", () => {
+    const deprecated = model(
+        [definition("x", { type: "types.Legacy", default: '"value"' })],
+        [definition("Legacy", { type: "string", deprecated: true })],
+    );
+    assert.deepEqual(validateModel(deprecated), []);
+
+    const recursive = model(
+        [definition("x", { type: "types.A", default: '"value"' })],
+        [
+            definition("A", { type: "types.B" }),
+            definition("B", { type: "types.A" }),
+        ],
+    );
+    const cyclic = errors(recursive).filter((issue) => issue.path === "elements.x");
+    assert.equal(cyclic.length, 1);
+    assert.match(cyclic[0].message, /cyclic type reference/);
+
+    // Recursion through child definitions is legal and terminates on a finite value.
+    const nested = model(
+        [definition("x", { type: "types.Node", default: "{ child = { } }" })],
+        [definition("Node", { type: "table" }, [
+            definition("child", { type: "types.Node", optional: true }),
+        ])],
+    );
+    assert.deepEqual(errors(nested), []);
+
+    const withoutDefault = model(
+        [definition("x", { type: "types.Node" })],
+        [definition("Node", { type: "table" }, [
+            definition("child", { type: "types.Node", optional: true }),
+        ])],
+    );
+    assert.deepEqual(errors(withoutDefault), []);
+});
+
+test("default annotations never mutate the model and keep parser precision", () => {
+    const source = `
+[toml-schema]
+version = "1.0.0"
+
+[elements.big]
+type = "integer"
+default = 9223372036854775807
+
+[elements.exact]
+type = "float"
+default = 1e0
+
+[elements.moment]
+type = "offset-date-time"
+default = 2026-08-18T12:00:00-04:00
+
+[elements.holder]
+type = "table"
+default = { name = 'a' }
+
+    [elements.holder.name]
+    type = "string"
+`;
+    const parsed = parseDocument(source);
+    const snapshot = JSON.parse(JSON.stringify(parsed));
+    assert.deepEqual(errors(parsed), []);
+    assert.deepEqual(JSON.parse(JSON.stringify(parsed)), snapshot);
+    const serialized = serializeDocument(parsed);
+    assert.match(serialized, /default = 9223372036854775807/);
+    assert.match(serialized, /default = 1e0/);
+    assert.match(serialized, /default = 2026-08-18T12:00:00-04:00/);
+    assert.match(serialized, /default = \{ name = 'a' \}/);
+    assert.deepEqual(parseDocument(serialized), parsed);
+});

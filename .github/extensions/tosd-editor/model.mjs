@@ -578,6 +578,566 @@ function valueSatisfiesRange(details, boundary, direction) {
     return comparison != null && (direction === "min" ? comparison >= 0 : comparison <= 0);
 }
 
+// ---------------------------------------------------------------------------
+// Schema-load validation of declared defaults.
+//
+// SPEC.md requires a declared default to validate as a present value against
+// the full effective definition: references, composition, alternatives, fixed
+// children, sibling rules, and ordinary constraints all apply, while
+// deprecation warnings are suppressed. Validation is read-only; defaults are
+// never materialized into the model or into the document being validated.
+// ---------------------------------------------------------------------------
+
+class SchemaResolutionError extends Error {
+    constructor(message, { code = "unresolved" } = {}) {
+        super(message);
+        this.name = "SchemaResolutionError";
+        this.code = code;
+    }
+}
+
+function normalizeTypeRef(ref) {
+    if (typeof ref !== "string") return "";
+    return ref.startsWith("types.") ? ref.slice(6) : ref;
+}
+
+function isBuiltinRef(ref) {
+    return typeof ref === "string" && !ref.startsWith("types.") && BUILTIN_TYPES.includes(ref);
+}
+
+function namedTypeRef(props) {
+    const ref = props?.type;
+    return typeof ref === "string" && ref.trim() !== "" && !isBuiltinRef(ref) ? ref : null;
+}
+
+function alternativeRefs(props) {
+    if (Array.isArray(props?.oneof) && props.oneof.length > 0) return props.oneof;
+    return Array.isArray(props?.anyof) ? props.anyof : [];
+}
+
+// Mirrors the loader rule that a definition with children but no selector is a table.
+function builtinTypeOf(node) {
+    const props = node.props || {};
+    if (isBuiltinRef(props.type)) return props.type;
+    if ((node.children || []).length > 0) return "table";
+    return "any";
+}
+
+function valueKind(value) {
+    if (typeof value === "string") return "string";
+    if (typeof value === "boolean") return "boolean";
+    if (typeof value === "number") return Number.isInteger(value) ? "integer" : "float";
+    if (Array.isArray(value)) return "array";
+    if (value && typeof value === "object") {
+        if (value.__integer) return "integer";
+        if (value.__float) return "float";
+        if (value.__datetime) return value.__datetime;
+        if (value.__inline) return "table";
+        if (value.__rawToml) return null;
+        return "table";
+    }
+    return null;
+}
+
+function valueDetails(value) {
+    const kind = valueKind(value);
+    if (!kind) return null;
+    return { raw: formatValue(value), value, kind };
+}
+
+function isNaNDetails(details) {
+    if (!details || details.kind !== "float") return false;
+    const raw = details.value?.__float ? details.value.value : String(details.value);
+    return /nan/i.test(raw);
+}
+
+function tableObject(value) {
+    if (value && typeof value === "object" && value.__inline) return value.value || {};
+    return value || {};
+}
+
+function isTableValue(value) {
+    return valueKind(value) === "table";
+}
+
+function tableKeys(value) {
+    return Object.keys(tableObject(value));
+}
+
+function tableHasKey(value, key) {
+    return Object.prototype.hasOwnProperty.call(tableObject(value), key);
+}
+
+function tableGetKey(value, key) {
+    return tableObject(value)[key];
+}
+
+function valuesEqual(left, right) {
+    const leftKind = valueKind(left);
+    const rightKind = valueKind(right);
+    if (!leftKind || !rightKind) return false;
+    if (leftKind === "array" || rightKind === "array") {
+        if (leftKind !== rightKind || left.length !== right.length) return false;
+        return left.every((item, index) => valuesEqual(item, right[index]));
+    }
+    if (leftKind === "table" || rightKind === "table") {
+        if (leftKind !== rightKind) return false;
+        const a = tableObject(left);
+        const b = tableObject(right);
+        const aKeys = Object.keys(a);
+        const bKeys = Object.keys(b);
+        if (aKeys.length !== bKeys.length) return false;
+        return aKeys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && valuesEqual(a[key], b[key]));
+    }
+    if (["integer", "float"].includes(leftKind) && ["integer", "float"].includes(rightKind)) {
+        const a = valueDetails(left);
+        const b = valueDetails(right);
+        if (isNaNDetails(a) || isNaNDetails(b)) return isNaNDetails(a) && isNaNDetails(b);
+        return compareNumeric(a, b) === 0;
+    }
+    if (leftKind !== rightKind) return false;
+    if (leftKind === "string" || leftKind === "boolean") return left === right;
+    return compareTemporal(valueDetails(left), valueDetails(right)) === 0;
+}
+
+function compileRegex(pattern) {
+    if (typeof pattern !== "string" || pattern === "") return null;
+    try {
+        return new RegExp(pattern, "u");
+    } catch {
+        return null;
+    }
+}
+
+function lengthBound(raw) {
+    if (raw == null || raw === "") return null;
+    return integerBigInt(tokenDetails(raw));
+}
+
+function compareWithBoundary(details, boundary) {
+    if (!details || !boundary) return null;
+    if (numericComparable(details) && numericComparable(boundary)) return compareNumeric(details, boundary);
+    if (details.kind === boundary.kind && details.value?.__datetime && boundary.value?.__datetime) {
+        return compareTemporal(details, boundary);
+    }
+    return null;
+}
+
+function createDefaultChecker(typesByName) {
+    const builtins = new Map();
+
+    const builtinDefinition = (name) => {
+        if (!builtins.has(name)) builtins.set(name, { name, props: { type: name }, children: [] });
+        return builtins.get(name);
+    };
+
+    const resolve = (ref, visiting) => {
+        if (isBuiltinRef(ref)) return builtinDefinition(ref);
+        const name = normalizeTypeRef(ref).trim();
+        if (!name) throw new SchemaResolutionError("blank type reference");
+        if (visiting.has(name)) {
+            throw new SchemaResolutionError(`cyclic type reference through \`types.${name}\``, { code: "cycle" });
+        }
+        visiting.add(name);
+        const definition = typesByName.get(name);
+        if (!definition) throw new SchemaResolutionError(`unknown type reference \`${ref}\``);
+        return definition;
+    };
+
+    const collectFixedChildren = (node, visiting) => {
+        const result = new Set((node.children || []).map((child) => child.name));
+        const props = node.props || {};
+        const merge = (ref) => {
+            const scope = new Set(visiting);
+            for (const name of collectFixedChildren(resolve(ref, scope), scope)) result.add(name);
+        };
+        const reference = namedTypeRef(props);
+        if (reference) merge(reference);
+        for (const alternative of alternativeRefs(props)) merge(alternative);
+        for (const component of props.allof || []) merge(component);
+        return result;
+    };
+
+    const effectiveKind = (node, visiting) => {
+        const props = node.props || {};
+        const reference = namedTypeRef(props);
+        if (reference) {
+            const scope = new Set(visiting);
+            return effectiveKind(resolve(reference, scope), scope);
+        }
+        const alternatives = alternativeRefs(props);
+        if (alternatives.length > 0) {
+            let kind = null;
+            for (const alternative of alternatives) {
+                const scope = new Set(visiting);
+                const candidate = effectiveKind(resolve(alternative, scope), scope);
+                if (kind === null) kind = candidate;
+                else if (kind !== candidate) return "any";
+            }
+            return kind === null ? "any" : kind;
+        }
+        return builtinTypeOf(node);
+    };
+
+    const resolvesToUnionSelector = (node, visiting) => {
+        const props = node.props || {};
+        if (alternativeRefs(props).length > 0) return true;
+        const reference = namedTypeRef(props);
+        if (!reference) return false;
+        const scope = new Set(visiting);
+        return resolvesToUnionSelector(resolve(reference, scope), scope);
+    };
+
+    const isOptional = (node, visiting) => {
+        const props = node.props || {};
+        if (props.optional === true) return true;
+        const reference = namedTypeRef(props);
+        if (!reference) return false;
+        const scope = new Set(visiting);
+        return isOptional(resolve(reference, scope), scope);
+    };
+
+    const isValueOfType = (value, type) => {
+        if (type === "any") return true;
+        const kind = valueKind(value);
+        if (type === "table" || type === "collection") return kind === "table";
+        return kind === type;
+    };
+
+    const add = (errors, path, message) => errors.push({ path, message });
+
+    // Keys allowed at this node by contributors other than the one being validated.
+    const siblingChildren = (node, externalChildren, excludePrimary, excludedComponent, visiting) => {
+        const props = node.props || {};
+        const result = new Set(externalChildren);
+        for (const child of node.children || []) result.add(child.name);
+        if (!excludePrimary) {
+            for (const name of primaryChildren(node, visiting)) result.add(name);
+        }
+        for (const component of props.allof || []) {
+            if (component === excludedComponent) continue;
+            const scope = new Set(visiting);
+            for (const name of collectFixedChildren(resolve(component, scope), scope)) result.add(name);
+        }
+        return result;
+    };
+
+    const primaryChildren = (node, visiting) => {
+        const props = node.props || {};
+        const reference = namedTypeRef(props);
+        if (reference) {
+            const scope = new Set(visiting);
+            return collectFixedChildren(resolve(reference, scope), scope);
+        }
+        const result = new Set();
+        for (const alternative of alternativeRefs(props)) {
+            const scope = new Set(visiting);
+            for (const name of collectFixedChildren(resolve(alternative, scope), scope)) result.add(name);
+        }
+        return result;
+    };
+
+    const validateValue = (path, value, node, errors) => {
+        const fixedChildren = collectFixedChildren(node, new Set());
+        validateContributor(path, value, node, new Set(), new Set(), errors);
+        if (effectiveKind(node, new Set()) === "table"
+            && !resolvesToUnionSelector(node, new Set())
+            && isTableValue(value)
+            && fixedChildren.size > 0) {
+            for (const key of tableKeys(value)) {
+                if (!fixedChildren.has(key)) add(errors, `${path}.${key}`, "unexpected key");
+            }
+        }
+    };
+
+    const validateContributor = (path, value, node, externalChildren, visiting, errors) => {
+        const props = node.props || {};
+        const reference = namedTypeRef(props);
+        const alternatives = alternativeRefs(props);
+        if (reference) {
+            const scope = new Set(visiting);
+            const target = resolve(reference, scope);
+            validateContributor(path, value, target,
+                siblingChildren(node, externalChildren, true, null, visiting), scope, errors);
+            if (isTableValue(value)) validatePresenceRules(path, value, node, errors);
+            if (Array.isArray(value) && props.uniqueitems === true) validateUniqueItems(path, value, errors);
+        } else if (alternatives.length > 0) {
+            validateUnion(path, value, node,
+                siblingChildren(node, externalChildren, true, null, visiting), errors);
+            if (isTableValue(value)) validatePresenceRules(path, value, node, errors);
+            if (Array.isArray(value) && props.uniqueitems === true) validateUniqueItems(path, value, errors);
+        } else {
+            const type = builtinTypeOf(node);
+            if (!isValueOfType(value, type)) {
+                add(errors, path, `expected ${type} but found ${valueKind(value) || "an unparsable value"}`);
+            } else {
+                validateCommonConstraints(path, value, node, errors);
+                if (type === "table") {
+                    validateFixedChildren(path, value, node.children, errors);
+                    validatePresenceRules(path, value, node, errors);
+                } else if (type === "collection") {
+                    const known = new Set(externalChildren);
+                    for (const name of collectFixedChildren(node, new Set(visiting))) known.add(name);
+                    validateCollection(path, value, node, known, errors);
+                } else if (type === "array") {
+                    validateArray(path, value, node, errors);
+                }
+            }
+        }
+        for (const component of props.allof || []) {
+            const scope = new Set(visiting);
+            const target = resolve(component, scope);
+            validateContributor(path, value, target,
+                siblingChildren(node, externalChildren, false, component, visiting), scope, errors);
+        }
+    };
+
+    const validateUnion = (path, value, node, sharedChildren, errors) => {
+        const props = node.props || {};
+        const alternatives = alternativeRefs(props);
+        let successful = 0;
+        for (const alternative of alternatives) {
+            const branchErrors = [];
+            const scope = new Set();
+            const target = resolve(alternative, scope);
+            const closure = new Set(collectFixedChildren(target, new Set(scope)));
+            for (const name of sharedChildren) closure.add(name);
+            validateContributor(path, value, target, sharedChildren, new Set(scope), branchErrors);
+            if (effectiveKind(target, new Set(scope)) === "table" && isTableValue(value) && closure.size > 0) {
+                for (const key of tableKeys(value)) {
+                    if (!closure.has(key)) add(branchErrors, `${path}.${key}`, "unexpected key");
+                }
+            }
+            if (branchErrors.length === 0) successful += 1;
+        }
+        if (Array.isArray(props.oneof) && props.oneof.length > 0) {
+            if (successful !== 1) {
+                add(errors, path, `expected exactly one matching type from oneof but found ${successful}`);
+            }
+            return;
+        }
+        if (successful === 0) add(errors, path, "expected at least one matching type from anyof");
+    };
+
+    const validateFixedChildren = (path, table, children, errors) => {
+        for (const child of children || []) {
+            const childPath = `${path}.${child.name}`;
+            if (!tableHasKey(table, child.name)) {
+                if (!isOptional(child, new Set())) add(errors, childPath, "required value is missing");
+            } else {
+                validateValue(childPath, tableGetKey(table, child.name), child, errors);
+            }
+        }
+    };
+
+    const validateCollection = (path, table, node, fixedChildren, errors) => {
+        const props = node.props || {};
+        validateFixedChildren(path, table, node.children, errors);
+        validatePresenceRules(path, table, node, errors);
+        const keyPattern = compileRegex(props.keypattern);
+        let dynamicEntries = 0;
+        for (const key of tableKeys(table)) {
+            if (fixedChildren.has(key)) continue;
+            dynamicEntries += 1;
+            const childPath = `${path}.${key}`;
+            if (keyPattern && !keyPattern.test(key)) {
+                add(errors, childPath, `key does not match keypattern ${props.keypattern}`);
+            }
+            if (props.itemtype) {
+                validateValue(childPath, tableGetKey(table, key), resolve(props.itemtype, new Set()), errors);
+            }
+        }
+        validateLength(path, BigInt(dynamicEntries), node, errors);
+    };
+
+    const validatePresenceRules = (path, table, node, errors) => {
+        const props = node.props || {};
+        const mapping = isNonArrayObject(props.dependentrequired) ? props.dependentrequired : {};
+        for (const [trigger, required] of Object.entries(mapping)) {
+            if (!tableHasKey(table, trigger)) continue;
+            for (const name of Array.isArray(required) ? required : []) {
+                if (!tableHasKey(table, name)) {
+                    add(errors, `${path}.${name}`, `${name} is required when ${trigger} is present`);
+                }
+            }
+        }
+        for (const group of Array.isArray(props.mutuallyexclusive) ? props.mutuallyexclusive : []) {
+            const present = (Array.isArray(group) ? group : []).filter((name) => tableHasKey(table, name));
+            if (present.length > 1) {
+                add(errors, path, `at most one of [${group.join(", ")}] may be present`);
+            }
+        }
+        for (const group of Array.isArray(props.exactlyone) ? props.exactlyone : []) {
+            const present = (Array.isArray(group) ? group : []).filter((name) => tableHasKey(table, name));
+            if (present.length !== 1) {
+                add(errors, path, `exactly one of [${group.join(", ")}] must be present`);
+            }
+        }
+    };
+
+    const validateArray = (path, array, node, errors) => {
+        const props = node.props || {};
+        validateLength(path, BigInt(array.length), node, errors);
+        if (props.uniqueitems === true) validateUniqueItems(path, array, errors);
+        if (Array.isArray(props.items) && props.items.length > 0) {
+            if (array.length !== props.items.length) {
+                add(errors, path, `expected array length ${props.items.length} but found ${array.length}`);
+            }
+            const bound = Math.min(array.length, props.items.length);
+            for (let index = 0; index < bound; index += 1) {
+                validateValue(`${path}[${index}]`, array[index], resolve(props.items[index], new Set()), errors);
+            }
+            return;
+        }
+        const boundaries = rangeBoundaries(props);
+        for (let index = 0; index < array.length; index += 1) {
+            const item = array[index];
+            const itemPath = `${path}[${index}]`;
+            if (props.itemtype) {
+                validateValue(itemPath, item, resolve(props.itemtype, new Set()), errors);
+            }
+            if (Array.isArray(props.allowedvalues) && props.allowedvalues.length > 0) {
+                validateAllowedValues(itemPath, item, props, errors);
+            }
+            if (comparableWithBoundaries(item, boundaries)) {
+                validateRange(itemPath, item, boundaries, errors);
+            }
+        }
+    };
+
+    const validateUniqueItems = (path, array, errors) => {
+        for (let i = 0; i < array.length; i += 1) {
+            for (let j = 0; j < i; j += 1) {
+                if (valuesEqual(array[i], array[j])) {
+                    add(errors, `${path}[${i}]`, `array item duplicates item at index ${j}`);
+                    break;
+                }
+            }
+        }
+    };
+
+    const validateCommonConstraints = (path, value, node, errors) => {
+        const props = node.props || {};
+        if (Array.isArray(value)) return;
+        const hasAllowedValues = Array.isArray(props.allowedvalues) && props.allowedvalues.length > 0;
+        if (hasAllowedValues) {
+            validateAllowedValues(path, value, props, errors);
+        } else {
+            validateRange(path, value, rangeBoundaries(props), errors);
+        }
+        if (typeof value === "string") {
+            validateLength(path, BigInt([...value].length), node, errors);
+            const pattern = compileRegex(props.pattern);
+            if (pattern && !pattern.test(value)) {
+                add(errors, path, `does not match pattern ${props.pattern}`);
+            }
+        }
+    };
+
+    const validateAllowedValues = (path, value, props, errors) => {
+        const allowed = Array.isArray(props.allowedvalues) ? props.allowedvalues : [];
+        if (allowed.length === 0) return;
+        const matches = allowed.some((token) => {
+            const parsed = parseTokenForValidation(token);
+            return parsed.ok && valuesEqual(parsed.value, value);
+        });
+        if (!matches) add(errors, path, "value is not in allowedvalues");
+    };
+
+    const rangeBoundaries = (props) => ({
+        min: props.min != null && props.min !== "" ? tokenDetails(props.min) : null,
+        max: props.max != null && props.max !== "" ? tokenDetails(props.max) : null,
+    });
+
+    const comparableWithBoundaries = (value, boundaries) => {
+        if (!boundaries.min && !boundaries.max) return false;
+        const details = valueDetails(value);
+        for (const key of ["min", "max"]) {
+            if (boundaries[key] && compareWithBoundary(details, boundaries[key]) == null) return false;
+        }
+        return true;
+    };
+
+    const validateRange = (path, value, boundaries, errors) => {
+        const details = valueDetails(value);
+        for (const key of ["min", "max"]) {
+            const boundary = boundaries[key];
+            if (!boundary) continue;
+            const comparison = compareWithBoundary(details, boundary);
+            if (comparison == null) {
+                add(errors, path, `cannot be compared with \`${key}\` ${boundary.raw}`);
+            } else if (key === "min" ? comparison < 0 : comparison > 0) {
+                add(errors, path, `value is ${key === "min" ? "less" : "greater"} than ${key}`);
+            }
+        }
+    };
+
+    const validateLength = (path, length, node, errors) => {
+        const props = node.props || {};
+        const min = lengthBound(props.minlength);
+        const max = lengthBound(props.maxlength);
+        if (min != null && length < min) add(errors, path, "length is less than minlength");
+        if (max != null && length > max) add(errors, path, "length is greater than maxlength");
+    };
+
+    const declaredDefault = (props) => {
+        if (!Object.prototype.hasOwnProperty.call(props, "default")) return null;
+        const raw = props.default;
+        if (raw == null || (typeof raw === "string" && raw.trim() === "")) return null;
+        return parseTokenForValidation(raw);
+    };
+
+    const effectiveDefault = (node, visiting) => {
+        const props = node.props || {};
+        const local = declaredDefault(props);
+        if (local) return local.ok ? { present: true, value: local.value } : { present: false };
+        const inherited = [];
+        const collect = (ref) => {
+            if (isBuiltinRef(ref)) return;
+            const scope = new Set(visiting);
+            const candidate = effectiveDefault(resolve(ref, scope), scope);
+            if (candidate.present) inherited.push(candidate.value);
+        };
+        const reference = namedTypeRef(props);
+        if (reference) collect(reference);
+        for (const component of props.allof || []) collect(component);
+        if (inherited.length === 0) return { present: false };
+        const first = inherited[0];
+        if (inherited.slice(1).some((value) => !valuesEqual(first, value))) {
+            throw new SchemaResolutionError("composed components contribute conflicting defaults", { code: "conflict" });
+        }
+        return { present: true, value: first };
+    };
+
+    return (node, label) => {
+        const issue = (message) => ({ level: "error", path: label, message });
+        let effective;
+        try {
+            effective = effectiveDefault(node, new Set());
+        } catch (error) {
+            if (!(error instanceof SchemaResolutionError)) throw error;
+            // Unresolvable and cyclic reference chains are reported by the reference
+            // checks; only a real annotation conflict belongs to this definition.
+            return error.code === "conflict"
+                ? issue(`\`default\` is ambiguous: ${error.message}.`)
+                : null;
+        }
+        if (!effective.present) return null;
+        const errors = [];
+        try {
+            validateValue("$default", effective.value, node, errors);
+        } catch (error) {
+            if (!(error instanceof SchemaResolutionError)) throw error;
+            return error.code === "unresolved"
+                ? null
+                : issue(`\`default\` cannot be validated because of a ${error.message}.`);
+        }
+        if (errors.length === 0) return null;
+        const first = errors[0];
+        return issue(`\`default\` must validate against the effective definition: ${first.message} (at ${first.path}).`);
+    };
+}
+
 export function validateModel(model) {
     const issues = [];
     const checkSiblingNames = (nodes, path) => {
@@ -606,8 +1166,8 @@ export function validateModel(model) {
     }
     const typesByName = new Map((model.types || []).map((t) => [t.name, t]));
 
-    const normalizeRef = (ref) => ref?.startsWith("types.") ? ref.slice(6) : ref;
-    const bareBuiltin = (ref) => !!ref && !ref.startsWith("types.") && BUILTIN_TYPES.includes(ref);
+    const normalizeRef = (ref) => normalizeTypeRef(ref);
+    const bareBuiltin = (ref) => isBuiltinRef(ref);
     const isNamedRef = (ref) => !!ref && !bareBuiltin(ref);
     const refExists = (ref) => {
         if (!ref) return true;
@@ -1023,6 +1583,15 @@ export function validateModel(model) {
 
     for (const t of model.types || []) walk(t, `types.${t.name}`);
     for (const e of model.elements || []) walk(e, `elements.${e.name}`);
+
+    const checkDefault = createDefaultChecker(typesByName);
+    const visitDefaults = (node, label) => {
+        const issue = checkDefault(node, label);
+        if (issue) issues.push(issue);
+        for (const child of node.children || []) visitDefaults(child, `${label}.${child.name}`);
+    };
+    for (const t of model.types || []) visitDefaults(t, `types.${t.name}`);
+    for (const e of model.elements || []) visitDefaults(e, `elements.${e.name}`);
 
     const visited = new Set();
     const visitSelector = (name, visiting = new Set()) => {
