@@ -449,6 +449,19 @@ type = "string"
 allowedvalues = [ "ok", "long" ]
 maxlength = 2
 "#,
+        r#"
+type = "string"
+allowedvalues = []
+"#,
+        r#"
+type = "string"
+allowedvalues = [ 1 ]
+"#,
+        r#"
+type = "array"
+itemtype = "integer"
+allowedvalues = [ "one" ]
+"#,
     ];
 
     for (index, definition) in malformed_definitions.iter().enumerate() {
@@ -507,10 +520,6 @@ version = "1.0.0"
 [elements.values]
 type = "array"
 allowedvalues = [ 1, 2 ]
-
-[elements.unrestricted]
-type = "array"
-allowedvalues = []
 "#,
     );
     let valid_document = write_file(
@@ -518,7 +527,6 @@ allowedvalues = []
         "valid.toml",
         r#"
 values = [ 1, 2 ]
-unrestricted = [ 1, "two", true ]
 "#,
     );
     let invalid_document = write_file(
@@ -526,7 +534,6 @@ unrestricted = [ 1, "two", true ]
         "invalid.toml",
         r#"
 values = [ 1, 3 ]
-unrestricted = [ 1, "two", true ]
 "#,
     );
 
@@ -1752,7 +1759,16 @@ version = "1.0.0"
 [elements.value]
 type = "array"
 items = [ "string", "integer" ]
-allowedvalues = []
+allowedvalues = [ 1 ]
+"#,
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "array"
+items = [ "string", "integer" ]
+min = 1
 "#,
     ];
     for (index, content) in conflicts.iter().enumerate() {
@@ -1766,8 +1782,8 @@ allowedvalues = []
 fn rejects_allowed_values_on_table_and_collection() {
     let directory = tempfile_dir("container-allowedvalues");
     let definitions = [
-        "type = \"table\"\nallowedvalues = []",
-        "type = \"collection\"\nitemtype = \"string\"\nallowedvalues = []",
+        "type = \"table\"\nallowedvalues = [ 1 ]",
+        "type = \"collection\"\nitemtype = \"string\"\nallowedvalues = [ 1 ]",
     ];
     for (index, definition) in definitions.iter().enumerate() {
         let schema_path = write_file(

@@ -213,7 +213,7 @@ version = "1.0.0"
 
 Schema loaders MUST reject schema documents whose `version` is missing, is not a string, or is not a valid SemVer value. Shorthand values such as `"1"` and `"1.0"` are invalid.
 
-An implementation that supports TOML Schema version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the implementation's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect compatibility. Schema loaders MUST reject schema documents with an unsupported major version or a greater minor version.
+An implementation that supports TOML Schema version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the implementation's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect compatibility. Schema loaders MUST reject schema documents with an unsupported major version or a greater minor version. Support for schema documents from an earlier major version is implementation-defined; an implementation MUST NOT treat support for a later major version as implicit support for an earlier one.
 
 ## Elements table - `[elements]`
 
@@ -356,7 +356,7 @@ detailed sections below remain authoritative.
 | `allof` | Conjunctively applies one or more compatible type references in addition to the local definition |
 | `description`, `optional`, `default`, `deprecated` | Any definition, including a named reference or alternative selector |
 | `itemtype` | A definition with built-in `type = "array"` or `type = "collection"` |
-| `items` | A definition with built-in `type = "array"`; mutually exclusive with `itemtype`, `allowedvalues`, `minlength`, and `maxlength` |
+| `items` | A definition with built-in `type = "array"`; mutually exclusive with `itemtype`, `allowedvalues`, `min`, `max`, `minlength`, and `maxlength` |
 | `allowedvalues` | A simple built-in type, or the items of a non-tuple `array` |
 | `pattern` | A definition with built-in `type = "string"` |
 | `keypattern` | A definition with built-in `type = "collection"` |
@@ -438,6 +438,13 @@ List of considered simple types:
 under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
 It is invalid on a `table` or `collection`.
 
+The `allowedvalues` array MUST contain at least one entry. Every entry on a
+non-array definition MUST have the TOML kind selected by that definition;
+`type = "any"` is the exception and permits entries of any TOML kind. Numeric
+equality between integers and floats does not make their TOML kinds
+interchangeable for this schema-load check. A malformed enumeration MUST be
+rejected at schema-load time.
+
 For a non-array simple type, when `allowedvalues` is combined with `pattern`, `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST satisfy every applicable constraint. A schema containing an entry that violates one of those constraints is malformed, and schema loaders MUST reject it at schema-load time.
 
 After a schema with `allowedvalues` has been loaded successfully, a document
@@ -498,7 +505,9 @@ an `array`, or a `collection`.
 
 For `string` values, length is counted as the number of Unicode scalar values after TOML parsing and escape processing. It is not the number of UTF-8 bytes, UTF-16 code units, or user-perceived grapheme clusters. For example, `"\U0001F600"` has length 1, while `"e\u0301"` has length 2 because it is composed of two Unicode scalar values.
 
-For `array` and `collection` values, length is counted as the number of items or dynamic entries.
+For an `array`, length is its number of items. For a `collection`, length is
+the number of dynamic entries to which `itemtype` applies; fixed child
+definitions are excluded from the count.
 
 Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present, `minlength` MUST be less than or equal to `maxlength`. A schema violating either rule is malformed and schema loaders MUST reject it at schema-load time.
 
@@ -588,6 +597,13 @@ When `allowedvalues` is present on an array, every array item MUST be a member
 of that enumeration. The enumeration does not have to be sorted. If `min` or
 `max` is also present, every enumerated value MUST satisfy the applicable
 inclusive boundary; an enumerated value need not equal either boundary.
+
+When the array declares `itemtype`, every enumerated value MUST have a TOML
+kind permitted by the effective item type. Named references, aliases, and
+`oneof` or `anyof` alternatives are resolved before this check. An `itemtype`
+that permits `any` permits enumeration entries of any TOML kind. This
+schema-load check verifies the permitted TOML kind; constraints inside a named
+item definition still apply normally when a document array is validated.
 
 `minlength` and `maxlength` constrain the document array's item count, not the
 number of entries in `allowedvalues`. The schema loader MUST reject an
@@ -682,6 +698,7 @@ Semantics:
  - `items` is ordered, and each index validates against the corresponding referenced type.
  - When `items` is present, the array MUST have exactly the same number of items.
  - `items` is mutually exclusive with `itemtype`.
+ - `items` is also mutually exclusive with `min` and `max`.
  - `items` is also mutually exclusive with `minlength` and `maxlength`.
  - `items` is mutually exclusive with `allowedvalues`; constraints for a tuple
    position belong in the reusable definition referenced at that position.
@@ -707,9 +724,11 @@ differ elsewhere remain distinct. A schema loader MUST reject a non-boolean
 
 One can set an element of type `collection` when there is a need to have multiple children with dynamic, user-provided keys or table headers.
 
-A `collection` is also a `table` and, therefore, it may have fixed child
-definitions in addition to dynamically named entries. Fixed children may use
-any schema definition, including nested tables, arrays, and named types.
+A `collection` is represented by a TOML table and may have fixed child
+definitions in addition to dynamically named entries. It remains a distinct
+schema type from `table` because it applies `itemtype` and collection
+unknown-key semantics to dynamic entries. Fixed children may use any schema
+definition, including nested tables, arrays, and named types.
 
 A `collection` requires at least one effective `itemtype` constraint to define
 the type of its dynamic child values. The constraint may be declared locally or
@@ -1211,6 +1230,12 @@ The pattern is not implicitly anchored. A value validates if the regular
 expression matches anywhere in the string. Authors who require a full-string
 match MUST anchor the expression with `^` and `$`.
 
+Patterns are evaluated without multiline or dot-all modes. `^` matches only
+the start of the complete parsed string, `$` matches only its end (not a
+position before a final line feed), and `.` does not match a line feed. These
+rules also apply when an implementation uses a regular-expression engine with
+different defaults.
+
 ### Key Pattern - `keypattern`
 
 This property may only be used on a `collection`. It constrains the **keys** (entry names) of the
@@ -1407,7 +1432,10 @@ valid pre-release and build suffixes are optional, as defined by
 
 After resolving and loading the schema, a validator MUST compare these two language versions when the referencing document provides `version`. A different major version is incompatible and schema discovery MUST fail. Any other unequal version, including a minor, patch, pre-release, or build metadata difference, MUST produce a warning but MUST NOT by itself cause validation to fail. Compatibility between the resolved schema and the validator remains governed by [Schema Versioning](#schema-versioning).
 
-The root `[toml-schema]` table is reserved for schema-reference metadata.
+In a target TOML document, the root `[toml-schema]` table is reserved for
+schema-reference metadata. This is a different context from the metadata table
+inside a schema document, which may contain `[toml-schema.meta]` as described
+under [Metadata Table - `[toml-schema]`](#metadata-table---toml-schema).
 `location` and `version` are the only keys interpreted by this specification.
 Implementations MAY permit additional extension keys, but every direct value in
 this table MUST be a TOML scalar: string, integer, float, boolean, offset

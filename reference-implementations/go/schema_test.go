@@ -422,6 +422,19 @@ type = "string"
 allowedvalues = [ "ok", "long" ]
 maxlength = 2
 `,
+		`
+type = "string"
+allowedvalues = []
+`,
+		`
+type = "string"
+allowedvalues = [ 1 ]
+`,
+		`
+type = "array"
+itemtype = "integer"
+allowedvalues = [ "one" ]
+`,
 	}
 
 	for index, definition := range malformedDefinitions {
@@ -744,18 +757,12 @@ version = "1.0.0"
 [elements.colors]
 type = "array"
 allowedvalues = [ "red", "blue" ]
-
-[elements.unrestricted]
-type = "array"
-allowedvalues = []
 `)
 	validPath := write(t, dir, "valid-array-allowedvalues.toml", `
 colors = [ "red", "blue" ]
-unrestricted = [ 1, 2 ]
 `)
 	invalidPath := write(t, dir, "invalid-array-allowedvalues.toml", `
 colors = [ "red", "green" ]
-unrestricted = [ 1, 2 ]
 `)
 
 	schema, err := LoadSchema(schemaPath)
@@ -1374,7 +1381,16 @@ version = "1.0.0"
 [elements.value]
 type = "array"
 items = [ "string", "integer" ]
-allowedvalues = []
+allowedvalues = [ 1 ]
+`,
+		`
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "array"
+items = [ "string", "integer" ]
+min = 1
 `,
 	}
 	for index, schemaContent := range conflicts {
@@ -1388,8 +1404,8 @@ allowedvalues = []
 func TestRejectsAllowedValuesOnTableAndCollection(t *testing.T) {
 	dir := t.TempDir()
 	definitions := []string{
-		"type = \"table\"\nallowedvalues = []",
-		"type = \"collection\"\nitemtype = \"string\"\nallowedvalues = []",
+		"type = \"table\"\nallowedvalues = [ 1 ]",
+		"type = \"collection\"\nitemtype = \"string\"\nallowedvalues = [ 1 ]",
 	}
 	for index, definition := range definitions {
 		schema := fmt.Sprintf(`
