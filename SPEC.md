@@ -1260,8 +1260,9 @@ but MUST provide separate access to errors and warnings. A command-line
 validator MUST exit successfully for a document whose only diagnostics are
 warnings.
 
-Deprecation produces a warning with a stable deprecation code. Implementations
-MUST retain branch-local diagnostics while evaluating `oneof` and `anyof` so
+Deprecation produces a warning with the stable machine-readable code
+`deprecated`. Implementations MUST retain branch-local diagnostics while
+evaluating `oneof` and `anyof` so
 warnings from failed alternatives are not reported. Duplicate warnings
 contributed by multiple successful paths MUST be deduplicated by code, path,
 and message.
