@@ -665,6 +665,13 @@ When collection values may have alternative types, define those alternatives in 
 
 A `collection` may additionally constrain the **keys** (entry names) of its dynamic children with `keypattern`. See [Key Pattern - `keypattern`](#key-pattern---keypattern).
 
+Fixed child definitions take precedence over the collection's dynamic-entry
+rule. This permits a collection to validate known keys precisely while applying
+`itemtype` only to all other keys. For example, `itemtype = "any"` makes unknown
+keys forward-compatible while fixed children still receive their declared
+validation. Authors choosing this pattern trade typo detection on unknown keys
+for extensibility; use a plain `table` when undeclared keys must be rejected.
+
 
 **Example:**
 The below example shows a table `servers` that is a `collection`.
@@ -855,6 +862,25 @@ type = "collection"
 itemtype = "types.dnsValue"
 ```
 
+A named container definition can also be an alternative. This models formats
+that accept either one table or an array of the same table shape:
+
+```toml
+[types.cascadeEntry]
+type = "table"
+
+    [types.cascadeEntry.params]
+    type = "table"
+    optional = true
+
+[types.cascadeEntries]
+type = "array"
+itemtype = "types.cascadeEntry"
+
+[elements.cascade]
+oneof = [ "types.cascadeEntry", "types.cascadeEntries" ]
+```
+
 ### Description - `description`
 
 `description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation.
@@ -967,6 +993,8 @@ patterns used by major configuration formats, including:
   array's `itemtype`;
 - scalar-or-table and other alternative representations with `oneof` or
   `anyof`;
+- single-table-or-array-of-table representations through named container
+  alternatives;
 - fixed-length heterogeneous arrays with `items`; and
 - quoted, empty, or literal dotted keys through normal TOML key syntax.
 
@@ -990,6 +1018,12 @@ forms, but cannot express every relationship among `git`, `path`, `version`,
 `project.dynamic` array and optional dynamic fields, but cannot require a field
 to be absent precisely when its name appears in that array. These application
 policies require an additional semantic-validation pass.
+
+Some configuration sections intentionally combine known fields with arbitrary
+future or extension-owned fields. A `collection` with fixed child definitions
+and `itemtype = "any"` models that forward-compatible shape, but unknown keys
+cannot then be distinguished from misspellings. Schema authors SHOULD prefer a
+closed `table` when the upstream format defines a stable, exhaustive key set.
 
 Annotations beyond `description`, such as defaults, examples, deprecation
 notices, and editor-specific presentation hints, are also outside the version
