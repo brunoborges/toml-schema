@@ -14,6 +14,7 @@ published by the upstream projects. When an upstream rule depends on another
 field's presence or value, the example accepts the structurally valid superset
 and leaves that policy to application-level validation. See
 [Expressiveness and Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
+The upstream sources in the table below were reviewed on 2026-08-18.
 
 ## Available examples
 
@@ -25,6 +26,14 @@ and leaves that policy to application-level validation. See
 | [`netlify.tosd`](netlify.tosd) | Netlify file-based build configuration (`netlify.toml`) | <https://docs.netlify.com/build/configure-builds/file-based-configuration/> |
 | [`pyproject.tosd`](pyproject.tosd) | Python `pyproject.toml` (PEP 621 + dependency groups) | <https://packaging.python.org/en/latest/specifications/pyproject-toml/> |
 | [`wrangler.tosd`](wrangler.tosd) | Cloudflare Workers `wrangler.toml` | <https://developers.cloudflare.com/workers/wrangler/configuration/> |
+
+Together these examples exercise dynamic-key maps, arrays of tables, open
+extension namespaces, constrained scalar values, map values, fixed and dynamic
+children in one collection, and alternative representations such as scalar
+versus table or one table versus an array of tables. They also expose the
+intentional version 1.0 boundary: cross-field requirements, merge and
+inheritance behavior, sibling mutual exclusion, array uniqueness, and
+deprecation metadata require application-level handling.
 
 ## Using the examples
 

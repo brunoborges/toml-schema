@@ -7,10 +7,6 @@ version = "1.0.0"
 type = "array"
 itemtype = "string"
 
-[types.anyArray]
-type = "array"
-itemtype = "any"
-
 [types.numberValue]
 oneof = [ "integer", "float" ]
 
@@ -96,8 +92,47 @@ type = "table"
 type = "collection"
 itemtype = "types.cache"
 
+[types.cascadeTarget]
+type = "table"
+
+    [types.cascadeTarget.environment]
+    type = "string"
+    optional = true
+
+    [types.cascadeTarget.kind]
+    type = "string"
+    optional = true
+
+    [types.cascadeTarget.lang]
+    type = "string"
+    optional = true
+
+    [types.cascadeTarget.path]
+    type = "string"
+    optional = true
+
+    [types.cascadeTarget.sites]
+    type = "types.anyMap"
+    optional = true
+
+[types.cascadeEntry]
+type = "collection"
+itemtype = "any"
+
+    [types.cascadeEntry.params]
+    type = "types.anyMap"
+    optional = true
+
+    [types.cascadeEntry.target]
+    type = "types.cascadeTarget"
+    optional = true
+
+[types.cascadeEntries]
+type = "array"
+itemtype = "types.cascadeEntry"
+
 [types.cascade]
-oneof = [ "types.anyMap", "types.anyArray" ]
+oneof = [ "types.cascadeEntry", "types.cascadeEntries" ]
 
 [types.frontmatter]
 type = "table"
