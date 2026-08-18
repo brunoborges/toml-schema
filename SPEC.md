@@ -253,6 +253,24 @@ definitions. A named definition that declares a complete collection or selects
 
 `type`, `oneof`, and `anyof` are alternative ways to select the type of the current schema node. Every definition MUST declare exactly one of them, except that a definition with nested child definitions MAY omit all three and is then treated as `type = "table"`. Parsers MUST reject a definition that declares more than one of these properties, or that declares none of them and has no nested child definitions. `type` accepts either a built-in type name or a named reusable definition from `[types]`. Container member types are selected separately with `itemtype`: it validates each member of an `array` or each dynamically keyed value of a `collection`. `itemtype` requires the same definition to declare the built-in `type = "array"` or `type = "collection"`; it cannot be attached to another built-in or to a named type reference.
 
+Nested child definitions are valid only when the current node selects the
+built-in `table` or `collection` type, or when the node omits a selector and is
+therefore an implicit table. Parsers MUST reject child definitions attached to
+a scalar, `array`, named type reference, `oneof`, or `anyof` node rather than
+silently ignoring them.
+
+Every named reference used by `type`, `itemtype`, `items`, `oneof`, or `anyof`
+MUST resolve to a definition in `[types]`. Parsers MUST reject unresolved
+references at schema-load time, including references in definitions that are
+optional or not exercised by the document being validated.
+
+Type-selection references MUST be acyclic. A cycle composed of named `type`
+aliases, `oneof` alternatives, or `anyof` alternatives cannot resolve to a
+concrete definition and parsers MUST reject it at schema-load time. Structural
+recursion through table or collection children, array `itemtype`, or tuple
+`items` remains valid because each recursive step consumes a nested document
+value.
+
 ```toml
 [types]
 
@@ -697,6 +715,13 @@ The bare built-in names `any` and `collection` MUST NOT appear directly in
 fully defined collection or an intentionally unconstrained named branch.
 
 `type`, `oneof`, and `anyof` all select the current node's type and are mutually exclusive. A parser MUST reject a definition containing more than one of them.
+
+The array assigned to `oneof` or `anyof` MUST contain at least one type
+reference. A union definition MAY additionally declare only `description` and
+`optional`; it MUST NOT declare another validation property or any nested child
+definition. Parsers MUST reject empty unions and union siblings at schema-load
+time. Constraints required by an alternative belong in a named reusable
+definition referenced by the union.
 
 ```toml
 [types.stringId]

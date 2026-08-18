@@ -621,6 +621,99 @@ flex = "abc"
 	}
 }
 
+func TestRejectsInvalidUnionStructureAndChildPlacement(t *testing.T) {
+	invalidDefinitions := []string{
+		`oneof = []`,
+		`anyof = []`,
+		"oneof = [ \"string\" ]\npattern = \"x\"",
+		"oneof = [ \"string\" ]\n\n[elements.value.child]\ntype = \"string\"",
+		"type = \"string\"\n\n[elements.value.child]\ntype = \"string\"",
+		"type = \"array\"\n\n[elements.value.child]\ntype = \"string\"",
+	}
+
+	for index, definition := range invalidDefinitions {
+		dir := t.TempDir()
+		schemaPath := write(t, dir, fmt.Sprintf("invalid-structure-%d.tosd", index), fmt.Sprintf(`
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+%s
+`, definition))
+		if _, err := LoadSchema(schemaPath); err == nil {
+			t.Fatalf("expected invalid structure %d to be rejected", index)
+		}
+	}
+}
+
+func TestValidatesReferenceGraphAtSchemaLoadTime(t *testing.T) {
+	invalidReferences := []string{
+		`type = ""`,
+		`type = "types.missing"`,
+		"type = \"array\"\nitemtype = \"\"",
+		"type = \"array\"\nitemtype = \"types.missing\"",
+		"type = \"array\"\nitems = [ \"\" ]",
+		"type = \"array\"\nitems = [ \"types.missing\" ]",
+		`oneof = [ "" ]`,
+		`oneof = [ "types.missing" ]`,
+		`anyof = [ "" ]`,
+		`anyof = [ "types.missing" ]`,
+		"type = \"table\"\n\n[elements.value.child]\ntype = \"types.missing\"",
+	}
+	for index, definition := range invalidReferences {
+		dir := t.TempDir()
+		schemaPath := write(t, dir, fmt.Sprintf("dangling-reference-%d.tosd", index), fmt.Sprintf(`
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+%s
+`, definition))
+		if _, err := LoadSchema(schemaPath); err == nil {
+			t.Fatalf("expected dangling reference %d to be rejected", index)
+		}
+	}
+
+	cycles := []string{
+		"[types.first]\ntype = \"types.second\"\n\n[types.second]\ntype = \"types.first\"",
+		"[types.first]\noneof = [ \"types.second\" ]\n\n[types.second]\nanyof = [ \"types.first\" ]",
+	}
+	for index, cycle := range cycles {
+		dir := t.TempDir()
+		schemaPath := write(t, dir, fmt.Sprintf("selector-cycle-%d.tosd", index), fmt.Sprintf(`
+[toml-schema]
+version = "1.0.0"
+
+%s
+
+[elements.value]
+type = "string"
+`, cycle))
+		if _, err := LoadSchema(schemaPath); err == nil {
+			t.Fatalf("expected selector cycle %d to be rejected", index)
+		}
+	}
+
+	dir := t.TempDir()
+	recursive := write(t, dir, "recursive-structure.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.node]
+type = "table"
+
+    [types.node.children]
+    type = "array"
+    itemtype = "types.node"
+
+[elements.root]
+type = "types.node"
+`)
+	if _, err := LoadSchema(recursive); err != nil {
+		t.Fatalf("expected structural recursion to load: %v", err)
+	}
+}
+
 func TestValidatesAllowedValuesForArrayWithoutItemtype(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "array-allowedvalues.tosd", `
@@ -701,18 +794,8 @@ version = "1.0.0"
 [elements.items]
 type = "table-collection"
 `)
-	documentPath := write(t, dir, "document.toml", `
-[items]
-name = "example"
-`)
-
-	schema, err := LoadSchema(schemaPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	result := schema.ValidateFile(documentPath)
-	if result.Valid() || !strings.Contains(result.Errors[0].Message, "unknown type reference") {
-		t.Fatalf("expected table-collection to be rejected as an unknown reference, got %#v", result.Errors)
+	if _, err := LoadSchema(schemaPath); err == nil {
+		t.Fatal("expected table-collection to be rejected at schema load time")
 	}
 }
 

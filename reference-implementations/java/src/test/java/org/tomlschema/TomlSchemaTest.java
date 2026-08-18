@@ -267,13 +267,7 @@ class TomlSchemaTest {
                 [elements.items]
                 type = "table-collection"
                 """);
-        Path document = write("table-collection-alias.toml", """
-                [items]
-                name = "example"
-                """);
-
-        TomlSchema loaded = TomlSchema.load(schema);
-        assertThrows(SchemaException.class, () -> loaded.validate(document));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
     }
 
     @Test
@@ -543,6 +537,136 @@ class TomlSchemaTest {
 
             assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
         }
+    }
+
+    @Test
+    void rejectsInvalidUnionStructureAndChildPlacement() throws IOException {
+        List<String> invalidDefinitions = List.of(
+                "oneof = []",
+                "anyof = []",
+                """
+                oneof = [ "string" ]
+                pattern = "x"
+                """,
+                """
+                oneof = [ "string" ]
+
+                [elements.value.child]
+                type = "string"
+                """,
+                """
+                type = "string"
+
+                [elements.value.child]
+                type = "string"
+                """,
+                """
+                type = "array"
+
+                [elements.value.child]
+                type = "string"
+                """
+        );
+
+        for (int index = 0; index < invalidDefinitions.size(); index++) {
+            Path schema = write("invalid-structure-" + index + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [elements.value]
+                    %s
+                    """.formatted(invalidDefinitions.get(index)));
+
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+    }
+
+    @Test
+    void validatesReferenceGraphAtSchemaLoadTime() throws IOException {
+        List<String> invalidReferences = List.of(
+                "type = \"\"",
+                "type = \"types.missing\"",
+                """
+                type = "array"
+                itemtype = ""
+                """,
+                """
+                type = "array"
+                itemtype = "types.missing"
+                """,
+                """
+                type = "array"
+                items = [ "" ]
+                """,
+                """
+                type = "array"
+                items = [ "types.missing" ]
+                """,
+                "oneof = [ \"\" ]",
+                "oneof = [ \"types.missing\" ]",
+                "anyof = [ \"\" ]",
+                "anyof = [ \"types.missing\" ]",
+                """
+                type = "table"
+
+                [elements.value.child]
+                type = "types.missing"
+                """
+        );
+        for (int index = 0; index < invalidReferences.size(); index++) {
+            Path schema = write("dangling-reference-" + index + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+
+                    [elements.value]
+                    %s
+                    """.formatted(invalidReferences.get(index)));
+
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+
+        for (String cycle : List.of(
+                """
+                [types.first]
+                type = "types.second"
+
+                [types.second]
+                type = "types.first"
+                """,
+                """
+                [types.first]
+                oneof = [ "types.second" ]
+
+                [types.second]
+                anyof = [ "types.first" ]
+                """
+        )) {
+            Path schema = write("selector-cycle-" + cycle.hashCode() + ".tosd", """
+                    [toml-schema]
+                    version = "1.0.0"
+                    %s
+
+                    [elements.value]
+                    type = "string"
+                    """.formatted(cycle));
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
+
+        Path recursive = write("recursive-structure.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.node]
+                type = "table"
+
+                    [types.node.children]
+                    type = "array"
+                    itemtype = "types.node"
+
+                [elements.root]
+                type = "types.node"
+                """);
+        assertDoesNotThrow(() -> TomlSchema.load(recursive));
     }
 
     @Test
