@@ -47,6 +47,7 @@ type = "table"
 
     [types.readmeTable."content-type"]
     type = "string"
+    optional = true
 
 [types.readme]
 oneof = [ "string", "types.readmeTable" ]

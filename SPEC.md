@@ -51,6 +51,7 @@ command.
   - [Pattern - `pattern`](#pattern---pattern)
   - [Key Pattern - `keypattern`](#key-pattern---keypattern)
 - [Validation and Data Model](#validation-and-data-model)
+  - [Expressiveness and Validation Scope](#expressiveness-and-validation-scope)
 - [Filename Extension](#filename-extension)
 - [MIME Type](#mime-type)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
@@ -953,6 +954,52 @@ It is NOT the goal of a TOML Schema to ever modify the data output of a TOML obj
 
 A validator MUST produce the exact same TOML data object as the underlying TOML
 parser would produce without schema validation.
+
+### Expressiveness and Validation Scope
+
+TOML Schema describes the parsed TOML value tree. It can model the structural
+patterns used by major configuration formats, including:
+
+- fixed keys and closed tables;
+- open tables for extension-owned data;
+- dynamic-key maps with uniform values by using `collection`;
+- arrays of tables and arrays of inline tables by using a named table as an
+  array's `itemtype`;
+- scalar-or-table and other alternative representations with `oneof` or
+  `anyof`;
+- fixed-length heterogeneous arrays with `items`; and
+- quoted, empty, or literal dotted keys through normal TOML key syntax.
+
+The checked-in schemas under [`examples/`](examples/) exercise these patterns
+against formats including [Cargo manifests](https://doc.rust-lang.org/cargo/reference/manifest.html),
+Python [`pyproject.toml`](https://packaging.python.org/en/latest/specifications/pyproject-toml/),
+Hugo, Netlify, GitLab Runner, and Cloudflare Wrangler.
+
+Version 1.0 validates each node independently. It does not define keywords for:
+
+- requiring, forbidding, or changing the schema of one key based on another
+  key's value;
+- mutual exclusion, implication, or exactly-one rules between sibling keys;
+- comparisons or references between values at different paths;
+- uniqueness of array items; or
+- merging, extending, or overriding a named definition at a reference site.
+
+For example, a schema can describe both Cargo dependency string and table
+forms, but cannot express every relationship among `git`, `path`, `version`,
+`branch`, `tag`, and `rev`. A `pyproject.toml` schema can describe the
+`project.dynamic` array and optional dynamic fields, but cannot require a field
+to be absent precisely when its name appears in that array. These application
+policies require an additional semantic-validation pass.
+
+Annotations beyond `description`, such as defaults, examples, deprecation
+notices, and editor-specific presentation hints, are also outside the version
+1.0 vocabulary. They do not affect whether a configuration format can be
+structurally validated.
+
+Validation applies to parsed keys and values, not to their lexical spelling.
+A schema cannot require dotted-key notation instead of table headers, an inline
+table instead of a regular table, or a particular quoting, whitespace, or
+comment style when those forms produce the same TOML value tree.
 
 ## Filename Extension
 

@@ -9,10 +9,17 @@ popular tool or project, and is intended as a learning resource and a
 reference for writing your own schemas. The examples are not affiliated
 with or endorsed by the upstream projects.
 
+These schemas are representative snapshots rather than canonical schemas
+published by the upstream projects. When an upstream rule depends on another
+field's presence or value, the example accepts the structurally valid superset
+and leaves that policy to application-level validation. See
+[Expressiveness and Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
+
 ## Available examples
 
 | File | Describes | Based on |
 | --- | --- | --- |
+| [`cargo.tosd`](cargo.tosd) | Rust Cargo manifests (`Cargo.toml`) | <https://doc.rust-lang.org/cargo/reference/manifest.html> |
 | [`gitlab-runner.tosd`](gitlab-runner.tosd) | GitLab Runner advanced configuration | <https://docs.gitlab.com/runner/configuration/advanced-configuration/> |
 | [`hugo.tosd`](hugo.tosd) | Hugo static site generator configuration | <https://gohugo.io/configuration/> |
 | [`netlify.tosd`](netlify.tosd) | Netlify file-based build configuration (`netlify.toml`) | <https://docs.netlify.com/build/configure-builds/file-based-configuration/> |

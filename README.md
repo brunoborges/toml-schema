@@ -18,6 +18,8 @@ A TOML Schema document is itself a valid TOML document. Validators can use it to
 - [Self-schema](toml-schema.tosd) - a structural schema for TOML Schema documents;
   schema loaders enforce property types and conditional applicability.
 - [Example schema](config.tosd) and [example TOML document](config.toml) - a worked example used by the reference implementation tests.
+- [Industry examples](examples/) - representative schemas for Cargo,
+  `pyproject.toml`, Hugo, Netlify, GitLab Runner, and Cloudflare Wrangler.
 - [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - implementation status, Java CLI/library usage, and conformance expectations.
 
 ## Quick example
