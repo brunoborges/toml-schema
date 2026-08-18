@@ -1,10 +1,11 @@
 ;; TOML Schema grammar layer
 ;; Author: Bruno Borges
 ;;
-;; TOML Schema files are TOML 1.0 documents. This ABNF defines the schema vocabulary
-;; and document shape layered on top of TOML; TOML 1.0 remains authoritative for
-;; base key, table, array, inline-table, string, number, boolean, and date/time
-;; syntax.
+;; TOML Schema files are TOML 1.0 documents. This ABNF defines the schema
+;; vocabulary and semantic document shape layered on top of TOML; it is not a
+;; lexical serialization grammar and does not impose an order on TOML tables.
+;; TOML 1.0 remains authoritative for base key, table, array, inline-table,
+;; string, number, boolean, and date/time syntax.
 ;;
 ;; The TOML Schema vocabulary defined below is independent of TOML version: the same
 ;; schema keys and built-in type names apply when targeting TOML 1.1 documents,
@@ -12,12 +13,18 @@
 ;; REFERENCE_IMPLEMENTATIONS.md ("TOML version profile") for the current
 ;; reference-implementation parser profile.
 
-toml-schema-document = toml-schema-table [ types-table ] elements-table
+toml-schema-document = toml-document
+; A conforming document contains exactly one required [toml-schema] table,
+; zero or one [types] table, and exactly one required [elements] table.
+; No other top-level members are allowed. Their lexical order is governed by
+; TOML rather than by the order of the productions below.
 
 toml-schema-table = toml-table-header-toml-schema version [ metadata-table ]
 types-table       = toml-table-header-types *schema-definition
 elements-table    = toml-table-header-elements *schema-definition
-metadata-table    = toml-table-header-toml-schema-meta *toml-keyval
+metadata-table    = toml-table-header-toml-schema-meta *metadata-member
+metadata-member   = toml-keyval / metadata-subtable
+metadata-subtable = toml-table-header-toml-schema-meta-descendant *metadata-member
 
 schema-definition = schema-definition-table *definition-property *schema-definition
 
@@ -69,11 +76,13 @@ collectiontype      = DQUOTE %x63.6f.6c.6c.65.63.74.69.6f.6e DQUOTE             
 
 ;; TOML 1.0 grammar terminals used by TOML Schema.
 
+toml-document                       = <TOML 1.0 document>
 semver-string                     = <TOML string containing a Semantic Versioning 2.0.0 value>
 toml-table-header-toml-schema      = <TOML 1.0 table header for [toml-schema]>
 toml-table-header-types            = <TOML 1.0 table header for [types]>
 toml-table-header-elements         = <TOML 1.0 table header for [elements]>
 toml-table-header-toml-schema-meta = <TOML 1.0 table header under [toml-schema.meta]>
+toml-table-header-toml-schema-meta-descendant = <TOML 1.0 table header below [toml-schema.meta]>
 schema-definition-table            = <TOML 1.0 table header under [types] or [elements]>
 toml-keyval                        = <TOML 1.0 key/value pair>
 toml-key                           = <TOML 1.0 key>

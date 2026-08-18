@@ -75,11 +75,18 @@ public final class TomlSchemaCli {
             err.println("Document must contain a [toml-schema] table");
             return 2;
         }
+        for (String key : metadata.keySet()) {
+            if (!isSchemaReferenceScalar(metadata.get(key))) {
+                err.printf("Document [toml-schema].%s must be a scalar value%n", key);
+                return 2;
+            }
+        }
         Object locationValue = metadata.get("location");
         if (!(locationValue instanceof String location) || location.isBlank()) {
             err.println("Document [toml-schema].location must be a non-empty string");
             return 2;
         }
+
         Path schemaPath = resolveSchemaPath(tomlPath, location);
         TomlSchema schema = TomlSchema.load(schemaPath);
         if (metadata.contains("version")) {
@@ -100,6 +107,17 @@ public final class TomlSchemaCli {
             }
         }
         return validate(schema, document, tomlPath, out, err);
+    }
+
+    private static boolean isSchemaReferenceScalar(Object value) {
+        return value instanceof String
+                || value instanceof Long
+                || value instanceof Double
+                || value instanceof Boolean
+                || value instanceof OffsetDateTime
+                || value instanceof LocalDateTime
+                || value instanceof LocalDate
+                || value instanceof LocalTime;
     }
 
     private static Path resolveSchemaPath(Path tomlPath, String location) {

@@ -7,7 +7,7 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use toml_schema::cli::run;
-use toml_schema::schema::{Schema, ValidationResult};
+use toml_schema::schema::{schema_from_document, Schema, ValidationResult};
 use url::Url;
 
 fn repository_root() -> PathBuf {
@@ -77,8 +77,6 @@ fn enforces_closed_root_element_semantics() {
         r#"
 [toml-schema]
 version = "1.0.0"
-
-[types]
 
 [elements]
 "#,
@@ -1631,11 +1629,45 @@ type = "array"
 items = [ "types.coordinate", "types.label" ]
 minlength = 2
 "#,
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "array"
+items = [ "string", "integer" ]
+allowedvalues = []
+"#,
     ];
     for (index, content) in conflicts.iter().enumerate() {
         let schema_path = write_file(&directory, &format!("schema-{index}.tosd"), content);
         let error = Schema::load(&schema_path).expect_err("expected schema conflict error");
         assert!(error.contains("items"));
+    }
+}
+
+#[test]
+fn rejects_allowed_values_on_table_and_collection() {
+    let directory = tempfile_dir("container-allowedvalues");
+    let definitions = [
+        "type = \"table\"\nallowedvalues = []",
+        "type = \"collection\"\nitemtype = \"string\"\nallowedvalues = []",
+    ];
+    for (index, definition) in definitions.iter().enumerate() {
+        let schema_path = write_file(
+            &directory,
+            &format!("schema-{index}.tosd"),
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{definition}
+"#
+            ),
+        );
+        Schema::load(&schema_path).expect_err("expected allowedvalues container error");
     }
 }
 
@@ -1858,6 +1890,23 @@ location = "schema.tosd"
         stdout.contains("is valid"),
         "expected valid output, got {stdout:?}"
     );
+}
+
+#[test]
+fn rejects_non_scalar_schema_reference_metadata() {
+    let directory = tempfile_dir("non-scalar-schema-reference-metadata");
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+[toml-schema]
+location = ["schema.tosd"]
+"#,
+    );
+
+    let error = schema_from_document(&document_path)
+        .expect_err("expected non-scalar schema-reference metadata error");
+    assert!(error.contains("must be a scalar value"), "{error}");
 }
 
 #[test]

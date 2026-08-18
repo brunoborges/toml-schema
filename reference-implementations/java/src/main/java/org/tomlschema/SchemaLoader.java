@@ -124,6 +124,7 @@ final class SchemaLoader {
         Pattern keyPattern = getPattern(name, table, "keypattern");
         Integer minLength = getInteger(table, "minlength");
         Integer maxLength = getInteger(table, "maxlength");
+        boolean hasAllowedValues = getPropertyValue(table, "allowedvalues") != null;
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
         boolean hasOneOf = getPropertyValue(table, "oneof") != null;
         boolean hasAnyOf = getPropertyValue(table, "anyof") != null;
@@ -192,6 +193,9 @@ final class SchemaLoader {
             if (minLength != null || maxLength != null) {
                 throw new SchemaException(name + " cannot define minlength or maxlength together with items");
             }
+            if (hasAllowedValues) {
+                throw new SchemaException(name + " cannot define allowedvalues together with items");
+            }
         }
         if (minLength != null && maxLength != null && minLength > maxLength) {
             throw new SchemaException(name + " minlength must not be greater than maxlength");
@@ -201,6 +205,9 @@ final class SchemaLoader {
         }
         if (pattern != null && type != SchemaType.STRING) {
             throw new SchemaException(name + " can only define pattern when type is string");
+        }
+        if (hasAllowedValues && (type == SchemaType.TABLE || type == SchemaType.COLLECTION)) {
+            throw new SchemaException(name + " can only define allowedvalues for simple types or arrays");
         }
         if ((minLength != null || maxLength != null)
                 && type != SchemaType.STRING
