@@ -37,8 +37,6 @@ func TestEnforcesClosedRootElementSemantics(t *testing.T) {
 [toml-schema]
 version = "1.0.0"
 
-[types]
-
 [elements]
 `)
 	emptyDocument := write(t, dir, "empty.toml", "")
@@ -1303,11 +1301,40 @@ type = "array"
 items = [ "types.coordinate", "types.label" ]
 minlength = 2
 `,
+		`
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "array"
+items = [ "string", "integer" ]
+allowedvalues = []
+`,
 	}
 	for index, schemaContent := range conflicts {
 		_, err := LoadSchema(write(t, dir, fmt.Sprintf("schema-%d.tosd", index), schemaContent))
 		if err == nil {
 			t.Fatalf("expected schema conflict error for case %d", index)
+		}
+	}
+}
+
+func TestRejectsAllowedValuesOnTableAndCollection(t *testing.T) {
+	dir := t.TempDir()
+	definitions := []string{
+		"type = \"table\"\nallowedvalues = []",
+		"type = \"collection\"\nitemtype = \"string\"\nallowedvalues = []",
+	}
+	for index, definition := range definitions {
+		schema := fmt.Sprintf(`
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+%s
+`, definition)
+		if _, err := LoadSchema(write(t, dir, fmt.Sprintf("container-%d.tosd", index), schema)); err == nil {
+			t.Fatalf("expected allowedvalues container error for case %d", index)
 		}
 	}
 }
@@ -1486,6 +1513,18 @@ location = "schema.tosd"
 	result := schema.Validate(document)
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
+	}
+}
+
+func TestRejectsNonScalarSchemaReferenceMetadata(t *testing.T) {
+	dir := t.TempDir()
+	documentPath := write(t, dir, "document.toml", `
+[toml-schema]
+location = ["schema.tosd"]
+`)
+
+	if _, _, err := SchemaFromDocument(documentPath); err == nil || !strings.Contains(err.Error(), "must be a scalar value") {
+		t.Fatalf("expected non-scalar metadata error, got %v", err)
 	}
 }
 

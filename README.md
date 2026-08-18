@@ -15,7 +15,8 @@ A TOML Schema document is itself a valid TOML document. Validators can use it to
 
 - [Specification](SPEC.md) - the TOML Schema language, validation semantics, file extension, MIME type, and TOML schema-reference metadata.
 - [ABNF grammar](toml-schema.abnf) - a compact grammar for the TOML Schema vocabulary and document shape, layered on top of TOML 1.0.
-- [Self-schema](toml-schema.tosd) - a TOML Schema document for TOML Schema documents.
+- [Self-schema](toml-schema.tosd) - a structural schema for TOML Schema documents;
+  schema loaders enforce property types and conditional applicability.
 - [Example schema](config.tosd) and [example TOML document](config.toml) - a worked example used by the reference implementation tests.
 - [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - implementation status, Java CLI/library usage, and conformance expectations.
 

@@ -9,8 +9,21 @@ The TOML Schema is used to validate the input of a TOML file during parsing to:
 
 The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document.
 
+## Conformance Terminology
+
+The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**,
+and **MAY** in this document are to be interpreted as described in
+[BCP 14](https://www.rfc-editor.org/info/bcp14) when, and only when, they
+appear in all capitals.
+
+A **schema loader** parses a TOML Schema document and rejects malformed
+schemas. A **validator** applies a successfully loaded schema to a TOML
+document. An **implementation** may provide both components in one API or
+command.
+
 ## Table of Contents
 
+- [Conformance Terminology](#conformance-terminology)
 - [First Glance](#first-glance)
   - [TOML example](#toml-example)
   - [TOML Schema example](#toml-schema-example)
@@ -37,7 +50,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
   - [Optionality - `optional`](#optionality---optional)
   - [Pattern - `pattern`](#pattern---pattern)
   - [Key Pattern - `keypattern`](#key-pattern---keypattern)
-- [Parsers](#parsers)
+- [Validation and Data Model](#validation-and-data-model)
 - [Filename Extension](#filename-extension)
 - [MIME Type](#mime-type)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
@@ -99,7 +112,7 @@ type="table"
     [elements.owner.name]
     type="string"
     [elements.owner.dob]
-    type="local-date"
+    type="offset-date-time"
 
 [elements.database]
 type="table"
@@ -145,7 +158,7 @@ A TOML Schema file has the following structure:
  - `[elements]`: table with the overall structure of the TOML document, its tables, properties, and conditions.
    - **Required**
 
-**IMPORTANT**: No other top-level table or key-value pair may appear on a TOML Schema document.
+No other top-level table or key-value pair MAY appear in a TOML Schema document.
 
 ## Metadata Table - `[toml-schema]`
 
@@ -173,7 +186,8 @@ version = "1.0.0"
  - `toml-schema.meta`: table reserved for any custom user-provided metadata.
    - **Optional**.
 
- No custom property or table may be appended under `toml-schema`, only inside `toml-schema.meta` table.
+Custom properties and tables MUST NOT appear directly under `toml-schema`; they
+MAY appear only inside the `toml-schema.meta` table.
 
 ### Schema Versioning
 
@@ -186,9 +200,9 @@ The `version` property MUST be a string containing a full SemVer version in `MAJ
 version = "1.0.0"
 ```
 
-Parsers MUST reject schema documents whose `version` is missing, is not a string, or is not a valid SemVer value. Shorthand values such as `"1"` and `"1.0"` are invalid.
+Schema loaders MUST reject schema documents whose `version` is missing, is not a string, or is not a valid SemVer value. Shorthand values such as `"1"` and `"1.0"` are invalid.
 
-A parser that supports TOML Schema version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the parser's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect parser compatibility. Parsers MUST reject schema documents with an unsupported major version or a greater minor version.
+An implementation that supports TOML Schema version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the implementation's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect compatibility. Schema loaders MUST reject schema documents with an unsupported major version or a greater minor version.
 
 ## Elements table - `[elements]`
 
@@ -226,6 +240,14 @@ enabled = true
 
 Use `[elements]` for document-specific keys. Use `[types]` for reusable definitions that can be referenced from `[elements]` or from other reusable types. Elements follow the same structure and validation rules as types, except that elements cannot reference other elements. To reuse conditions and structures, define them under `[types]` and reference them from `[elements]`.
 
+The companion [`toml-schema.tosd`](toml-schema.tosd) validates this top-level
+structure. It intentionally leaves individual schema-definition tables open:
+schema property names such as `type` and `itemtype` may also be target child
+keys, and TOML cannot represent both a key-value property and a child table with
+the same path in one self-schema definition. Schema loaders therefore enforce
+the vocabulary, property types, and conditional applicability rules specified
+below.
+
 ## Types table - `[types]`
 
 The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A type is referenced in an element or another type with a type reference.
@@ -242,31 +264,31 @@ Two built-in names have context-specific restrictions:
 - `collection` is valid for `type` only when the same definition declares
   `itemtype`. It MUST NOT be used as a bare reference in `itemtype`, `items`,
   `oneof`, or `anyof`, because those locations cannot supply the collection's
-  dynamic-value rule. Parsers MUST reject such references at schema-load time.
+  dynamic-value rule. Schema loaders MUST reject such references at schema-load time.
 - `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
-  directly in `oneof` or `anyof`. Parsers MUST reject a direct `any` alternative
+  directly in `oneof` or `anyof`. Schema loaders MUST reject a direct `any` alternative
   at schema-load time.
 
 These restrictions apply to bare built-in references, not to named reusable
 definitions. A named definition that declares a complete collection or selects
 `type = "any"` remains a valid reference.
 
-`type`, `oneof`, and `anyof` are alternative ways to select the type of the current schema node. Every definition MUST declare exactly one of them, except that a definition with nested child definitions MAY omit all three and is then treated as `type = "table"`. Parsers MUST reject a definition that declares more than one of these properties, or that declares none of them and has no nested child definitions. `type` accepts either a built-in type name or a named reusable definition from `[types]`. Container member types are selected separately with `itemtype`: it validates each member of an `array` or each dynamically keyed value of a `collection`. `itemtype` requires the same definition to declare the built-in `type = "array"` or `type = "collection"`; it cannot be attached to another built-in or to a named type reference.
+`type`, `oneof`, and `anyof` are alternative ways to select the type of the current schema node. Every definition MUST declare exactly one of them, except that a definition with nested child definitions MAY omit all three and is then treated as `type = "table"`. Schema loaders MUST reject a definition that declares more than one of these properties, or that declares none of them and has no nested child definitions. `type` accepts either a built-in type name or a named reusable definition from `[types]`. Container member types are selected separately with `itemtype`: it validates each member of an `array` or each dynamically keyed value of a `collection`. `itemtype` requires the same definition to declare the built-in `type = "array"` or `type = "collection"`; it cannot be attached to another built-in or to a named type reference.
 
 Nested child definitions are valid only when the current node selects the
 built-in `table` or `collection` type, or when the node omits a selector and is
-therefore an implicit table. Parsers MUST reject child definitions attached to
+therefore an implicit table. Schema loaders MUST reject child definitions attached to
 a scalar, `array`, named type reference, `oneof`, or `anyof` node rather than
 silently ignoring them.
 
 Every named reference used by `type`, `itemtype`, `items`, `oneof`, or `anyof`
-MUST resolve to a definition in `[types]`. Parsers MUST reject unresolved
+MUST resolve to a definition in `[types]`. Schema loaders MUST reject unresolved
 references at schema-load time, including references in definitions that are
 optional or not exercised by the document being validated.
 
 Type-selection references MUST be acyclic. A cycle composed of named `type`
 aliases, `oneof` alternatives, or `anyof` alternatives cannot resolve to a
-concrete definition and parsers MUST reject it at schema-load time. Structural
+concrete definition and schema loaders MUST reject it at schema-load time. Structural
 recursion through table or collection children, array `itemtype`, or tuple
 `items` remains valid because each recursive step consumes a nested document
 value.
@@ -290,6 +312,26 @@ max = <integer | float | offset-date-time | local-date-time | local-date | local
 minlength = <integer>
 maxlength = <integer>
 ```
+
+The following matrix summarizes where definition properties apply. The
+detailed sections below remain authoritative.
+
+| Property | Applicable definition |
+| --- | --- |
+| `type` | Selects one built-in or named type; mutually exclusive with `oneof` and `anyof` |
+| `oneof`, `anyof` | Select the current node from one or more alternatives; mutually exclusive with each other and `type` |
+| `description`, `optional` | Any definition, including a named reference or alternative selector |
+| `itemtype` | A definition with built-in `type = "array"` or `type = "collection"` |
+| `items` | A definition with built-in `type = "array"`; mutually exclusive with `itemtype`, `allowedvalues`, `minlength`, and `maxlength` |
+| `allowedvalues` | A simple built-in type, or the items of a non-tuple `array` |
+| `pattern` | A definition with built-in `type = "string"` |
+| `keypattern` | A definition with built-in `type = "collection"` |
+| `min`, `max` | A numeric or temporal built-in type, or an `array` whose `itemtype` resolves to one comparable kind |
+| `minlength`, `maxlength` | A definition with built-in `type = "string"`, `type = "array"`, or `type = "collection"` |
+
+A named type reference and an alternative selector may only have the siblings
+listed for them in this matrix. Constraints for the referenced or alternative
+types belong in reusable definitions.
 
 ### Quoted and Special Keys
 
@@ -340,11 +382,17 @@ List of considered simple types:
 
 #### Allowed Values for Simple Types - `allowedvalues`
 
-`allowedvalues` provides a mechanism to set an enumeration of allowed values to be used in any given simple type.
+`allowedvalues` provides an enumeration for a simple built-in type. On an
+`array`, it instead enumerates the values permitted for each item, as described
+under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
+It is invalid on a `table` or `collection`.
 
-For a non-array simple type, when `allowedvalues` is combined with `pattern`, `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST satisfy every applicable constraint. A schema containing an entry that violates one of those constraints is malformed, and parsers MUST reject it at schema-load time.
+For a non-array simple type, when `allowedvalues` is combined with `pattern`, `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST satisfy every applicable constraint. A schema containing an entry that violates one of those constraints is malformed, and schema loaders MUST reject it at schema-load time.
 
-After a schema with `allowedvalues` has been loaded successfully, a document value is valid when it is a member of `allowedvalues`. Parsers do not need to re-evaluate the other constraints for that document value because every enumerated value has already been checked against them while loading the schema.
+After a schema with `allowedvalues` has been loaded successfully, a document
+value is valid when it is a member of `allowedvalues`. Validators do not need to
+re-evaluate the other constraints for that document value because every
+enumerated value has already been checked against them while loading the schema.
 
 Numeric membership compares mathematical values after TOML parsing. Integer
 comparison MUST remain exact across the full TOML signed 64-bit range, including
@@ -382,10 +430,10 @@ For arrays, `min` and `max` apply to each item. `itemtype` MUST resolve to one
 comparable built-in kind: `integer`, `float`, `offset-date-time`,
 `local-date-time`, `local-date`, or `local-time`. All alternatives of a
 referenced `oneof` or `anyof` definition MUST resolve to that same kind.
-Parsers MUST reject array range constraints when the item schema can resolve to
+Schema loaders MUST reject array range constraints when the item schema can resolve to
 different kinds or to a non-comparable kind.
 
-A `min` or `max` boundary must be a TOML value that is comparable with the schema type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
+A `min` or `max` boundary MUST be a TOML value that is comparable with the schema type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
 
 `nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries.
 
@@ -407,23 +455,25 @@ conversion is applied to a local temporal value.
 
 ### Length - `minlength` and `maxlength`
 
-This property may only be used when defining the allowed length of a `string`, an `array`, or a `collection`.
+These properties MUST be used only to define the allowed length of a `string`,
+an `array`, or a `collection`.
 
 For `string` values, length is counted as the number of Unicode scalar values after TOML parsing and escape processing. It is not the number of UTF-8 bytes, UTF-16 code units, or user-perceived grapheme clusters. For example, `"\U0001F600"` has length 1, while `"e\u0301"` has length 2 because it is composed of two Unicode scalar values.
 
 For `array` and `collection` values, length is counted as the number of items or dynamic entries.
 
-Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present, `minlength` MUST be less than or equal to `maxlength`. A schema violating either rule is malformed and parsers MUST reject it at schema-load time.
+Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present, `minlength` MUST be less than or equal to `maxlength`. A schema violating either rule is malformed and schema loaders MUST reject it at schema-load time.
 
 `minlength` and `maxlength` are valid only on definitions whose selected type is
 the built-in `string`, `array`, or `collection`. They cannot be attached to
 another built-in type, an alternative selector, or a named type reference.
-Parsers MUST reject an incompatible length constraint at schema-load time rather
+Schema loaders MUST reject an incompatible length constraint at schema-load time rather
 than silently ignoring it.
 
 ### Conditions on `any`
 
-No min/max condition may be applied to type `any`. The parser must show an error if this happens.
+No `min` or `max` condition may be applied to type `any`. The schema loader
+MUST reject such a schema.
 
 An unconstrained value may declare `type = "any"`, and arrays may use `any` in
 `itemtype` or `items`. A direct `any` entry in `oneof` or `anyof` is malformed
@@ -444,11 +494,15 @@ For simplicity, there is no definition of `inline table` since these are just ta
 
 #### Tables
 
-A `table` may have a set of properties, or none at all. If a table has a definition of properties, then the parser must validate the input and the input must match exactly the rules of the table and its children.
+A `table` may have a set of properties, or none at all. If a table has a
+definition of properties, the validator MUST require the input to match exactly
+the rules of the table and its children.
 
-If a schema definition has nested child definitions but does not declare `type`, `oneof`, or `anyof`, parsers MUST treat it as if it declared `type = "table"`.
+If a schema definition has nested child definitions but does not declare `type`, `oneof`, or `anyof`, schema loaders MUST treat it as if it declared `type = "table"`.
 
-If a property of type `table` has no defined property and/or structure, the parser must not validate its input. This is useful for representing custom JSON data payloads.
+If a property of type `table` has no defined children, the validator MUST
+accept any TOML table value without validating its contents. This is useful for
+representing custom data payloads.
 
 #### Arrays
 
@@ -462,7 +516,7 @@ Arrays can be defined by mixing the following properties:
  - `max`: the maximum value allowed for each comparable array item (e.g. 8080).
  - `allowedvalues`: enumeration of possible values.
 
-`arraytype` is not a TOML Schema property. Parsers MUST reject schema
+`arraytype` is not a TOML Schema property. Schema loaders MUST reject schema
 definitions that declare it. Use `itemtype` for both built-in and named member
 types.
 
@@ -483,16 +537,22 @@ colors=[ "red", "yellow", "green" ]
 ##### Observations on Conditions to Arrays
 
 The `min` and `max` conditions set an inclusive range for every array item. They
-may be used only when `itemtype` resolves to one comparable built-in kind:
+MUST be used only when `itemtype` resolves to one comparable built-in kind:
 `integer`, `float`, or one of the four date/time types. When `itemtype`
 references a named definition, aliases and alternatives are resolved before
 this rule is checked.
 
-Dates and Times are naturally sorted by past, present, future, meaning that the first element is in the past, and the furthest element is in the future.
+Temporal values use the ordering rules defined under
+[Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max).
 
-`allowedvalues` does not have to be naturally sorted, but the lowest value must match `min` if it is available. The highest/furthest value must match `max` if it is available.
+When `allowedvalues` is present on an array, every array item MUST be a member
+of that enumeration. The enumeration does not have to be sorted. If `min` or
+`max` is also present, every enumerated value MUST satisfy the applicable
+inclusive boundary; an enumerated value need not equal either boundary.
 
-If `allowedvalues` does not match the conditions of `minlength`, `maxlength`, `min` and `max`, the parser must throw an error indicating that the TOML Schema is malformed.
+`minlength` and `maxlength` constrain the document array's item count, not the
+number of entries in `allowedvalues`. The schema loader MUST reject an
+enumerated value that violates `min` or `max`.
 
 If neither `itemtype` nor `items` is defined, array items default to `any`, so
 items of different TOML types may be mixed.
@@ -581,9 +641,11 @@ items = [ "types.coordinate", "types.label" ]
 Semantics:
 
  - `items` is ordered, and each index validates against the corresponding referenced type.
- - When `items` is present, the array must have exactly the same number of items.
+ - When `items` is present, the array MUST have exactly the same number of items.
  - `items` is mutually exclusive with `itemtype`.
  - `items` is also mutually exclusive with `minlength` and `maxlength`.
+ - `items` is mutually exclusive with `allowedvalues`; constraints for a tuple
+   position belong in the reusable definition referenced at that position.
 
 #### Collection of Elements for Dynamic Keys
 
@@ -605,7 +667,7 @@ A `collection` may additionally constrain the **keys** (entry names) of its dyna
 
 **Example:**
 The below example shows a table `servers` that is a `collection`.
-Each server must be given a key, and follow the defined structure of `types.serverType`.
+Each server MUST be given a key and follow the defined structure of `types.serverType`.
 A server may also have a DNS table with user-provided key names.
 
 TOML:
@@ -672,7 +734,7 @@ A `collection` may be represented as subtables of a common table in a TOML docum
 
 A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
 
-When `type` selects a named reusable definition, the reference inherits that definition's validation rules as-is. The referencing definition MAY also declare `optional` and `description`, but it MUST NOT declare any other sibling property or child definition. In particular, validation constraints such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`, `itemtype`, and `items` cannot be added or overridden at the reference site. Parsers MUST reject such schemas at schema-load time.
+When `type` selects a named reusable definition, the reference inherits that definition's validation rules as-is. The referencing definition MAY also declare `optional` and `description`, but it MUST NOT declare any other sibling property or child definition. In particular, validation constraints such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`, `itemtype`, and `items` cannot be added or overridden at the reference site. Schema loaders MUST reject such schemas at schema-load time.
 
 To specialize validation rules, declare another named reusable definition rather than adding constraints to a reference:
 
@@ -742,12 +804,12 @@ The bare built-in names `any` and `collection` MUST NOT appear directly in
 `oneof` or `anyof`. Use a named reusable definition when an alternative needs a
 fully defined collection or an intentionally unconstrained named branch.
 
-`type`, `oneof`, and `anyof` all select the current node's type and are mutually exclusive. A parser MUST reject a definition containing more than one of them.
+`type`, `oneof`, and `anyof` all select the current node's type and are mutually exclusive. A schema loader MUST reject a definition containing more than one of them.
 
 The array assigned to `oneof` or `anyof` MUST contain at least one type
 reference. A union definition MAY additionally declare only `description` and
 `optional`; it MUST NOT declare another validation property or any nested child
-definition. Parsers MUST reject empty unions and union siblings at schema-load
+definition. Schema loaders MUST reject empty unions and union siblings at schema-load
 time. Constraints required by an alternative belong in a named reusable
 definition referenced by the union.
 
@@ -794,7 +856,7 @@ itemtype = "types.dnsValue"
 
 ### Description - `description`
 
-`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Parsers and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation.
+`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation.
 
 ```toml
 [types.game]
@@ -815,13 +877,15 @@ itemtype = "types.game"
 
 Properties may be defined as optional in the schema. By default, optional equals false, and the structure is required.
 
-Parsers must only skip a structure validation if the structure is optional in the TOML Schema and does not exist in the TOML document. For any other condition, the parser must validate the input against the schema.
+Validators MUST skip a definition only when it is optional and the corresponding
+value does not exist in the TOML document. In every other case, the validator
+MUST validate the value against the definition.
 
 ### Pattern - `pattern`
 
 This property is only valid on a definition whose selected type is the built-in
 `string`. It cannot be attached to another built-in type, an alternative
-selector, or a named type reference. Parsers MUST reject an incompatible
+selector, or a named type reference. Schema loaders MUST reject an incompatible
 `pattern` at schema-load time rather than silently ignoring it.
 
 The portable TOML Schema regular-expression profile consists of literals,
@@ -829,19 +893,19 @@ escaped metacharacters, `.`, character classes and ranges, negated character
 classes, concatenation, alternation, capturing and non-capturing groups, the
 anchors `^` and `$`, and the greedy quantifiers `?`, `*`, `+`, `{n}`, `{n,}`,
 and `{n,m}`. These constructs use the syntax documented by the
-[RE2 syntax reference](https://github.com/google/re2/wiki/Syntax). Parsers MUST
+[RE2 syntax reference](https://github.com/google/re2/wiki/Syntax). Implementations MUST
 support this profile.
 
 Character-class shorthands such as `\d`, `\s`, and `\w` are outside the
 portable profile because regular-expression engines disagree about whether
 they use ASCII or Unicode membership. Backreferences, look-around assertions,
 atomic groups, conditionals, and recursion are also outside the portable
-profile. Parsers MAY accept additional constructs, but schemas that use those
+profile. Implementations MAY accept additional constructs, but schemas that use those
 extensions are not portable between TOML Schema implementations.
 
 The pattern is not implicitly anchored. A value validates if the regular
 expression matches anywhere in the string. Authors who require a full-string
-match must anchor the expression with `^` and `$`.
+match MUST anchor the expression with `^` and `$`.
 
 ### Key Pattern - `keypattern`
 
@@ -850,17 +914,17 @@ collection's dynamic children: every dynamically keyed entry must match the prov
 expression. It does not validate entry *values* — that is the role of `itemtype`. It is
 therefore orthogonal to `itemtype` and may be combined with it.
 
-`keypattern` is invalid on any non-`collection` type (scalars, `array`, plain `table`), and a
-parser must reject a schema that uses it elsewhere.
+`keypattern` is invalid on any non-`collection` type (scalars, `array`, plain
+`table`), and a schema loader MUST reject a schema that uses it elsewhere.
 
 Keys that are explicitly declared as fixed child definitions of the collection (schema-restricted
 key-value pairs) are validated by their own definitions and are not subject to `keypattern`. Only
 dynamic, user-provided keys are matched against the pattern.
 
-Parsers MUST support the same portable RE2 regular-expression profile as
+Implementations MUST support the same portable RE2 regular-expression profile as
 [`pattern`](#pattern---pattern). Like `pattern`, `keypattern` is not implicitly
 anchored: a key validates if the regular expression matches anywhere in the key
-string. Authors who require a full-key match must anchor the expression with
+string. Authors who require a full-key match MUST anchor the expression with
 `^` and `$`.
 
 **Example:**
@@ -883,11 +947,12 @@ Against a TOML document:
 
 This mirrors JSON Schema's `propertyNames: { pattern: ... }`, applied to TOML maps.
 
-## Parsers
+## Validation and Data Model
 
 It is NOT the goal of a TOML Schema to ever modify the data output of a TOML object during parsing.
 
-A parser that validates a TOML document against a TOML Schema must produce the exact same TOML data object as a parser that does not validate.
+A validator MUST produce the exact same TOML data object as the underlying TOML
+parser would produce without schema validation.
 
 ## Filename Extension
 
@@ -919,8 +984,17 @@ A validator that receives a TOML document without a base location, for example t
 
 After resolving and loading the schema, a validator MUST compare these two language versions when the referencing document provides `version`. A different major version is incompatible and schema discovery MUST fail. Any other unequal version, including a minor, patch, pre-release, or build metadata difference, MUST produce a warning but MUST NOT by itself cause validation to fail. Compatibility between the resolved schema and the validator remains governed by [Schema Versioning](#schema-versioning).
 
-The root `[toml-schema]` table is reserved for schema metadata. Validators should use it to locate schema information and should not treat it as application data unless the schema explicitly defines `[elements.toml-schema]`.
+The root `[toml-schema]` table is reserved for schema-reference metadata.
+`location` and `version` are the only keys interpreted by this specification.
+Implementations MAY permit additional extension keys, but every direct value in
+this table MUST be a TOML scalar: string, integer, float, boolean, offset
+date-time, local date-time, local date, or local time. Arrays, inline tables,
+subtables, and arrays of tables are not schema-reference metadata and MUST be
+rejected during schema discovery. Implementations MUST ignore extension keys
+they do not recognize.
 
-When `[elements.toml-schema]` is omitted, validators should ignore the reserved metadata table during application-data validation. When `[elements.toml-schema]` is present, validators must validate the metadata table like any other table.
-
-Only simple *built-in types* are **allowed** in this metadata table.
+When `[elements.toml-schema]` is omitted, validators MUST ignore the reserved
+metadata table during application-data validation. When
+`[elements.toml-schema]` is present, validators MUST additionally validate the
+metadata table like any other application table. Schema discovery rules,
+including the scalar-only restriction, still apply when discovery is requested.

@@ -76,8 +76,6 @@ class TomlSchemaTest {
                 [toml-schema]
                 version = "1.0.0"
 
-                [types]
-
                 [elements]
                 """);
 
@@ -962,9 +960,37 @@ class TomlSchemaTest {
                 items = [ "types.coordinate", "types.label" ]
                 minlength = 2
                 """);
+        Path withAllowedValues = write("tuple-allowedvalues-conflict.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "array"
+                items = [ "string", "integer" ]
+                allowedvalues = []
+                """);
 
         assertThrows(SchemaException.class, () -> TomlSchema.load(withItemtype));
         assertThrows(SchemaException.class, () -> TomlSchema.load(withLength));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(withAllowedValues));
+    }
+
+    @Test
+    void rejectsAllowedValuesOnTableAndCollection() throws IOException {
+        for (String definition : List.of(
+                "type = \"table\"\nallowedvalues = []",
+                "type = \"collection\"\nitemtype = \"string\"\nallowedvalues = []"
+        )) {
+            Path schema = write("container-allowedvalues.tosd", """
+                   [toml-schema]
+                   version = "1.0.0"
+
+                   [elements.value]
+                   %s
+                   """.formatted(definition));
+
+            assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
+        }
     }
 
     @Test
@@ -1621,6 +1647,24 @@ class TomlSchemaTest {
 
         assertEquals(0, exitCode, err::toString);
         assertEquals("", err.toString(StandardCharsets.UTF_8));
+    }
+
+    @Test
+    void cliRejectsNonScalarSchemaReferenceMetadata() throws IOException {
+        Path document = write("document.toml", """
+                [toml-schema]
+                location = ["schema.tosd"]
+                """);
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream err = new ByteArrayOutputStream();
+
+        int exitCode = TomlSchemaCli.run(
+                new String[]{"validate", document.toString()},
+                new PrintStream(out, true, StandardCharsets.UTF_8),
+                new PrintStream(err, true, StandardCharsets.UTF_8));
+
+        assertEquals(2, exitCode);
+        assertTrue(err.toString(StandardCharsets.UTF_8).contains("must be a scalar value"));
     }
 
     @Test

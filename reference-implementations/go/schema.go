@@ -319,6 +319,7 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	if err != nil {
 		return Definition{}, err
 	}
+	hasAllowedValues := propertyValue(table, "allowedvalues") != nil
 	hasOneOf := propertyValue(table, "oneof") != nil
 	hasAnyOf := propertyValue(table, "anyof") != nil
 	oneOf, err := getStringArrayValues(table, "oneof")
@@ -417,6 +418,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 		if minLength != nil || maxLength != nil {
 			return Definition{}, fmt.Errorf("%s cannot define minlength or maxlength together with items", name)
 		}
+		if hasAllowedValues {
+			return Definition{}, fmt.Errorf("%s cannot define allowedvalues together with items", name)
+		}
 	}
 	min := propertyValue(table, "min")
 	max := propertyValue(table, "max")
@@ -428,6 +432,9 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	}
 	if pattern != nil && typeName != TypeString {
 		return Definition{}, fmt.Errorf("%s can only define pattern when type is string", name)
+	}
+	if hasAllowedValues && (typeName == TypeTable || typeName == TypeCollection) {
+		return Definition{}, fmt.Errorf("%s can only define allowedvalues for simple types or arrays", name)
 	}
 	if (minLength != nil || maxLength != nil) &&
 		typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {
@@ -1057,10 +1064,16 @@ func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
 	if !ok {
 		return nil, nil, fmt.Errorf("document does not contain [toml-schema].location")
 	}
+	for key, value := range metadata {
+		if !isSchemaReferenceScalar(value) {
+			return nil, nil, fmt.Errorf("document [toml-schema].%s must be a scalar value", key)
+		}
+	}
 	location, ok := metadata["location"].(string)
 	if !ok || strings.TrimSpace(location) == "" {
 		return nil, nil, fmt.Errorf("document does not contain [toml-schema].location")
 	}
+
 	schemaPath, err := resolveSchemaLocation(documentPath, location)
 	if err != nil {
 		return nil, nil, err
@@ -1079,6 +1092,15 @@ func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
 		}
 	}
 	return schema, document, nil
+}
+
+func isSchemaReferenceScalar(value any) bool {
+	switch value.(type) {
+	case string, int64, float64, bool, time.Time, toml.LocalDateTime, toml.LocalDate, toml.LocalTime:
+		return true
+	default:
+		return false
+	}
 }
 
 func resolveSchemaLocation(documentPath, location string) (string, error) {

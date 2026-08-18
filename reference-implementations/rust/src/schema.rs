@@ -441,6 +441,20 @@ pub fn schema_from_document<P: AsRef<Path>>(document_path: P) -> Result<(Schema,
         .get("toml-schema")
         .and_then(Value::as_table)
         .ok_or_else(|| "document does not contain [toml-schema].location".to_string())?;
+    for (key, value) in metadata {
+        if !matches!(
+            value,
+            Value::String(_)
+                | Value::Integer(_)
+                | Value::Float(_)
+                | Value::Boolean(_)
+                | Value::Datetime(_)
+        ) {
+            return Err(format!(
+                "document [toml-schema].{key} must be a scalar value"
+            ));
+        }
+    }
     let location = metadata
         .get("location")
         .and_then(Value::as_str)
@@ -566,6 +580,7 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     let key_pattern = get_pattern_key(name, table, "keypattern")?;
     let min_length = get_unsigned_integer(name, table, "minlength")?;
     let max_length = get_unsigned_integer(name, table, "maxlength")?;
+    let has_allowed_values = property_value(table, "allowedvalues").is_some();
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
     let has_one_of = property_value(table, "oneof").is_some();
     let has_any_of = property_value(table, "anyof").is_some();
@@ -653,6 +668,11 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
                 "{name} cannot define minlength or maxlength together with items"
             ));
         }
+        if has_allowed_values {
+            return Err(format!(
+                "{name} cannot define allowedvalues together with items"
+            ));
+        }
         if property_value(table, "min").is_some() || property_value(table, "max").is_some() {
             return Err(format!(
                 "{name} cannot define min or max together with items"
@@ -667,6 +687,11 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     if pattern.is_some() && type_name != Some(SchemaType::String) {
         return Err(format!(
             "{name} can only define pattern when type is string"
+        ));
+    }
+    if has_allowed_values && matches!(type_name, Some(SchemaType::Table | SchemaType::Collection)) {
+        return Err(format!(
+            "{name} can only define allowedvalues for simple types or arrays"
         ));
     }
     if (min_length.is_some() || max_length.is_some())
