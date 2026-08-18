@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use regex::Regex;
 use toml::value::{Datetime, Offset};
 use toml::{Table, Value};
+use url::Url;
 
 /// Built-in TOML Schema types.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -98,7 +99,6 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "pattern",
     "keypattern",
     "optional",
-    "default",
     "min",
     "max",
     "minlength",
@@ -159,6 +159,8 @@ impl ValidationResult {
 #[derive(Debug, Clone)]
 pub struct Schema {
     source: PathBuf,
+    version: String,
+    warnings: Vec<String>,
     types: BTreeMap<String, Definition>,
     elements: BTreeMap<String, Definition>,
 }
@@ -193,6 +195,10 @@ impl Schema {
             .get("version")
             .ok_or_else(|| "[toml-schema] must contain version".to_string())?;
         Self::validate_schema_version(version)?;
+        let version = version
+            .as_str()
+            .expect("schema version was validated as a string")
+            .to_string();
         for key in metadata.keys() {
             if key != "version" && key != "meta" {
                 return Err(format!("unsupported [toml-schema] key: {key}"));
@@ -204,6 +210,8 @@ impl Schema {
         let elements = parse_definitions("elements", elements_table, true)?;
         let schema = Schema {
             source,
+            version,
+            warnings: Vec::new(),
             types,
             elements,
         };
@@ -214,6 +222,11 @@ impl Schema {
     /// Returns the path the schema was loaded from.
     pub fn source(&self) -> &Path {
         &self.source
+    }
+
+    /// Returns non-fatal warnings produced while discovering this schema.
+    pub fn warnings(&self) -> &[String] {
+        &self.warnings
     }
 
     fn validate_schema_version(value: &Value) -> Result<(), String> {
@@ -370,10 +383,67 @@ pub fn schema_from_document<P: AsRef<Path>>(document_path: P) -> Result<(Schema,
         .map(str::trim)
         .filter(|location| !location.is_empty())
         .ok_or_else(|| "document does not contain [toml-schema].location".to_string())?;
-    let directory = document_path.parent().unwrap_or_else(|| Path::new("."));
-    let schema_path = directory.join(location);
-    let schema = Schema::load(&schema_path)?;
+    let schema_path = resolve_schema_location(document_path, location)?;
+    let mut schema = Schema::load(&schema_path)?;
+    if let Some(expected_version) = metadata.get("version") {
+        if let Some(warning) = compare_document_schema_version(expected_version, &schema.version)? {
+            schema.warnings.push(warning);
+        }
+    }
     Ok((schema, document))
+}
+
+fn resolve_schema_location(document_path: &Path, location: &str) -> Result<PathBuf, String> {
+    let absolute_document_path = if document_path.is_absolute() {
+        document_path.to_path_buf()
+    } else {
+        std::env::current_dir()
+            .map_err(|error| format!("invalid current directory: {error}"))?
+            .join(document_path)
+    };
+    let base = Url::from_file_path(&absolute_document_path)
+        .map_err(|_| format!("invalid document path: {}", document_path.display()))?;
+    let resolved = base
+        .join(location)
+        .map_err(|error| format!("invalid [toml-schema].location URI: {location}: {error}"))?;
+    if resolved.scheme() != "file" {
+        return Err(format!(
+            "unsupported schema location URI scheme: {}",
+            resolved.scheme()
+        ));
+    }
+    resolved
+        .to_file_path()
+        .map_err(|_| format!("invalid file schema location: {location}"))
+}
+
+fn compare_document_schema_version(value: &Value, actual: &str) -> Result<Option<String>, String> {
+    let expected = value
+        .as_str()
+        .ok_or_else(|| "document [toml-schema].version must be a SemVer string".to_string())?;
+    let semver = Regex::new(
+        r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$",
+    )
+    .expect("valid SemVer regex");
+    let expected_parts = semver.captures(expected).ok_or_else(|| {
+        "document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax".to_string()
+    })?;
+    let actual_parts = semver
+        .captures(actual)
+        .expect("loaded schema version was already validated");
+    if expected_parts.get(1).map(|part| part.as_str())
+        != actual_parts.get(1).map(|part| part.as_str())
+    {
+        return Err(format!(
+            "document expects TOML Schema major version {expected}, but resolved schema uses {actual}"
+        ));
+    }
+    if expected != actual {
+        return Ok(Some(format!(
+            "Warning: document expects TOML Schema version {expected}, but resolved schema uses {actual}"
+        )));
+    }
+    Ok(None)
 }
 
 fn parse_toml_file(path: &Path) -> Result<Table, String> {
@@ -503,6 +573,21 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
     if key_pattern.is_some() && type_name != Some(SchemaType::Collection) {
         return Err(format!(
             "{name} can only define keypattern when type is collection"
+        ));
+    }
+    if pattern.is_some() && type_name != Some(SchemaType::String) {
+        return Err(format!(
+            "{name} can only define pattern when type is string"
+        ));
+    }
+    if (min_length.is_some() || max_length.is_some())
+        && !matches!(
+            type_name,
+            Some(SchemaType::String | SchemaType::Array | SchemaType::Collection)
+        )
+    {
+        return Err(format!(
+            "{name} can only define minlength or maxlength when type is string, array, or collection"
         ));
     }
     if type_name == Some(SchemaType::Collection) && item_reference.is_none() {

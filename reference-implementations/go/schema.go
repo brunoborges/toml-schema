@@ -3,6 +3,7 @@ package tomlschema
 import (
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -32,7 +33,7 @@ const (
 
 var definitionKeys = map[string]bool{
 	"type": true, "description": true, "itemtype": true, "items": true,
-	"allowedvalues": true, "pattern": true, "keypattern": true, "optional": true, "default": true, "min": true,
+	"allowedvalues": true, "pattern": true, "keypattern": true, "optional": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true,
 }
@@ -76,6 +77,8 @@ func parseSchemaType(value string) (SchemaType, bool) {
 
 type Schema struct {
 	source   string
+	version  string
+	warnings []string
 	types    map[string]Definition
 	elements map[string]Definition
 }
@@ -150,11 +153,16 @@ func LoadSchema(path string) (*Schema, error) {
 	if err != nil {
 		return nil, err
 	}
-	schema := &Schema{source: path, types: types, elements: elements}
+	schema := &Schema{source: path, version: version.(string), types: types, elements: elements}
 	if err := schema.validateArrayRanges(); err != nil {
 		return nil, err
 	}
 	return schema, nil
+}
+
+// Warnings returns non-fatal warnings produced while discovering this schema.
+func (s *Schema) Warnings() []string {
+	return append([]string(nil), s.warnings...)
 }
 
 func LoadDocument(path string) (map[string]any, error) {
@@ -373,6 +381,16 @@ func parseDefinition(name string, table map[string]any) (Definition, error) {
 	}
 	if keyPattern != nil && typeName != TypeCollection {
 		return Definition{}, fmt.Errorf("%s can only define keypattern when type is collection", name)
+	}
+	if pattern != nil && typeName != TypeString {
+		return Definition{}, fmt.Errorf("%s can only define pattern when type is string", name)
+	}
+	if (minLength != nil || maxLength != nil) &&
+		typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {
+		return Definition{}, fmt.Errorf(
+			"%s can only define minlength or maxlength when type is string, array, or collection",
+			name,
+		)
 	}
 	if typeName == TypeCollection && itemReference == "" {
 		return Definition{}, fmt.Errorf("%s must define itemtype when type is collection", name)
@@ -939,12 +957,71 @@ func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
 	if !ok || strings.TrimSpace(location) == "" {
 		return nil, nil, fmt.Errorf("document does not contain [toml-schema].location")
 	}
-	schemaPath := filepath.Clean(filepath.Join(filepath.Dir(documentPath), location))
+	schemaPath, err := resolveSchemaLocation(documentPath, location)
+	if err != nil {
+		return nil, nil, err
+	}
 	schema, err := LoadSchema(schemaPath)
 	if err != nil {
 		return nil, nil, err
 	}
+	if expectedVersion, present := metadata["version"]; present {
+		warning, err := compareDocumentSchemaVersion(expectedVersion, schema.version)
+		if err != nil {
+			return nil, nil, err
+		}
+		if warning != "" {
+			schema.warnings = append(schema.warnings, warning)
+		}
+	}
 	return schema, document, nil
+}
+
+func resolveSchemaLocation(documentPath, location string) (string, error) {
+	absoluteDocumentPath, err := filepath.Abs(documentPath)
+	if err != nil {
+		return "", fmt.Errorf("invalid document path: %w", err)
+	}
+	base := &url.URL{Scheme: "file", Path: filepath.ToSlash(absoluteDocumentPath)}
+	reference, err := url.Parse(location)
+	if err != nil {
+		return "", fmt.Errorf("invalid [toml-schema].location URI: %s: %w", location, err)
+	}
+	resolved := base.ResolveReference(reference)
+	if !strings.EqualFold(resolved.Scheme, "file") {
+		return "", fmt.Errorf("unsupported schema location URI scheme: %s", resolved.Scheme)
+	}
+	if resolved.Host != "" && !strings.EqualFold(resolved.Host, "localhost") {
+		return "", fmt.Errorf("unsupported file schema location host: %s", resolved.Host)
+	}
+	return filepath.Clean(filepath.FromSlash(resolved.Path)), nil
+}
+
+func compareDocumentSchemaVersion(value any, actual string) (string, error) {
+	expected, ok := value.(string)
+	if !ok {
+		return "", fmt.Errorf("document [toml-schema].version must be a SemVer string")
+	}
+	expectedParts := semverPattern.FindStringSubmatch(expected)
+	if expectedParts == nil {
+		return "", fmt.Errorf("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
+	}
+	actualParts := semverPattern.FindStringSubmatch(actual)
+	if expectedParts[1] != actualParts[1] {
+		return "", fmt.Errorf(
+			"document expects TOML Schema major version %s, but resolved schema uses %s",
+			expected,
+			actual,
+		)
+	}
+	if expected != actual {
+		return fmt.Sprintf(
+			"Warning: document expects TOML Schema version %s, but resolved schema uses %s",
+			expected,
+			actual,
+		), nil
+	}
+	return "", nil
 }
 
 func propertyValue(table map[string]any, key string) any {
@@ -1000,9 +1077,13 @@ func getPattern(name string, table map[string]any) (*regexp.Regexp, error) {
 }
 
 func getPatternKey(name string, table map[string]any, key string) (*regexp.Regexp, error) {
-	pattern, err := getString(table, key)
-	if err != nil || pattern == "" {
-		return nil, err
+	value := propertyValue(table, key)
+	if value == nil {
+		return nil, nil
+	}
+	pattern, ok := value.(string)
+	if !ok {
+		return nil, fmt.Errorf("expected %s to be a string", key)
 	}
 	compiled, err := regexp.Compile(pattern)
 	if err != nil {

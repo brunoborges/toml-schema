@@ -2,6 +2,8 @@ package main
 
 import (
 	"bytes"
+	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +36,69 @@ location = "schema.tosd"
 	}
 	if !strings.Contains(out.String(), "is valid") {
 		t.Fatalf("expected valid output, got %q", out.String())
+	}
+}
+
+func TestCLIResolvesFileURIAndEnforcesDocumentSchemaVersion(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := writeFile(t, dir, "schema.tosd", `
+[toml-schema]
+version = "1.0.1"
+
+[elements.title]
+type = "string"
+`)
+	fileURI := (&url.URL{Scheme: "file", Path: filepath.ToSlash(schemaPath)}).String()
+	tests := []struct {
+		name         string
+		version      string
+		location     string
+		wantExitCode int
+		wantError    string
+	}{
+		{
+			name:         "file-uri-warning",
+			version:      `version = "1.0.0"`,
+			location:     fileURI,
+			wantExitCode: 0,
+			wantError:    "Warning: document expects TOML Schema version 1.0.0, but resolved schema uses 1.0.1",
+		},
+		{
+			name:         "major-version-mismatch",
+			version:      `version = "2.0.0"`,
+			location:     fileURI,
+			wantExitCode: 2,
+			wantError:    "document expects TOML Schema major version 2.0.0, but resolved schema uses 1.0.1",
+		},
+		{
+			name:         "unsupported-scheme",
+			location:     "https://example.com/schema.tosd",
+			wantExitCode: 2,
+			wantError:    "unsupported schema location URI scheme: https",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			documentPath := writeFile(t, dir, test.name+".toml", fmt.Sprintf(`
+title = "Example"
+
+[toml-schema]
+%s
+location = %q
+`, test.version, test.location))
+			var out bytes.Buffer
+			var errOut bytes.Buffer
+
+			exitCode := run([]string{"validate", documentPath}, &out, &errOut)
+
+			if exitCode != test.wantExitCode {
+				t.Fatalf("expected exit code %d, got %d: %s", test.wantExitCode, exitCode, errOut.String())
+			}
+			if !strings.Contains(errOut.String(), test.wantError) {
+				t.Fatalf("expected %q, got %q", test.wantError, errOut.String())
+			}
+		})
 	}
 }
 

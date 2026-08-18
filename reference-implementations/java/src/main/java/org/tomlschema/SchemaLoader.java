@@ -26,7 +26,7 @@ final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
             "type", "description", "itemtype", "items", "allowedvalues", "pattern",
-            "keypattern", "optional", "default", "min", "max", "minlength", "maxlength",
+            "keypattern", "optional", "min", "max", "minlength", "maxlength",
             "oneof", "anyof"
     );
     private static final Set<String> NAMED_REFERENCE_KEYS = Set.of("type", "description", "optional");
@@ -177,6 +177,16 @@ final class SchemaLoader {
         if (keyPattern != null && type != SchemaType.COLLECTION) {
             throw new SchemaException(name + " can only define keypattern when type is collection");
         }
+        if (pattern != null && type != SchemaType.STRING) {
+            throw new SchemaException(name + " can only define pattern when type is string");
+        }
+        if ((minLength != null || maxLength != null)
+                && type != SchemaType.STRING
+                && type != SchemaType.ARRAY
+                && type != SchemaType.COLLECTION) {
+            throw new SchemaException(name
+                    + " can only define minlength or maxlength when type is string, array, or collection");
+        }
         if (type == SchemaType.COLLECTION && itemReference == null) {
             throw new SchemaException(name + " must define itemtype when type is collection");
         }
@@ -274,10 +284,37 @@ final class SchemaLoader {
             return null;
         }
         try {
-            return Pattern.compile(pattern);
+            return Pattern.compile(toJavaPattern(pattern));
         } catch (PatternSyntaxException e) {
             throw new SchemaException(definitionName + " has invalid " + key + ": " + pattern, e);
         }
+    }
+
+    private String toJavaPattern(String pattern) {
+        StringBuilder translated = new StringBuilder(pattern.length());
+        boolean escaped = false;
+        boolean inCharacterClass = false;
+        for (int index = 0; index < pattern.length(); index++) {
+            char current = pattern.charAt(index);
+            if (escaped) {
+                translated.append(current);
+                escaped = false;
+            } else if (current == '\\') {
+                translated.append(current);
+                escaped = true;
+            } else if (current == '[') {
+                translated.append(current);
+                inCharacterClass = true;
+            } else if (current == ']' && inCharacterClass) {
+                translated.append(current);
+                inCharacterClass = false;
+            } else if (current == '$' && !inCharacterClass) {
+                translated.append("\\z");
+            } else {
+                translated.append(current);
+            }
+        }
+        return translated.toString();
     }
 
     private List<Object> getArrayValues(TomlTable table, String key) {
