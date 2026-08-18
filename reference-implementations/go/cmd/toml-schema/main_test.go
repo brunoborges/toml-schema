@@ -76,6 +76,18 @@ type = "string"
 			wantExitCode: 2,
 			wantError:    "unsupported schema location URI scheme: https",
 		},
+		{
+			name:         "opaque-file-uri",
+			location:     "file:schema.tosd",
+			wantExitCode: 2,
+			wantError:    "invalid file schema location",
+		},
+		{
+			name:         "file-uri-query",
+			location:     fileURI + "?version=1",
+			wantExitCode: 2,
+			wantError:    "invalid file schema location",
+		},
 	}
 
 	for _, test := range tests {

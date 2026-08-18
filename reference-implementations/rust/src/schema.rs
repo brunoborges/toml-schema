@@ -472,6 +472,9 @@ pub fn schema_from_document<P: AsRef<Path>>(document_path: P) -> Result<(Schema,
 }
 
 fn resolve_schema_location(document_path: &Path, location: &str) -> Result<PathBuf, String> {
+    if has_non_hierarchical_file_scheme(location) {
+        return Err(format!("invalid file schema location: {location}"));
+    }
     let absolute_document_path = if document_path.is_absolute() {
         document_path.to_path_buf()
     } else {
@@ -490,9 +493,37 @@ fn resolve_schema_location(document_path: &Path, location: &str) -> Result<PathB
             resolved.scheme()
         ));
     }
+    if resolved.query().is_some()
+        || resolved.fragment().is_some()
+        || contains_percent_encoded_separator(resolved.path())
+    {
+        return Err(format!("invalid file schema location: {location}"));
+    }
     resolved
         .to_file_path()
         .map_err(|_| format!("invalid file schema location: {location}"))
+}
+
+fn has_non_hierarchical_file_scheme(reference: &str) -> bool {
+    match Url::parse(reference) {
+        Ok(url) if url.scheme().eq_ignore_ascii_case("file") => {
+            !reference[url.scheme().len() + 1..].starts_with('/')
+        }
+        _ => false,
+    }
+}
+
+fn contains_percent_encoded_separator(path: &str) -> bool {
+    path.as_bytes().windows(3).any(|window| {
+        window[0] == b'%'
+            && matches!(
+                (
+                    window[1].to_ascii_lowercase(),
+                    window[2].to_ascii_lowercase()
+                ),
+                (b'2', b'f') | (b'5', b'c')
+            )
+    })
 }
 
 fn compare_document_schema_version(value: &Value, actual: &str) -> Result<Option<String>, String> {

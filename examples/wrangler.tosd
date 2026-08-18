@@ -154,7 +154,6 @@ type = "table"
     optional = true
 
 [types.moduleRule]
-type = "table"
 
     [types.moduleRule.type]
     type = "string"
@@ -292,44 +291,58 @@ type = "table"
     type = "string"
 
 [types.idBinding]
-type = "types.simpleBinding"
+
+    [types.idBinding.binding]
+    type = "string"
 
     [types.idBinding.id]
     type = "string"
 
 [types.nameBinding]
-type = "types.simpleBinding"
+
+    [types.nameBinding.binding]
+    type = "string"
 
     [types.nameBinding.name]
     type = "string"
 
 [types.namespaceBinding]
-type = "types.simpleBinding"
+
+    [types.namespaceBinding.binding]
+    type = "string"
 
     [types.namespaceBinding.namespace]
     type = "string"
 
 [types.aiSearchInstance]
-type = "types.simpleBinding"
+
+    [types.aiSearchInstance.binding]
+    type = "string"
 
     [types.aiSearchInstance.instance_name]
     type = "string"
 
 [types.indexBinding]
-type = "types.simpleBinding"
+
+    [types.indexBinding.binding]
+    type = "string"
 
     [types.indexBinding.index_name]
     type = "string"
 
 [types.datasetBinding]
-type = "types.simpleBinding"
+
+    [types.datasetBinding.binding]
+    type = "string"
 
     [types.datasetBinding.dataset]
     type = "string"
     optional = true
 
 [types.serviceBinding]
-type = "types.simpleBinding"
+
+    [types.serviceBinding.binding]
+    type = "string"
 
     [types.serviceBinding.service]
     type = "string"
@@ -339,13 +352,17 @@ type = "types.simpleBinding"
     optional = true
 
 [types.certificateBinding]
-type = "types.simpleBinding"
+
+    [types.certificateBinding.binding]
+    type = "string"
 
     [types.certificateBinding.certificate_id]
     type = "string"
 
 [types.workflowBinding]
-type = "types.simpleBinding"
+
+    [types.workflowBinding.binding]
+    type = "string"
 
     [types.workflowBinding.class_name]
     type = "string"
@@ -369,7 +386,12 @@ type = "table"
     optional = true
 
 [types.dispatchNamespace]
-type = "types.namespaceBinding"
+
+    [types.dispatchNamespace.binding]
+    type = "string"
+
+    [types.dispatchNamespace.namespace]
+    type = "string"
 
     [types.dispatchNamespace.outbound]
     type = "types.dispatchOutbound"
@@ -460,7 +482,9 @@ type = "table"
     optional = true
 
 [types.queueProducer]
-type = "types.simpleBinding"
+
+    [types.queueProducer.binding]
+    type = "string"
 
     [types.queueProducer.delivery_delay]
     type = "types.numberValue"
@@ -521,7 +545,9 @@ type = "table"
     optional = true
 
 [types.secretsStoreSecret]
-type = "types.simpleBinding"
+
+    [types.secretsStoreSecret.binding]
+    type = "string"
 
     [types.secretsStoreSecret.store_id]
     type = "string"

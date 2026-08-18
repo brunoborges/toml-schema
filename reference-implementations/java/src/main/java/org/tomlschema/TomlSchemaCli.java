@@ -127,6 +127,9 @@ public final class TomlSchemaCli {
         } catch (IllegalArgumentException e) {
             throw new SchemaException("Invalid [toml-schema].location URI: " + location, e);
         }
+        if (reference.isOpaque() && "file".equalsIgnoreCase(reference.getScheme())) {
+            throw new SchemaException("Invalid file schema location: " + location);
+        }
         URI resolved = tomlPath.toAbsolutePath().toUri().resolve(reference);
         if (!"file".equalsIgnoreCase(resolved.getScheme())) {
             throw new SchemaException("Unsupported schema location URI scheme: " + resolved.getScheme());
