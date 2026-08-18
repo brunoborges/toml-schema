@@ -429,6 +429,16 @@ fn parse_definition(name: &str, table: &Table) -> Result<Definition, String> {
         min.as_ref(),
         max.as_ref(),
     )?;
+    validate_allowed_values_constraints(
+        name,
+        type_name,
+        &allowed_values,
+        pattern.as_ref(),
+        min.as_ref(),
+        max.as_ref(),
+        min_length,
+        max_length,
+    )?;
     Ok(Definition {
         name: name.to_string(),
         type_name,
@@ -550,6 +560,65 @@ fn boundary_matches_type(value: &Value, type_name: SchemaType) -> bool {
         | SchemaType::LocalTime => value_matches_type(value, type_name),
         _ => false,
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_allowed_values_constraints(
+    name: &str,
+    type_name: Option<SchemaType>,
+    allowed_values: &[Value],
+    pattern: Option<&Regex>,
+    min: Option<&Value>,
+    max: Option<&Value>,
+    min_length: Option<i64>,
+    max_length: Option<i64>,
+) -> Result<(), String> {
+    if allowed_values.is_empty() || type_name == Some(SchemaType::Array) {
+        return Ok(());
+    }
+    for (index, allowed) in allowed_values.iter().enumerate() {
+        let entry = format!("{name} allowedvalues[{index}]");
+        if let Some(pattern) = pattern {
+            let Some(string_value) = allowed.as_str() else {
+                return Err(format!("{entry} does not satisfy pattern"));
+            };
+            if !matches_pattern(pattern, string_value) {
+                return Err(format!("{entry} does not satisfy pattern"));
+            }
+        }
+        if (min.is_some() || max.is_some()) && is_nan(Some(allowed)) {
+            return Err(format!("{entry} does not satisfy min or max"));
+        }
+        if let Some(min) = min {
+            let comparison = compare(allowed, min)
+                .map_err(|error| format!("{entry} cannot be compared with min: {error}"))?;
+            if comparison == std::cmp::Ordering::Less {
+                return Err(format!("{entry} is less than min"));
+            }
+        }
+        if let Some(max) = max {
+            let comparison = compare(allowed, max)
+                .map_err(|error| format!("{entry} cannot be compared with max: {error}"))?;
+            if comparison == std::cmp::Ordering::Greater {
+                return Err(format!("{entry} is greater than max"));
+            }
+        }
+        if min_length.is_some() || max_length.is_some() {
+            let Some(string_value) = allowed.as_str() else {
+                return Err(format!(
+                    "{entry} does not satisfy string length constraints"
+                ));
+            };
+            let length = string_value.chars().count() as i64;
+            if min_length.is_some_and(|minimum| length < minimum) {
+                return Err(format!("{entry} is shorter than minlength"));
+            }
+            if max_length.is_some_and(|maximum| length > maximum) {
+                return Err(format!("{entry} is longer than maxlength"));
+            }
+        }
+    }
+    Ok(())
 }
 
 struct Validator<'schema> {
@@ -802,6 +871,9 @@ impl<'schema> Validator<'schema> {
             return;
         }
         self.validate_allowed_values(path, value, definition);
+        if !definition.allowed_values.is_empty() {
+            return;
+        }
         self.validate_range(path, value, definition);
         if let Value::String(string_value) = value {
             self.validate_length(path, string_value.chars().count(), definition);

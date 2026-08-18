@@ -175,6 +175,7 @@ final class SchemaLoader {
         Object min = getPropertyValue(table, "min");
         Object max = getPropertyValue(table, "max");
         validateRangeConstraints(name, type, arrayType, itemReference, min, max);
+        validateAllowedValuesConstraints(name, type, allowedValues, pattern, min, max, minLength, maxLength);
         return new SchemaDefinition(
                 name,
                 type,
@@ -359,6 +360,60 @@ final class SchemaLoader {
             case LOCAL_TIME -> value instanceof LocalTime;
             default -> false;
         };
+    }
+
+    private void validateAllowedValuesConstraints(
+            String name,
+            SchemaType type,
+            List<Object> allowedValues,
+            Pattern pattern,
+            Object min,
+            Object max,
+            Integer minLength,
+            Integer maxLength
+    ) {
+        if (allowedValues.isEmpty() || type == SchemaType.ARRAY) {
+            return;
+        }
+        for (int i = 0; i < allowedValues.size(); i++) {
+            Object allowed = allowedValues.get(i);
+            String entry = name + " allowedvalues[" + i + "]";
+            if (pattern != null && (!(allowed instanceof String stringValue) || !pattern.matcher(stringValue).find())) {
+                throw new SchemaException(entry + " does not satisfy pattern");
+            }
+            if ((min != null || max != null) && allowed instanceof Double doubleValue && doubleValue.isNaN()) {
+                throw new SchemaException(entry + " does not satisfy min or max");
+            }
+            if (min != null && compare(allowed, min, entry) < 0) {
+                throw new SchemaException(entry + " is less than min");
+            }
+            if (max != null && compare(allowed, max, entry) > 0) {
+                throw new SchemaException(entry + " is greater than max");
+            }
+            if (minLength != null || maxLength != null) {
+                if (!(allowed instanceof String stringValue)) {
+                    throw new SchemaException(entry + " does not satisfy string length constraints");
+                }
+                int length = stringValue.codePointCount(0, stringValue.length());
+                if (minLength != null && length < minLength) {
+                    throw new SchemaException(entry + " is shorter than minlength");
+                }
+                if (maxLength != null && length > maxLength) {
+                    throw new SchemaException(entry + " is longer than maxlength");
+                }
+            }
+        }
+    }
+
+    @SuppressWarnings({"rawtypes", "unchecked"})
+    private int compare(Object value, Object boundary, String entry) {
+        if (value instanceof Number valueNumber && boundary instanceof Number boundaryNumber) {
+            return Double.compare(valueNumber.doubleValue(), boundaryNumber.doubleValue());
+        }
+        if (value instanceof Comparable valueComparable && value.getClass().isInstance(boundary)) {
+            return valueComparable.compareTo(boundary);
+        }
+        throw new SchemaException(entry + " cannot be compared with its boundary");
     }
 
     private String normalizeReference(String reference) {

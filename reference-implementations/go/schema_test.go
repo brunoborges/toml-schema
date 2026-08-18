@@ -278,6 +278,74 @@ maxlength = 2
 	}
 }
 
+func TestEnforcesConstraintsOnScalarAllowedValuesAtSchemaLoadTime(t *testing.T) {
+	dir := t.TempDir()
+	malformedDefinitions := []string{
+		`
+type = "string"
+allowedvalues = [ "valid", "INVALID" ]
+pattern = "^[a-z]+$"
+`,
+		`
+type = "integer"
+allowedvalues = [ 1, 2 ]
+min = 2
+`,
+		`
+type = "integer"
+allowedvalues = [ 2, 3 ]
+max = 2
+`,
+		`
+type = "string"
+allowedvalues = [ "a", "ok" ]
+minlength = 2
+`,
+		`
+type = "string"
+allowedvalues = [ "ok", "long" ]
+maxlength = 2
+`,
+	}
+
+	for index, definition := range malformedDefinitions {
+		schemaPath := write(t, dir, fmt.Sprintf("invalid-allowedvalues-%d.tosd", index), `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+`+definition)
+		if _, err := LoadSchema(schemaPath); err == nil {
+			t.Fatalf("expected malformed allowedvalues schema %d to be rejected", index)
+		}
+	}
+
+	schemaPath := write(t, dir, "valid-allowedvalues.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+allowedvalues = [ "ab", "cd" ]
+pattern = "^[a-z]+$"
+minlength = 2
+maxlength = 2
+`)
+	validDocument := write(t, dir, "valid-allowedvalues.toml", `value = "ab"`)
+	invalidDocument := write(t, dir, "invalid-allowedvalues.toml", `value = "ef"`)
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(validDocument); !result.Valid() {
+		t.Fatalf("expected valid allowed value, got %#v", result.Errors)
+	}
+	result := schema.ValidateFile(invalidDocument)
+	if len(result.Errors) != 1 || result.Errors[0].Message != "value is not in allowedvalues" {
+		t.Fatalf("expected only allowedvalues membership error, got %#v", result.Errors)
+	}
+}
+
 func TestPatternMatchesUnanchored(t *testing.T) {
 	dir := t.TempDir()
 	schemaPath := write(t, dir, "schema.tosd", `
