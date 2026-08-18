@@ -85,7 +85,7 @@ itemtype = "integer"</code></pre>
           <article class="card">
             <span class="badge">Native</span>
             <h3>TOML all the way down</h3>
-            <p>Schemas are valid TOML files, conventionally stored with the required <code>.tosd</code> extension.</p>
+            <p>Schemas are valid TOML documents and use the required <code>.tosd</code> filename extension.</p>
           </article>
           <article class="card">
             <span class="badge">Practical</span>
@@ -103,7 +103,7 @@ itemtype = "integer"</code></pre>
       <section class="section" id="tour">
         <h2>A Quick Tour of TOML Schema</h2>
         <p class="section-intro">
-          A schema starts with versioned metadata, then describes the TOML document
+          A schema includes versioned metadata and describes the TOML document
           under <code>[elements]</code>. Reusable shapes live under <code>[types]</code>.
           The examples below are fragments of one schema, not standalone files.
         </p>
@@ -112,7 +112,7 @@ itemtype = "integer"</code></pre>
             <div>
               <span class="badge">Metadata</span>
               <h3>Declare the schema language version</h3>
-              <p>Every schema document starts with <code>[toml-schema]</code> and a full SemVer version.</p>
+              <p>Every schema document must contain <code>[toml-schema]</code> with a full SemVer version.</p>
             </div>
             <pre><code>[toml-schema]
 version = "1.0.0"</code></pre>
@@ -163,11 +163,11 @@ type = "string"</code></pre>
             <div>
               <span class="badge">Collections</span>
               <h3>Handle dynamic table names</h3>
-              <p>A collection validates user-defined keys, such as named servers or environments.</p>
+              <p>A collection validates values stored under user-defined keys, such as named servers or environments.</p>
             </div>
             <pre><code>[elements.servers]
 type = "collection"
-            itemtype = "types.server"
+itemtype = "types.server"
 minlength = 1</code></pre>
           </article>
           <article class="tour-step">
@@ -196,9 +196,9 @@ max = 10</code></pre>
         </p>
         <div class="spec-list">
           <div class="spec-item"><strong>Versioned metadata</strong><span><code>[toml-schema]</code> declares SemVer language compatibility.</span></div>
-          <div class="spec-item"><strong>Type references</strong><span><code>type</code>, <code>itemtype</code>, <code>items</code>, <code>oneof</code>, and <code>anyof</code> can reference built-in type names or reusable <code>[types]</code>.</span></div>
-          <div class="spec-item"><strong>Dynamic keys</strong><span><code>collection</code> validates user-provided table keys.</span></div>
-          <div class="spec-item"><strong>Union shapes</strong><span><code>oneof</code> and <code>anyof</code> model alternative valid forms.</span></div>
+          <div class="spec-item"><strong>Type references</strong><span>References used by <code>type</code>, <code>itemtype</code>, <code>items</code>, <code>oneof</code>, and <code>anyof</code> select built-in types or reusable <code>[types]</code> definitions.</span></div>
+          <div class="spec-item"><strong>Dynamic entries</strong><span><code>collection</code> validates dynamically named values; <code>keypattern</code> can constrain their keys.</span></div>
+          <div class="spec-item"><strong>Alternative types</strong><span><code>oneof</code> requires exactly one matching type; <code>anyof</code> requires at least one.</span></div>
           <div class="spec-item"><strong>Containers and tuples</strong><span><code>itemtype</code> validates homogeneous array and collection members; <code>items</code> defines positional arrays.</span></div>
           <div class="spec-item"><strong>Media type</strong><span>TOML Schema files use <code>.tosd</code> and <code>application/tosd</code>.</span></div>
         </div>
@@ -221,7 +221,7 @@ max = 10</code></pre>
           </article>
           <article class="card">
             <span class="badge">Go</span>
-            <h3>CLI</h3>
+            <h3>Library and CLI</h3>
             <p>Uses go-toml and supports explicit schema validation and schema-location lookup.</p>
           </article>
           <article class="card">

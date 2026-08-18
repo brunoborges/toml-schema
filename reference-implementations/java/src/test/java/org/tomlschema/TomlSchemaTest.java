@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -1803,6 +1805,57 @@ class TomlSchemaTest {
 
         ValidationResult validationResult = TomlSchema.load(extractedSchema).validate(document);
         assertTrue(validationResult.isValid(), () -> validationResult.errors().toString());
+    }
+
+    @Test
+    void validatesWebsiteExamples() throws IOException {
+        String page = Files.readString(fixture("docs/index.html"), StandardCharsets.UTF_8);
+        Pattern codeBlock = Pattern.compile("<pre><code>(.*?)</code></pre>", Pattern.DOTALL);
+
+        Matcher hero = Pattern.compile("<aside class=\"panel\".*?</aside>", Pattern.DOTALL).matcher(page);
+        assertTrue(hero.find(), "Website hero example is missing");
+        Matcher heroCode = codeBlock.matcher(hero.group());
+        assertTrue(heroCode.find(), "Website hero schema is missing");
+
+        Path heroSchema = write("website-hero.tosd", heroCode.group(1));
+        Path heroDocument = write("website-hero.toml", """
+                title = "Example"
+
+                [database]
+                enabled = true
+                ports = [8000, 8001]
+                """);
+        ValidationResult heroResult = TomlSchema.load(heroSchema).validate(heroDocument);
+        assertTrue(heroResult.isValid(), () -> heroResult.errors().toString());
+
+        Matcher tour = Pattern.compile(
+                "<section class=\"section\" id=\"tour\">(.*?)</section>",
+                Pattern.DOTALL
+        ).matcher(page);
+        assertTrue(tour.find(), "Website tour is missing");
+
+        Matcher tourCode = codeBlock.matcher(tour.group(1));
+        StringBuilder assembledSchema = new StringBuilder();
+        while (tourCode.find()) {
+            assembledSchema.append(tourCode.group(1)).append(System.lineSeparator()).append(System.lineSeparator());
+        }
+
+        Path tourSchema = write("website-tour.tosd", assembledSchema.toString());
+        Path tourDocument = write("website-tour.toml", """
+                title = "Example"
+                environment = "prod"
+                retries = 3
+
+                [database]
+                enabled = true
+                ports = [8000, 8001]
+
+                [servers.primary]
+                ip = "10.0.0.1"
+                role = "frontend"
+                """);
+        ValidationResult tourResult = TomlSchema.load(tourSchema).validate(tourDocument);
+        assertTrue(tourResult.isValid(), () -> tourResult.errors().toString());
     }
 
     private Path write(String fileName, String content) throws IOException {
