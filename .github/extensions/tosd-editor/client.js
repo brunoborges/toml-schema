@@ -168,11 +168,11 @@ function snapshot() {
     );
 }
 
-function resetHistory() {
+function resetHistory(markSaved = true) {
     history.undo = [];
     history.redo = [];
     history.base = snapshot();
-    history.saved = history.base;
+    if (markSaved) history.saved = history.base;
     history.pending = false;
     clearTimeout(history.timer);
     updateHistoryButtons();
@@ -370,8 +370,9 @@ function compositor(node) {
 function unresolvedRefs(node) {
     const p = node.props || {};
     const refs = [];
-    if (p.typeof) refs.push(p.typeof);
+    if (p.type) refs.push(p.type);
     if (p.itemtype) refs.push(p.itemtype);
+    for (const r of p.items || []) refs.push(r);
     for (const r of p.oneof || []) refs.push(r);
     for (const r of p.anyof || []) refs.push(r);
     return refs.filter((r) => r && !isKnownRef(r));
@@ -497,7 +498,7 @@ function renderDiagram() {
 }
 
 function rootBox(node) {
-    const box = el("div", { class: "dg-root", role: "treeitem", "aria-level": "1" });
+    const box = el("div", { class: "dg-root", role: "presentation", "aria-hidden": "true" });
     box.style.left = node.__x + "px";
     box.style.top = (node.__cy - DG.BOX_H / 2) + "px";
     box.style.width = DG.BOX_W + "px";
@@ -610,6 +611,7 @@ function parentOf(node) {
 }
 
 function onBoxKeydown(e, node) {
+    if (e.target.closest("button, input, select, textarea, a[href]")) return;
     const flat = flatVisible();
     const idx = flat.indexOf(node);
     const kids = node.children || [];
@@ -1378,6 +1380,8 @@ function clearSelection() {
 // --- Modal helpers (focus trap + restore) -------------------------------
 function installModal(overlay) {
     overlay.__restoreFocus = document.activeElement;
+    overlay.__closed = false;
+    overlay.__requests = new Set();
     overlay.__trap = (e) => {
         if (e.key !== "Tab") return;
         const f = [...overlay.querySelectorAll('button, input, select, textarea, [href], [tabindex]:not([tabindex="-1"])')]
@@ -1393,8 +1397,31 @@ function installModal(overlay) {
     overlay.setAttribute("aria-modal", "true");
 }
 
+function modalIsActive(overlay) {
+    return !overlay.__closed && overlay.isConnected;
+}
+
+async function modalJson(overlay, url, options = {}) {
+    const controller = new AbortController();
+    overlay.__requests.add(controller);
+    try {
+        const res = await fetch(url, { ...options, signal: controller.signal });
+        const data = await res.json();
+        return modalIsActive(overlay) ? data : null;
+    } finally {
+        overlay.__requests.delete(controller);
+    }
+}
+
+function modalRequestCancelled(error, overlay) {
+    return error?.name === "AbortError" || !modalIsActive(overlay);
+}
+
 function closeModal(overlay) {
-    if (!overlay) return;
+    if (!overlay || overlay.__closed) return;
+    overlay.__closed = true;
+    for (const controller of overlay.__requests || []) controller.abort();
+    overlay.__requests?.clear();
     if (overlay.__trap) document.removeEventListener("keydown", overlay.__trap, true);
     const restore = overlay.__restoreFocus;
     overlay.remove();
@@ -1406,7 +1433,7 @@ function newSchema() {
     if (state.dirty && !confirm("Discard unsaved changes and start a new schema?")) return;
     state.model = { version: "1.0.0", meta: null, types: [], elements: [] };
     state.selected = "__meta__";
-    resetHistory();
+    resetHistory(false);
     markDirty();
     renderAll();
 }
@@ -1439,37 +1466,35 @@ function openGenerateModal() {
         const description = ta.value.trim();
         if (!description) { errBox.className = "modal-err"; errBox.textContent = "Describe the configuration first."; ta.focus(); return; }
         genBtn.disabled = true;
-        cancelBtn.disabled = true;
         ta.disabled = true;
         errBox.className = "modal-err working";
         errBox.textContent = "Asking Copilot\u2026 this runs a Copilot turn and may take a moment.";
         try {
-            const res = await fetch("generate", {
+            const data = await modalJson(overlay, "generate", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ description }),
             });
-            const data = await res.json();
+            if (!data) return;
             if (data.error) {
                 errBox.className = "modal-err";
                 errBox.textContent = data.error;
                 genBtn.disabled = false;
-                cancelBtn.disabled = false;
                 ta.disabled = false;
                 return;
             }
             state.model = data.model;
             state.view = "elements";
             state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
-            resetHistory();
+            resetHistory(false);
             markDirty();
             renderAll();
             closeModal(overlay);
         } catch (e) {
+            if (modalRequestCancelled(e, overlay)) return;
             errBox.className = "modal-err";
             errBox.textContent = e.message;
             genBtn.disabled = false;
-            cancelBtn.disabled = false;
             ta.disabled = false;
         }
     });
@@ -1503,12 +1528,12 @@ function openSchema() {
         errBox.textContent = "Opening\u2026";
         if (openBtn) openBtn.disabled = true;
         try {
-            const res = await fetch("open", {
+            const data = await modalJson(overlay, "open", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ path: p }),
             });
-            const data = await res.json();
+            if (!data) return;
             if (data.error) { errBox.className = "modal-err"; errBox.textContent = data.error; if (openBtn) openBtn.disabled = false; return; }
             state.path = data.path;
             state.model = data.model;
@@ -1518,7 +1543,12 @@ function openSchema() {
             renderAll();
             schedulePreview();
             closeModal(overlay);
-        } catch (e) { errBox.className = "modal-err"; errBox.textContent = e.message; if (openBtn) openBtn.disabled = false; }
+        } catch (e) {
+            if (modalRequestCancelled(e, overlay)) return;
+            errBox.className = "modal-err";
+            errBox.textContent = e.message;
+            if (openBtn) openBtn.disabled = false;
+        }
     };
 
     const pathRow = el("div", { class: "list-row" });
@@ -1561,13 +1591,17 @@ function openInferModal() {
         errBox.className = "modal-err working";
         errBox.textContent = "Loading\u2026";
         try {
-            const res = await fetch("readfile?path=" + encodeURIComponent(p));
-            const data = await res.json();
+            const data = await modalJson(overlay, "readfile?path=" + encodeURIComponent(p));
+            if (!data) return;
             if (data.error) { errBox.className = "modal-err"; errBox.textContent = data.error; return; }
             ta.value = data.content;
             errBox.className = "modal-err";
             errBox.textContent = "";
-        } catch (e) { errBox.className = "modal-err"; errBox.textContent = e.message; }
+        } catch (e) {
+            if (modalRequestCancelled(e, overlay)) return;
+            errBox.className = "modal-err";
+            errBox.textContent = e.message;
+        }
     } });
     pathRow.append(pathInput, loadBtn);
     dialog.append(pathRow);
@@ -1588,20 +1622,25 @@ function openInferModal() {
         errBox.className = "modal-err working";
         errBox.textContent = "Inferring\u2026";
         try {
-            const res = await fetch("infer", {
+            const data = await modalJson(overlay, "infer", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ toml }),
             });
-            const data = await res.json();
+            if (!data) return;
             if (data.error) { errBox.className = "modal-err"; errBox.textContent = data.error; inferBtn.disabled = false; return; }
             state.model = data.model;
             state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
-            resetHistory();
+            resetHistory(false);
             markDirty();
             renderAll();
             closeModal(overlay);
-        } catch (e) { errBox.className = "modal-err"; errBox.textContent = e.message; inferBtn.disabled = false; }
+        } catch (e) {
+            if (modalRequestCancelled(e, overlay)) return;
+            errBox.className = "modal-err";
+            errBox.textContent = e.message;
+            inferBtn.disabled = false;
+        }
     });
     actions.append(inferBtn);
     dialog.append(actions);
