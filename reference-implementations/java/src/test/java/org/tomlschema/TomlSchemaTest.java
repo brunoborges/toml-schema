@@ -2364,6 +2364,143 @@ class TomlSchemaTest {
     }
 
     @Test
+    void dropsBranchWarningsWhenALaterAllofComponentFails() throws IOException {
+        Path schema = write("union-allof-deprecated.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.legacyName]
+                type = "string"
+                pattern = "^old-"
+                deprecated = true
+
+                [types.modernName]
+                type = "string"
+                pattern = "^new-"
+
+                [types.shortName]
+                type = "string"
+                maxlength = 8
+
+                [elements.name]
+                oneof = ["types.legacyName", "types.modernName"]
+                allof = ["types.shortName"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult result = loaded.validate(
+                write("union-allof-deprecated.toml", "name = \"old-name-is-too-long\"\n"));
+
+        assertFalse(result.isValid());
+        assertEquals(1, result.errors().size());
+        assertEquals("maxlength", result.errors().getFirst().code());
+        assertEquals("$.name", result.errors().getFirst().path());
+        assertTrue(result.warnings().isEmpty());
+
+        ValidationResult accepted = loaded.validate(
+                write("union-allof-deprecated-valid.toml", "name = \"old-tag\"\n"));
+
+        assertTrue(accepted.isValid());
+        assertEquals(1, accepted.warnings().size());
+        assertEquals("deprecated", accepted.warnings().getFirst().code());
+        assertEquals("$.name", accepted.warnings().getFirst().path());
+    }
+
+    @Test
+    void keepsDescendantBranchWarningsWhenALaterAllofComponentFails() throws IOException {
+        Path schema = write("union-descendant-warning.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.legacySection]
+                type = "table"
+                deprecated = true
+
+                [types.legacySection.name]
+                type = "string"
+                deprecated = true
+
+                [types.modernSection]
+                type = "table"
+
+                [types.modernSection.title]
+                type = "string"
+
+                [types.counted]
+                type = "table"
+
+                [types.counted.count]
+                type = "integer"
+
+                [elements.section]
+                oneof = ["types.legacySection", "types.modernSection"]
+                allof = ["types.counted"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult result = loaded.validate(write("union-descendant-warning.toml", """
+                [section]
+                name = "old"
+                """));
+
+        assertFalse(result.isValid());
+        assertEquals(1, result.errors().size());
+        assertEquals("required", result.errors().getFirst().code());
+        assertEquals("$.section.count", result.errors().getFirst().path());
+        assertEquals(List.of("$.section.name"),
+                result.warnings().stream().map(ValidationWarning::path).toList());
+
+        ValidationResult accepted = loaded.validate(write("union-descendant-warning-valid.toml", """
+                [section]
+                name = "old"
+                count = 1
+                """));
+
+        assertTrue(accepted.isValid());
+        assertEquals(List.of("$.section.name", "$.section"),
+                accepted.warnings().stream().map(ValidationWarning::path).toList());
+    }
+
+    @Test
+    void keepsBranchWarningsOfValidNodesWhenSiblingNodesFail() throws IOException {        Path schema = write("union-sibling-warning.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.legacyName]
+                type = "string"
+                pattern = "^old-"
+                deprecated = true
+
+                [types.modernName]
+                type = "string"
+                pattern = "^new-"
+
+                [elements.section]
+                type = "table"
+
+                [elements.section.name]
+                oneof = ["types.legacyName", "types.modernName"]
+
+                [elements.section.count]
+                type = "integer"
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        ValidationResult result = loaded.validate(write("union-sibling-warning.toml", """
+                [section]
+                name = "old-tag"
+                count = "not an integer"
+                """));
+
+        assertFalse(result.isValid());
+        assertEquals(1, result.errors().size());
+        assertEquals("$.section.count", result.errors().getFirst().path());
+        assertEquals(1, result.warnings().size());
+        assertEquals("deprecated", result.warnings().getFirst().code());
+        assertEquals("$.section.name", result.warnings().getFirst().path());
+    }
+
+    @Test
     void rejectsMalformedFeatureSchemas() throws IOException {
         List<String> definitions = List.of(
                 "type = \"table\"\ndependentrequired = {}",

@@ -18,6 +18,7 @@ final class TomlSchemaValidator {
     private final TomlSchema schema;
     private final List<ValidationError> errors = new ArrayList<>();
     private final LinkedHashSet<ValidationWarning> warnings = new LinkedHashSet<>();
+    private LinkedHashSet<ValidationWarning> nodeWarnings = warnings;
     private boolean suppressWarnings;
 
     TomlSchemaValidator(TomlSchema schema) {
@@ -64,24 +65,53 @@ final class TomlSchemaValidator {
     }
 
     private void validateNode(String path, Object value, SchemaDefinition definition) {
-        Set<String> fixedChildren = collectFixedChildren(definition, new HashSet<>());
-        int errorsBefore = errors.size();
-        validateContributor(path, value, definition, new HashSet<>(), new HashSet<>());
+        validateComposedNode(path, value, definition, new HashSet<>(),
+                collectFixedChildren(definition, new HashSet<>()),
+                !resolvesToUnionSelector(definition, new HashSet<>()), warnings);
+    }
 
-        SchemaType kind = effectiveKind(definition, new HashSet<>());
-        if (kind == SchemaType.TABLE
-                && !resolvesToUnionSelector(definition, new HashSet<>())
-                && value instanceof TomlTable table
-                && !fixedChildren.isEmpty()) {
-            for (String key : table.keySet()) {
-                if (!fixedChildren.contains(key)) {
-                    add("unexpected-key", appendPath(path, key), "unexpected key");
+    /**
+     * Validates every contributor of one composed node inside a single warning transaction.
+     * Warnings produced by the node itself, including node warnings adopted from successful union
+     * branches, are buffered until the whole composition has been validated and are handed to
+     * {@code nodeSink} only when the node contributed no error. Descendant nodes run their own
+     * transaction and commit into {@link #warnings} independently, so a valid child keeps its
+     * warnings even when an ancestor or sibling contributor fails.
+     */
+    private void validateComposedNode(
+            String path,
+            Object value,
+            SchemaDefinition definition,
+            Set<String> externalChildren,
+            Set<String> closure,
+            boolean enforceClosure,
+            Set<ValidationWarning> nodeSink
+    ) {
+        LinkedHashSet<ValidationWarning> enclosingWarnings = nodeWarnings;
+        LinkedHashSet<ValidationWarning> scopedWarnings = new LinkedHashSet<>();
+        nodeWarnings = scopedWarnings;
+        int errorsBefore = errors.size();
+        try {
+            validateContributor(path, value, definition, externalChildren, new HashSet<>());
+
+            if (enforceClosure
+                    && effectiveKind(definition, new HashSet<>()) == SchemaType.TABLE
+                    && value instanceof TomlTable table
+                    && !closure.isEmpty()) {
+                for (String key : table.keySet()) {
+                    if (!closure.contains(key)) {
+                        add("unexpected-key", appendPath(path, key), "unexpected key");
+                    }
                 }
             }
+            if (!suppressWarnings && isDeprecatedWithoutAlternatives(definition, new HashSet<>())) {
+                warn(path);
+            }
+        } finally {
+            nodeWarnings = enclosingWarnings;
         }
-        if (!suppressWarnings && errors.size() == errorsBefore
-                && isDeprecatedWithoutAlternatives(definition, new HashSet<>())) {
-            warn(path);
+        if (errors.size() == errorsBefore) {
+            nodeSink.addAll(scopedWarnings);
         }
     }
 
@@ -198,6 +228,17 @@ final class TomlSchemaValidator {
         return definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
     }
 
+    /**
+     * The outcome of one union alternative. {@code nodeWarnings} holds the warnings the branch
+     * committed for the union node itself, and {@code result} carries the branch errors together
+     * with the warnings its descendant nodes committed on their own.
+     */
+    private record BranchOutcome(
+            ValidationResult result,
+            LinkedHashSet<ValidationWarning> nodeWarnings
+    ) {
+    }
+
     private void validateUnion(
             String path,
             Object value,
@@ -205,7 +246,7 @@ final class TomlSchemaValidator {
             Set<String> sharedChildren
     ) {
         List<String> alternatives = alternatives(definition);
-        List<ValidationResult> successful = new ArrayList<>();
+        List<BranchOutcome> successful = new ArrayList<>();
         for (String alternative : alternatives) {
             TomlSchemaValidator branch = new TomlSchemaValidator(schema);
             branch.suppressWarnings = suppressWarnings;
@@ -214,25 +255,12 @@ final class TomlSchemaValidator {
                     branch.collectFixedChildren(alternativeDefinition, new HashSet<>());
             Set<String> branchClosure = new HashSet<>(alternativeChildren);
             branchClosure.addAll(sharedChildren);
-            int branchErrorsBefore = branch.errors.size();
-            branch.validateContributor(path, value, alternativeDefinition,
-                    sharedChildren, new HashSet<>());
-            if (branch.effectiveKind(alternativeDefinition, new HashSet<>()) == SchemaType.TABLE
-                    && value instanceof TomlTable table && !branchClosure.isEmpty()) {
-                for (String key : table.keySet()) {
-                    if (!branchClosure.contains(key)) {
-                        branch.add("unexpected-key", branch.appendPath(path, key), "unexpected key");
-                    }
-                }
-            }
-            if (!branch.suppressWarnings && branch.errors.size() == branchErrorsBefore
-                    && branch.isDeprecatedWithoutAlternatives(
-                    alternativeDefinition, new HashSet<>())) {
-                branch.warn(path);
-            }
+            LinkedHashSet<ValidationWarning> branchNodeWarnings = new LinkedHashSet<>();
+            branch.validateComposedNode(path, value, alternativeDefinition,
+                    sharedChildren, branchClosure, true, branchNodeWarnings);
             ValidationResult branchResult = branch.result();
             if (branchResult.isValid()) {
-                successful.add(branchResult);
+                successful.add(new BranchOutcome(branchResult, branchNodeWarnings));
             }
         }
         if (!definition.oneOf().isEmpty() && successful.size() != 1) {
@@ -245,7 +273,10 @@ final class TomlSchemaValidator {
             return;
         }
         if (!suppressWarnings) {
-            successful.forEach(result -> warnings.addAll(result.warnings()));
+            for (BranchOutcome outcome : successful) {
+                warnings.addAll(outcome.result().warnings());
+                nodeWarnings.addAll(outcome.nodeWarnings());
+            }
         }
     }
 
@@ -583,7 +614,7 @@ final class TomlSchemaValidator {
     }
 
     private void warn(String path) {
-        warnings.add(new ValidationWarning(
+        nodeWarnings.add(new ValidationWarning(
                 "deprecated", path, "value is deprecated"));
     }
 }
