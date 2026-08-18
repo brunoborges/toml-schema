@@ -377,6 +377,7 @@ impl Schema {
         schema.validate_references(&schema.types)?;
         schema.validate_references(&schema.elements)?;
         schema.validate_selector_cycles()?;
+        schema.validate_allowed_value_types()?;
         schema.validate_definition_semantics()?;
         schema.validate_array_range_definitions()?;
         schema.validate_defaults()?;
@@ -434,6 +435,46 @@ impl Schema {
     fn validate_array_range_definitions(&self) -> Result<(), String> {
         for definition in self.types.values().chain(self.elements.values()) {
             self.validate_array_range_definition(definition)?;
+        }
+        Ok(())
+    }
+
+    fn validate_allowed_value_types(&self) -> Result<(), String> {
+        for definition in self.types.values().chain(self.elements.values()) {
+            self.validate_allowed_value_definition(definition)?;
+        }
+        Ok(())
+    }
+
+    fn validate_allowed_value_definition(&self, definition: &Definition) -> Result<(), String> {
+        let mut permitted_types = HashSet::new();
+        if !definition.allowed_values.is_empty() {
+            if definition.type_name == Some(SchemaType::Array) {
+                if let Some(reference) = definition.item_reference.as_deref() {
+                    self.collect_reference_types(
+                        reference,
+                        &mut HashSet::new(),
+                        &mut permitted_types,
+                    )?;
+                }
+            } else if let Some(type_name) = definition.type_name {
+                permitted_types.insert(type_name);
+            }
+            for (index, value) in definition.allowed_values.iter().enumerate() {
+                if !permitted_types.is_empty()
+                    && !permitted_types
+                        .iter()
+                        .any(|type_name| value_matches_type(value, *type_name))
+                {
+                    return Err(format!(
+                        "{} allowedvalues[{index}] does not match the permitted TOML type",
+                        definition.name
+                    ));
+                }
+            }
+        }
+        for child in definition.children.values() {
+            self.validate_allowed_value_definition(child)?;
         }
         Ok(())
     }
@@ -1146,6 +1187,11 @@ fn parse_definition(
     let max_length = get_unsigned_integer(name, table, "maxlength")?;
     let has_allowed_values = property_value(table, "allowedvalues").is_some();
     let allowed_values = get_array_values(name, table, "allowedvalues")?;
+    if has_allowed_values && allowed_values.is_empty() {
+        return Err(format!(
+            "{name} allowedvalues must contain at least one entry"
+        ));
+    }
     let has_one_of = property_value(table, "oneof").is_some();
     let has_any_of = property_value(table, "anyof").is_some();
     let one_of = get_string_array_values(name, table, "oneof")?;

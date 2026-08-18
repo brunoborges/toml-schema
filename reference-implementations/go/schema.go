@@ -203,6 +203,9 @@ func LoadSchema(path string) (*Schema, error) {
 	if err := schema.validateSelectorCycles(); err != nil {
 		return nil, err
 	}
+	if err := schema.validateAllowedValueTypes(); err != nil {
+		return nil, err
+	}
 	if err := schema.validateSemantics(); err != nil {
 		return nil, err
 	}
@@ -807,6 +810,9 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		return Definition{}, err
 	}
 	hasAllowedValues := propertyValue(table, "allowedvalues") != nil
+	if hasAllowedValues && len(allowedValues) == 0 {
+		return Definition{}, fmt.Errorf("%s allowedvalues must contain at least one entry", name)
+	}
 	hasOneOf := propertyValue(table, "oneof") != nil
 	hasAnyOf := propertyValue(table, "anyof") != nil
 	oneOf, err := getStringArrayValues(table, "oneof")
@@ -920,6 +926,9 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		}
 		if hasAllowedValues {
 			return Definition{}, fmt.Errorf("%s cannot define allowedvalues together with items", name)
+		}
+		if propertyValue(table, "min") != nil || propertyValue(table, "max") != nil {
+			return Definition{}, fmt.Errorf("%s cannot define min or max together with items", name)
 		}
 	}
 	min := propertyValue(table, "min")
@@ -1149,6 +1158,96 @@ func (s *Schema) validateArrayRanges() error {
 			if err := validateDefinition(definition); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func (s *Schema) validateAllowedValueTypes() error {
+	var validateDefinition func(Definition) error
+	validateDefinition = func(definition Definition) error {
+		permittedTypes := map[SchemaType]bool{}
+		if len(definition.allowedValues) > 0 {
+			if definition.typeName == TypeArray {
+				if definition.itemReference != "" {
+					if err := s.collectReferenceTypes(
+						definition.itemReference,
+						map[string]bool{},
+						permittedTypes,
+					); err != nil {
+						return err
+					}
+				}
+			} else if definition.typeName != "" {
+				permittedTypes[definition.typeName] = true
+			}
+			for index, value := range definition.allowedValues {
+				matches := len(permittedTypes) == 0
+				for typeName := range permittedTypes {
+					if isType(value, typeName) {
+						matches = true
+						break
+					}
+				}
+				if !matches {
+					return fmt.Errorf(
+						"%s allowedvalues[%d] does not match the permitted TOML type",
+						definition.name,
+						index,
+					)
+				}
+			}
+		}
+		for _, child := range definition.children {
+			if err := validateDefinition(child); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	for _, definitions := range []map[string]Definition{s.types, s.elements} {
+		for _, definition := range definitions {
+			if err := validateDefinition(definition); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Schema) collectReferenceTypes(
+	reference string,
+	seen map[string]bool,
+	types map[SchemaType]bool,
+) error {
+	normalized := normalizeReference(reference)
+	if builtInType, ok := parseSchemaType(normalized); ok {
+		types[builtInType] = true
+		return nil
+	}
+	if seen[normalized] {
+		return fmt.Errorf("cyclic type reference: %s", normalized)
+	}
+	definition, ok := s.types[normalized]
+	if !ok {
+		return fmt.Errorf("unknown type reference: %s", reference)
+	}
+	seen[normalized] = true
+	defer delete(seen, normalized)
+	if definition.reference != "" {
+		return s.collectReferenceTypes(definition.reference, seen, types)
+	}
+	alternatives := definition.oneOf
+	if len(alternatives) == 0 {
+		alternatives = definition.anyOf
+	}
+	if len(alternatives) == 0 {
+		types[definition.typeName] = true
+		return nil
+	}
+	for _, alternative := range alternatives {
+		if err := s.collectReferenceTypes(alternative, seen, types); err != nil {
+			return err
 		}
 	}
 	return nil

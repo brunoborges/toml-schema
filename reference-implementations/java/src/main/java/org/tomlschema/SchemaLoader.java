@@ -54,6 +54,8 @@ final class SchemaLoader {
         validateReferences(types, types);
         validateReferences(types, elements);
         validateSelectorCycles(types);
+        validateAllowedValueTypes(types, types);
+        validateAllowedValueTypes(types, elements);
         validateArrayRangeConstraints(types, types);
         validateArrayRangeConstraints(types, elements);
         validateDefinitionSemantics(types, types);
@@ -140,6 +142,9 @@ final class SchemaLoader {
         Integer maxLength = getInteger(table, "maxlength");
         boolean hasAllowedValues = getPropertyValue(table, "allowedvalues") != null;
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
+        if (hasAllowedValues && allowedValues.isEmpty()) {
+            throw new SchemaException(name + " allowedvalues must contain at least one entry");
+        }
         boolean hasOneOf = getPropertyValue(table, "oneof") != null;
         boolean hasAnyOf = getPropertyValue(table, "anyof") != null;
         List<String> oneOf = getStringArrayValues(table, "oneof");
@@ -226,6 +231,9 @@ final class SchemaLoader {
             }
             if (hasAllowedValues) {
                 throw new SchemaException(name + " cannot define allowedvalues together with items");
+            }
+            if (getPropertyValue(table, "min") != null || getPropertyValue(table, "max") != null) {
+                throw new SchemaException(name + " cannot define min or max together with items");
             }
         }
         if (minLength != null && maxLength != null && minLength > maxLength) {
@@ -601,6 +609,47 @@ final class SchemaLoader {
             }
             validateArrayRangeConstraints(types, definition.children());
         }
+    }
+
+    private void validateAllowedValueTypes(
+            Map<String, SchemaDefinition> types,
+            Map<String, SchemaDefinition> definitions
+    ) {
+        for (SchemaDefinition definition : definitions.values()) {
+            Set<SchemaType> permittedTypes = Set.of();
+            if (!definition.allowedValues().isEmpty()) {
+                if (definition.type() == SchemaType.ARRAY && definition.itemReference() != null) {
+                    permittedTypes = resolveItemTypes(definition.itemReference(), types, new HashSet<>());
+                } else if (definition.type() != SchemaType.ARRAY) {
+                    permittedTypes = Set.of(definition.type());
+                }
+                for (int index = 0; index < definition.allowedValues().size(); index++) {
+                    Object value = definition.allowedValues().get(index);
+                    if (!permittedTypes.isEmpty()
+                            && permittedTypes.stream().noneMatch(type -> valueMatchesType(value, type))) {
+                        throw new SchemaException(definition.name() + " allowedvalues[" + index
+                                + "] does not match the permitted TOML type");
+                    }
+                }
+            }
+            validateAllowedValueTypes(types, definition.children());
+        }
+    }
+
+    private boolean valueMatchesType(Object value, SchemaType type) {
+        return switch (type) {
+            case ANY -> true;
+            case STRING -> value instanceof String;
+            case INTEGER -> value instanceof Long;
+            case FLOAT -> value instanceof Double;
+            case BOOLEAN -> value instanceof Boolean;
+            case OFFSET_DATE_TIME -> value instanceof OffsetDateTime;
+            case LOCAL_DATE_TIME -> value instanceof LocalDateTime;
+            case LOCAL_DATE -> value instanceof LocalDate;
+            case LOCAL_TIME -> value instanceof LocalTime;
+            case ARRAY -> value instanceof TomlArray;
+            case TABLE, COLLECTION -> value instanceof TomlTable;
+        };
     }
 
     private Set<SchemaType> resolveItemTypes(

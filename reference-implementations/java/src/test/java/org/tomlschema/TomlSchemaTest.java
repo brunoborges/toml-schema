@@ -981,19 +981,29 @@ class TomlSchemaTest {
                 [elements.value]
                 type = "array"
                 items = [ "string", "integer" ]
-                allowedvalues = []
+                allowedvalues = [ 1 ]
+                """);
+        Path withRange = write("tuple-range-conflict.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.value]
+                type = "array"
+                items = [ "string", "integer" ]
+                min = 1
                 """);
 
         assertThrows(SchemaException.class, () -> TomlSchema.load(withItemtype));
         assertThrows(SchemaException.class, () -> TomlSchema.load(withLength));
         assertThrows(SchemaException.class, () -> TomlSchema.load(withAllowedValues));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(withRange));
     }
 
     @Test
     void rejectsAllowedValuesOnTableAndCollection() throws IOException {
         for (String definition : List.of(
-                "type = \"table\"\nallowedvalues = []",
-                "type = \"collection\"\nitemtype = \"string\"\nallowedvalues = []"
+                "type = \"table\"\nallowedvalues = [ 1 ]",
+                "type = \"collection\"\nitemtype = \"string\"\nallowedvalues = [ 1 ]"
         )) {
             Path schema = write("container-allowedvalues.tosd", """
                    [toml-schema]
@@ -1560,6 +1570,19 @@ class TomlSchemaTest {
                 type = "string"
                 allowedvalues = [ "ok", "long" ]
                 maxlength = 2
+                """,
+                """
+                type = "string"
+                allowedvalues = []
+                """,
+                """
+                type = "string"
+                allowedvalues = [ 1 ]
+                """,
+                """
+                type = "array"
+                itemtype = "integer"
+                allowedvalues = [ "one" ]
                 """
         );
 
