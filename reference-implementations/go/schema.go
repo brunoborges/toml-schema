@@ -3,6 +3,7 @@ package tomlschema
 import (
 	"fmt"
 	"math"
+	"math/big"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -682,8 +683,7 @@ func validateBoundaryMatchesType(name, key string, value any, typeName SchemaTyp
 func boundaryMatchesType(value any, typeName SchemaType) bool {
 	switch typeName {
 	case TypeInteger, TypeFloat:
-		_, ok := numeric(value)
-		return ok
+		return isNumeric(value)
 	case TypeOffsetDateTime:
 		_, ok := value.(time.Time)
 		return ok
@@ -1264,10 +1264,8 @@ func isType(value any, typeName SchemaType) bool {
 }
 
 func compare(value, boundary any) (int, error) {
-	if valueNumber, ok := numeric(value); ok {
-		if boundaryNumber, ok := numeric(boundary); ok {
-			return compareFloat(valueNumber, boundaryNumber), nil
-		}
+	if isNumeric(value) && isNumeric(boundary) {
+		return compareNumbers(value, boundary)
 	}
 	switch value := value.(type) {
 	case time.Time:
@@ -1298,24 +1296,97 @@ func compare(value, boundary any) (int, error) {
 	return 0, fmt.Errorf("cannot compare %s with boundary %s", typeNameOf(value), typeNameOf(boundary))
 }
 
-func numeric(value any) (float64, bool) {
-	switch value := value.(type) {
-	case int64:
-		return float64(value), true
-	case float64:
-		return value, true
+func valuesEqual(allowed, value any) bool {
+	if isNumeric(allowed) && isNumeric(value) {
+		if isNaN(allowed) || isNaN(value) {
+			return isNaN(allowed) && isNaN(value)
+		}
+		comparison, err := compareNumbers(allowed, value)
+		return err == nil && comparison == 0
+	}
+	switch allowed := allowed.(type) {
+	case time.Time:
+		value, ok := value.(time.Time)
+		return ok && offsetDateTimesEqual(allowed, value)
+	case toml.LocalDateTime:
+		value, ok := value.(toml.LocalDateTime)
+		return ok && allowed.LocalDate == value.LocalDate &&
+			localTimesEqual(allowed.LocalTime, value.LocalTime)
+	case toml.LocalDate:
+		value, ok := value.(toml.LocalDate)
+		return ok && allowed == value
+	case toml.LocalTime:
+		value, ok := value.(toml.LocalTime)
+		return ok && localTimesEqual(allowed, value)
+	}
+	return fmt.Sprintf("%#v", allowed) == fmt.Sprintf("%#v", value)
+}
+
+func offsetDateTimesEqual(left, right time.Time) bool {
+	_, leftOffset := left.Zone()
+	_, rightOffset := right.Zone()
+	return left.Year() == right.Year() &&
+		left.Month() == right.Month() &&
+		left.Day() == right.Day() &&
+		left.Hour() == right.Hour() &&
+		left.Minute() == right.Minute() &&
+		left.Second() == right.Second() &&
+		left.Nanosecond() == right.Nanosecond() &&
+		leftOffset == rightOffset
+}
+
+func localTimesEqual(left, right toml.LocalTime) bool {
+	return left.Hour == right.Hour &&
+		left.Minute == right.Minute &&
+		left.Second == right.Second &&
+		left.Nanosecond == right.Nanosecond
+}
+
+func isNumeric(value any) bool {
+	switch value.(type) {
+	case int64, float64:
+		return true
 	default:
-		return 0, false
+		return false
 	}
 }
 
-func valuesEqual(allowed, value any) bool {
-	if allowedNumber, ok := numeric(allowed); ok {
-		if valueNumber, ok := numeric(value); ok {
-			return allowedNumber == valueNumber
+func compareNumbers(left, right any) (int, error) {
+	if isNaN(left) || isNaN(right) {
+		return 0, fmt.Errorf("NaN is unordered")
+	}
+	if leftInteger, ok := left.(int64); ok {
+		if rightInteger, ok := right.(int64); ok {
+			switch {
+			case leftInteger < rightInteger:
+				return -1, nil
+			case leftInteger > rightInteger:
+				return 1, nil
+			default:
+				return 0, nil
+			}
 		}
 	}
-	return fmt.Sprintf("%#v", allowed) == fmt.Sprintf("%#v", value)
+	leftFloat, leftIsFloat := left.(float64)
+	rightFloat, rightIsFloat := right.(float64)
+	if (leftIsFloat && math.IsInf(leftFloat, 0)) || (rightIsFloat && math.IsInf(rightFloat, 0)) {
+		return compareFloat(numberAsFloat(left), numberAsFloat(right)), nil
+	}
+	return numericRat(left).Cmp(numericRat(right)), nil
+}
+
+func numberAsFloat(value any) float64 {
+	if integer, ok := value.(int64); ok {
+		return float64(integer)
+	}
+	return value.(float64)
+}
+
+func numericRat(value any) *big.Rat {
+	if integer, ok := value.(int64); ok {
+		return new(big.Rat).SetInt64(integer)
+	}
+	return new(big.Rat).SetFloat64(value.(float64))
 }
 
 func typeNameOf(value any) string {

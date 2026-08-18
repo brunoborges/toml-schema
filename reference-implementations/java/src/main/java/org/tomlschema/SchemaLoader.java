@@ -579,10 +579,10 @@ final class SchemaLoader {
             if ((min != null || max != null) && allowed instanceof Double doubleValue && doubleValue.isNaN()) {
                 throw new SchemaException(entry + " does not satisfy min or max");
             }
-            if (min != null && compare(allowed, min, entry) < 0) {
+            if (min != null && ValueSemantics.compare(allowed, min) < 0) {
                 throw new SchemaException(entry + " is less than min");
             }
-            if (max != null && compare(allowed, max, entry) > 0) {
+            if (max != null && ValueSemantics.compare(allowed, max) > 0) {
                 throw new SchemaException(entry + " is greater than max");
             }
             if (minLength != null || maxLength != null) {
@@ -598,17 +598,6 @@ final class SchemaLoader {
                 }
             }
         }
-    }
-
-    @SuppressWarnings({"rawtypes", "unchecked"})
-    private int compare(Object value, Object boundary, String entry) {
-        if (value instanceof Number valueNumber && boundary instanceof Number boundaryNumber) {
-            return Double.compare(valueNumber.doubleValue(), boundaryNumber.doubleValue());
-        }
-        if (value instanceof Comparable valueComparable && value.getClass().isInstance(boundary)) {
-            return valueComparable.compareTo(boundary);
-        }
-        throw new SchemaException(entry + " cannot be compared with its boundary");
     }
 
     private String normalizeReference(String reference) {

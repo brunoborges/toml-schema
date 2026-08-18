@@ -346,6 +346,20 @@ For a non-array simple type, when `allowedvalues` is combined with `pattern`, `m
 
 After a schema with `allowedvalues` has been loaded successfully, a document value is valid when it is a member of `allowedvalues`. Parsers do not need to re-evaluate the other constraints for that document value because every enumerated value has already been checked against them while loading the schema.
 
+Numeric membership compares mathematical values after TOML parsing. Integer
+comparison MUST remain exact across the full TOML signed 64-bit range, including
+when one operand is a float; implementations MUST NOT convert both operands to a
+binary float when that would lose integer precision. Positive and negative zero
+are equal. NaN is equal to NaN for `allowedvalues` membership, but is unequal to
+every other value.
+
+Temporal membership requires the same TOML temporal type and the same parsed
+fields, including the numeric UTC offset for an offset date-time. Equivalent
+spellings of the same field value, such as `.1` and `.100` fractional seconds or
+`Z` and `+00:00`, are equal. Two offset date-times that identify the same instant
+but have different local fields or numeric offsets therefore compare equal for
+range ordering but are distinct `allowedvalues` members.
+
 The rules for applying `allowedvalues` to array items are defined separately under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
 
 Example:
@@ -376,6 +390,20 @@ A `min` or `max` boundary must be a TOML value that is comparable with the schem
 `nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries.
 
 Date/time boundaries compare only against values of the same TOML temporal type. For example, an `offset-date-time` boundary applies to `offset-date-time` values, not to `local-date-time` values.
+
+Numeric ranges use mathematical ordering after TOML parsing. Integer-to-integer
+ordering MUST remain exact across the full signed 64-bit range. Mixed
+integer/float ordering MUST compare the exact integer with the parsed binary
+floating-point value without first rounding the integer to that floating-point
+format. Positive and negative zero have the same position. A document NaN is
+unordered and never satisfies a range constraint.
+
+Offset date-times are ordered by the instant they identify after applying their
+offset; representations of the same instant compare equal even when their local
+fields and offsets differ. Local date-times, local dates, and local times are
+ordered lexicographically by their parsed fields, from the largest component to
+the smallest, including fractional seconds. No timezone or daylight-saving
+conversion is applied to a local temporal value.
 
 ### Length - `minlength` and `maxlength`
 
