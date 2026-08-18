@@ -741,8 +741,31 @@ itemtype = "any"
     itemtype = "string"
     optional = true
 
+[types.hugoVersion]
+type = "table"
+
+    [types.hugoVersion.extended]
+    type = "boolean"
+    optional = true
+
+    [types.hugoVersion.max]
+    type = "string"
+    optional = true
+
+    [types.hugoVersion.min]
+    type = "string"
+    optional = true
+
 [types.module]
 type = "table"
+
+    [types.module.auth]
+    type = "string"
+    optional = true
+
+    [types.module.hugoVersion]
+    type = "types.hugoVersion"
+    optional = true
 
     [types.module.imports]
     type = "array"
@@ -758,6 +781,10 @@ type = "table"
     type = "string"
     optional = true
 
+    [types.module.noVendor]
+    type = "string"
+    optional = true
+
     [types.module.private]
     type = "string"
     optional = true
@@ -768,6 +795,10 @@ type = "table"
 
     [types.module.replacements]
     type = "string"
+    optional = true
+
+    [types.module.vendorClosest]
+    type = "boolean"
     optional = true
 
     [types.module.workspace]
@@ -1261,6 +1292,11 @@ optional = true
 
 [elements.menus]
 type = "types.menus"
+optional = true
+
+[elements.menu]
+type = "types.menus"
+description = "Legacy alias for menus retained by Hugo for compatibility."
 optional = true
 
 [elements.minify]

@@ -356,6 +356,11 @@ type = "table"
     type = "integer"
     optional = true
 
+    [types.lintTable.check-cfg]
+    type = "array"
+    itemtype = "string"
+    optional = true
+
 [types.lintGroup]
 type = "collection"
 itemtype = "types.lintValue"

@@ -77,9 +77,62 @@ type = "table"
 
     [types.observability.enabled]
     type = "boolean"
+    optional = true
 
     [types.observability.head_sampling_rate]
     type = "types.numberValue"
+    optional = true
+
+    [types.observability.logs]
+    type = "types.observabilityLogs"
+    optional = true
+
+    [types.observability.traces]
+    type = "types.observabilityTraces"
+    optional = true
+
+[types.observabilityLogs]
+type = "table"
+
+    [types.observabilityLogs.enabled]
+    type = "boolean"
+    optional = true
+
+    [types.observabilityLogs.head_sampling_rate]
+    type = "types.numberValue"
+    optional = true
+
+    [types.observabilityLogs.invocation_logs]
+    type = "boolean"
+    optional = true
+
+    [types.observabilityLogs.persist]
+    type = "boolean"
+    optional = true
+
+    [types.observabilityLogs.destinations]
+    type = "array"
+    itemtype = "string"
+    optional = true
+
+[types.observabilityTraces]
+type = "table"
+
+    [types.observabilityTraces.enabled]
+    type = "boolean"
+    optional = true
+
+    [types.observabilityTraces.head_sampling_rate]
+    type = "types.numberValue"
+    optional = true
+
+    [types.observabilityTraces.persist]
+    type = "boolean"
+    optional = true
+
+    [types.observabilityTraces.destinations]
+    type = "array"
+    itemtype = "string"
     optional = true
 
 [types.build]
@@ -961,6 +1014,8 @@ type = "types.workerName"
 
 [elements.main]
 type = "string"
+description = "Worker entrypoint; optional for assets-only Workers."
+optional = true
 
 [elements.compatibility_date]
 type = "types.compatibilityDate"
