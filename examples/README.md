@@ -35,6 +35,33 @@ intentional version 1.0 boundary: cross-field requirements, merge and
 inheritance behavior, sibling mutual exclusion, array uniqueness, and
 deprecation metadata require application-level handling.
 
+## Industry format coverage
+
+The version 1.0 vocabulary is sufficient to describe the parsed structure of
+the major formats reviewed:
+
+| Format | Structural coverage | Remaining application-level rules |
+| --- | --- | --- |
+| [Cargo](https://doc.rust-lang.org/cargo/reference/manifest.html) | Dependencies, target-specific maps, workspace inheritance, profiles, arrays of targets | Relationships among dependency source fields, unstable-feature gates |
+| [`pyproject.toml`](https://packaging.python.org/en/latest/specifications/pyproject-toml/) | Project metadata, build systems, dependency groups, open `[tool]` namespaces | Static-versus-dynamic metadata rules, mutually exclusive table fields |
+| [uv](https://docs.astral.sh/uv/reference/settings/) and [Ruff](https://docs.astral.sh/ruff/settings/) | Fixed settings, enums, unions, nested tables, typed maps | Merge behavior, sibling dependencies, defaults and deprecations |
+| [Taplo](https://github.com/tamasfe/taplo/blob/master/crates/taplo-common/src/config.rs) | Closed option tables, arrays of rules, plugin maps | URL/path precedence and embedded glob semantics |
+| [Starship](https://starship.rs/config/) | Fixed modules, custom-module maps, nested palette maps | Reusable base-module extension, defaults, embedded format-string syntax |
+| [Wrangler](https://developers.cloudflare.com/workers/wrangler/configuration/) | Routes, bindings, module rules, environment maps | Inheritance and override semantics, embedded cron syntax |
+
+A collection may combine fixed children with a general `itemtype`, so an open
+namespace can still give well-known keys specialized schemas. For example,
+`[tool.ruff]` and `[tool.uv]` can be fixed children of a `[tool]` collection
+while unknown tool names remain open. The generic `pyproject.tosd` example
+intentionally leaves every `[tool.*]` entry open because it does not bundle
+third-party tool schemas.
+
+Across these formats, the main practical limitation is semantic rather than
+structural: version 1.0 does not express relationships between sibling or
+cross-path values. Defaults, examples, and deprecation notices are also not
+machine-readable annotations. These boundaries are detailed in
+[Expressiveness and Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
+
 ## Using the examples
 
 You can validate a TOML file against any of these schemas using one of the
