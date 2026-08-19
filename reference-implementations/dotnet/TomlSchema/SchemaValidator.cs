@@ -450,7 +450,7 @@ internal class SchemaValidator
 
     private void ValidateCommonConstraints(string path, object? value, SchemaDefinition definition)
     {
-        if (AsArray(value) != null)
+        if (IsArray(value))
             return;
 
         ValidateAllowedValues(path, value, definition);
@@ -629,7 +629,7 @@ internal class SchemaValidator
         SchemaType.LocalDateTime => IsDateTimeKind(value, TomlDateTimeKind.LocalDateTime),
         SchemaType.LocalDate => IsDateTimeKind(value, TomlDateTimeKind.LocalDate),
         SchemaType.LocalTime => IsDateTimeKind(value, TomlDateTimeKind.LocalTime),
-        SchemaType.Array => AsArray(value) != null,
+        SchemaType.Array => IsArray(value),
         SchemaType.Table or SchemaType.Collection => value is TomlTable,
         _ => false
     };
@@ -652,8 +652,10 @@ internal class SchemaValidator
             _ => "offset-date-time"
         },
         TomlTable => "table",
-        _ => AsArray(value) != null ? "array" : value.GetType().Name
+        _ => IsArray(value) ? "array" : value.GetType().Name
     };
+
+    private static bool IsArray(object? value) => value is TomlArray or TomlTableArray;
 
     private static IReadOnlyList<object?>? AsArray(object? value) => value switch
     {
@@ -675,7 +677,7 @@ internal class SchemaValidator
                 && leftDateTime.DateTime.Equals(rightDateTime.DateTime);
         }
 
-        if (AsArray(left) is { } leftArray && AsArray(right) is { } rightArray)
+        if (IsArray(left) && IsArray(right) && AsArray(left) is { } leftArray && AsArray(right) is { } rightArray)
         {
             if (leftArray.Count != rightArray.Count)
                 return false;
