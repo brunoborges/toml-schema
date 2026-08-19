@@ -555,7 +555,7 @@ representing custom data payloads.
 
 #### Arrays
 
-Arrays can be defined by mixing the following properties:
+Arrays can be defined using the following properties:
 
  - `itemtype`: a type reference used to validate every item in a homogeneous array.
  - `items`: ordered type references for tuple-style positional validation with fixed arity.
@@ -686,6 +686,12 @@ Use `items` to validate each array entry by position with an exact length.
 Example:
 
 ```toml
+[types.coordinate]
+type = "float"
+
+[types.label]
+type = "string"
+
 [types.coordinateLabel]
 type = "array"
 items = [ "types.coordinate", "types.label" ]
@@ -813,6 +819,7 @@ TOML Schema:
         [types.serverType.dnstable]
         type = "collection"
         itemtype = "types.dnsValue"
+        optional = true
 
 [elements]
 
@@ -1086,6 +1093,11 @@ child's value, and never follow a dotted string as a document path.
 child name to a non-empty array of unique child names. When the trigger is
 present, every listed child MUST also be present.
 
+Because `dependentrequired` is also a legal child key, a
+`dependentrequired = { ... }` key/value entry is always the sibling rule, while
+a table header such as `[types.example.dependentrequired]` is always a child
+definition named `dependentrequired`.
+
 ```toml
 [types.dependency]
 type = "table"
@@ -1168,13 +1180,11 @@ optional = true
 default = 3
 ```
 
-Because `default` is also a legal child key, its TOML syntax disambiguates the
-two meanings. A `default = <value>` key/value entry is always the annotation;
-a table header such as `[elements.options.default]` is always a child definition
-named `default`. Consequently, a table-valued default MUST use inline-table
-syntax, for example `default = { min = 1, max = 10 }`. Schema loaders MUST
-preserve or recover this syntactic distinction rather than guessing from the
-inline table's member names.
+Because `default` is also a legal child key, a `default = <value>` key/value
+entry is always the annotation, while a table header such as
+`[elements.options.default]` is always a child definition named `default`.
+Consequently, a table-valued default MUST use inline-table syntax, for example
+`default = { min = 1, max = 10 }`.
 
 A default is not a validation assertion and never changes the document being
 validated. It does not insert a missing value, satisfy a required definition,
@@ -1341,6 +1351,15 @@ TOML Schema validation does not modify the parsed TOML data model.
 A validator MUST NOT mutate, replace, or augment the TOML data object produced
 by the underlying parser. An API that returns that object MUST return the same
 parsed keys and values that would exist without schema validation.
+
+Schema loading additionally requires source-shape information for inline-table
+properties whose names may also name child definitions. In particular,
+`default = { ... }` and `dependentrequired = { ... }` cannot be distinguished
+from same-named child tables by their logical TOML values alone. A schema loader
+MUST use a parser that preserves key/value-versus-table syntax or exposes enough
+source-position information to recover it; a logical-value-only TOML API is
+insufficient for this distinction. Loaders MUST NOT guess from inline-table
+member names.
 
 ### Parsed Value Equality
 
