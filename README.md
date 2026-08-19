@@ -78,6 +78,20 @@ canonical `tosd` CLI. See
 [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation
 status, CLI usage, schema extraction, and conformance expectations.
 
+Install the `1.0.0-rc.2` CLI on Linux or Apple Silicon macOS from GitHub
+Releases:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSfL \
+  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  bash -s -- --version 1.0.0-rc.2
+```
+
+The installer verifies the release checksum and writes to `$HOME/.local/bin`
+by default. Direct downloads, Windows installation, supported platforms, and
+installer options are documented in the
+[Rust reference implementation README](reference-implementations/rust/README.md#install-the-cli).
+
 ## Schema reference from TOML
 
 A TOML document can point to a schema with reserved metadata:

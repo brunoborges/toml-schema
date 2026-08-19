@@ -122,6 +122,30 @@ uniqueitems = true</code></pre>
         </a>
       </section>
 
+      <section class="cli-spotlight" aria-labelledby="cli-spotlight-title">
+        <div class="cli-spotlight-copy">
+          <h2 id="cli-spotlight-title">Validate from the command line.</h2>
+          <p>
+            The canonical <code>tosd</code> CLI validates TOML against an explicit
+            schema or follows the document's <code>[toml-schema].location</code>.
+            Release downloads support Linux x86_64 and arm64, Apple Silicon macOS,
+            and Windows x86_64.
+          </p>
+          <a class="text-link" href="/implementations/#rust">See every install option and CLI command <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="cli-spotlight-terminal" aria-label="Install and validate with the tosd CLI">
+          <div class="panel-header">
+            <strong>Install, then validate</strong>
+            <span class="badge">tosd 1.0.0-rc.2</span>
+          </div>
+          <pre><code>curl --proto '=https' --tlsv1.2 -sSfL \
+  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  bash -s -- --version 1.0.0-rc.2
+
+tosd validate config.tosd config.toml</code></pre>
+        </div>
+      </section>
+
       <section class="section" id="tour">
         <h2>A Quick Tour of TOML Schema</h2>
         <p class="section-intro">
