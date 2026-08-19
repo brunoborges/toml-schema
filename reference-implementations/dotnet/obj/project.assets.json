@@ -912,7 +912,7 @@
     ]
   },
   "packageFolders": {
-    "/home/runner/.nuget/packages/": {}
+    "/tmp/codeql-scratch-20b714ea8d3ef6f8/dbs/csharp/working/packages": {}
   },
   "project": {
     "version": "1.0.0-rc.2",
@@ -920,7 +920,7 @@
       "projectUniqueName": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.csproj",
       "projectName": "TomlSchema",
       "projectPath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.csproj",
-      "packagesPath": "/home/runner/.nuget/packages/",
+      "packagesPath": "/tmp/codeql-scratch-20b714ea8d3ef6f8/dbs/csharp/working/packages",
       "outputPath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
@@ -984,6 +984,16 @@
         ],
         "assetTargetFallback": true,
         "warn": true,
+        "downloadDependencies": [
+          {
+            "name": "Microsoft.AspNetCore.App.Ref",
+            "version": "[9.0.18, 9.0.18]"
+          },
+          {
+            "name": "Microsoft.NETCore.App.Ref",
+            "version": "[9.0.18, 9.0.18]"
+          }
+        ],
         "frameworkReferences": {
           "Microsoft.NETCore.App": {
             "privateAssets": "all"
