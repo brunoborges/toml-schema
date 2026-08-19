@@ -785,6 +785,9 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	if err != nil {
 		return Definition{}, err
 	}
+	if propertyValue(table, "items") != nil && len(items) == 0 {
+		return Definition{}, fmt.Errorf("%s items must contain at least one type reference", name)
+	}
 	optional, err := getBool(table, "optional")
 	if err != nil {
 		return Definition{}, err

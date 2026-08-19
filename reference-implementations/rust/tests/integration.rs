@@ -1218,10 +1218,18 @@ version = "1.0.0"
 type = "string"
 pattern = "^[a-z]+$"
 
+[types.inheritedOptional]
+type = "string"
+optional = true
+
 [elements.name]
 type = "types.nameType"
 description = "Optional display name."
 optional = true
+
+[elements.inherited]
+type = "types.inheritedOptional"
+optional = false
 "#,
     );
     let document_path = write_file(&directory, "document.toml", "# name is optional\n");
@@ -2730,6 +2738,7 @@ fn rejects_malformed_annotation_values() {
         ("default", "type = \"integer\"\ndefault = \"wrong\""),
         ("allof-any", "allof = [ \"any\" ]"),
         ("allof-shape", "allof = \"string\""),
+        ("items-empty", "type = \"array\"\nitems = []"),
     ] {
         let schema_path = write_file(
                 &directory,
@@ -2739,6 +2748,46 @@ fn rejects_malformed_annotation_values() {
                 ),
             );
         Schema::load(schema_path).expect_err(name);
+    }
+}
+
+#[test]
+fn composes_array_constraints_independently() {
+    let directory = tempfile_dir("array-allof");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.strings]
+type = "array"
+itemtype = "string"
+
+[types.pair]
+type = "array"
+items = ["string", "string"]
+
+[types.unique]
+type = "array"
+uniqueitems = true
+
+[elements.value]
+type = "array"
+allof = ["types.strings", "types.pair", "types.unique"]
+"#,
+    );
+    let schema = Schema::load(schema_path).expect("load composed array schema");
+
+    for (document, valid) in [
+        ("value = [\"a\", \"b\"]\n", true),
+        ("value = [\"a\", 1]\n", false),
+        ("value = [\"a\"]\n", false),
+        ("value = [\"a\", \"a\"]\n", false),
+    ] {
+        let parsed: toml::Table = toml::from_str(document).unwrap();
+        assert_eq!(schema.validate(&parsed).valid(), valid, "{document}");
     }
 }
 

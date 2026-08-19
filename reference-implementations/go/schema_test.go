@@ -954,10 +954,18 @@ version = "1.0.0"
 type = "string"
 pattern = "^[a-z]+$"
 
+[types.inheritedOptional]
+type = "string"
+optional = true
+
 [elements.name]
 type = "types.nameType"
 description = "Optional display name."
 optional = true
+
+[elements.inherited]
+type = "types.inheritedOptional"
+optional = false
 `)
 	documentPath := write(t, dir, "named-reference-metadata.toml", "# name is optional\n")
 
