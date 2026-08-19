@@ -131,6 +131,7 @@ nav {
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+  align-items: center;
 }
 nav a,
 .button,
@@ -154,6 +155,20 @@ nav a[aria-current="page"] {
   background: var(--cp-accent-soft);
   border-color: var(--cp-accent);
   color: var(--cp-accent);
+}
+.nav-github {
+  align-items: center;
+  border-radius: 999px;
+  display: inline-flex;
+  height: 38px;
+  justify-content: center;
+  padding: 0;
+  width: 38px;
+}
+.nav-github svg {
+  fill: currentColor;
+  height: 18px;
+  width: 18px;
 }
 .button {
   background: var(--cp-accent);
