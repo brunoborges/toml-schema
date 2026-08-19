@@ -3,7 +3,8 @@
 .NET 9.0 reference library targeting the current, unreleased
 [TOML Schema 1.0.0](../../SPEC.md). It parses TOML with
 [Tomlyn](https://github.com/xoofx/Tomlyn) `2.10.1` (TOML 1.0) and validates the
-parsed data model against a `.tosd` schema.
+parsed data model against a `.tosd` schema, including document-driven schema
+discovery through `[toml-schema].location`.
 
 - Assembly: `TomlSchema`
 - Namespace: `TomlSchema`
@@ -60,6 +61,34 @@ var defaultValue = schema.DefaultValue("field_name");
 
 `DefaultValue(...)` exposes effective default annotations. Validation never
 inserts defaults or mutates parsed TOML.
+
+## Schema discovery
+
+`TomlSchema.Discover(string)` and `TomlSchema.ValidateDocument(string)` load
+the schema referenced by a TOML document's reserved `[toml-schema].location`,
+following the resolution rules in [`SPEC.md`](../../SPEC.md#toml-reference-of-a-toml-schema):
+
+```csharp
+using TomlSchema;
+
+// Discover the schema and validate the document in one step, without parsing it twice.
+var result = TomlSchema.TomlSchema.ValidateDocument("config.toml");
+
+// Or inspect the discovered schema, parsed document, and any version warnings first.
+var discovered = TomlSchema.TomlSchema.Discover("config.toml");
+foreach (var warning in discovered.Warnings)
+{
+    Console.WriteLine($"Warning: {warning.Message}");
+}
+```
+
+A relative `location` resolves against the document's parent directory, not
+the current working directory. An absolute local path and a hierarchical
+`file` URI are also supported; unsupported URI schemes, opaque `file` URIs,
+non-local hosts, and query/fragment components are rejected. The optional
+document `[toml-schema].version` is compared against the resolved schema's
+declared version: a major-version mismatch fails discovery, while any other
+difference is reported as a warning rather than an error.
 
 ## Conformance
 

@@ -55,6 +55,33 @@ public class TomlSchema
         return validator.Validate(document);
     }
 
+    /// <summary>
+    /// Discovers and loads the schema referenced by a TOML document's reserved
+    /// <c>[toml-schema].location</c>, following the resolution and version-compatibility
+    /// rules of SPEC.md's "TOML Reference of a TOML Schema" section.
+    /// </summary>
+    /// <remarks>
+    /// A relative <c>location</c> is resolved against <paramref name="documentPath"/>'s
+    /// parent, not the current working directory. An absolute local path or a
+    /// <c>file</c> URI with a hierarchical, local path is also supported. Unsupported URI
+    /// schemes, opaque <c>file</c> URIs, non-local hosts, query/fragment components, and
+    /// encoded path separators are rejected. When the document declares an optional
+    /// <c>[toml-schema].version</c>, a major-version mismatch against the resolved schema
+    /// fails discovery, while any other version difference is reported as a warning on the
+    /// returned <see cref="DiscoveredSchema"/>.
+    /// </remarks>
+    /// <param name="documentPath">The TOML document whose schema-reference metadata is discovered.</param>
+    /// <returns>The discovered schema, the parsed document, and any version-compatibility warnings.</returns>
+    public static DiscoveredSchema Discover(string documentPath) => SchemaDiscovery.Discover(documentPath);
+
+    /// <summary>
+    /// Discovers the schema referenced by a TOML document and validates that same document
+    /// against it in one step, without parsing the document twice.
+    /// </summary>
+    /// <param name="documentPath">The TOML document to discover a schema for and validate.</param>
+    /// <returns>The validation result, including any discovery version-compatibility warnings.</returns>
+    public static ValidationResult ValidateDocument(string documentPath) => Discover(documentPath).Validate();
+
     /// <summary>Gets the schema language version.</summary>
     public string Version => _version;
 
