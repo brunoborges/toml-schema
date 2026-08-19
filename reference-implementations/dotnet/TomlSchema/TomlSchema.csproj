@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>TomlSchema</RootNamespace>
+    <AssemblyName>TomlSchema</AssemblyName>
+    <Version>1.0.0-rc.2</Version>
+    <Description>.NET reference implementation for TOML Schema</Description>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
+  </ItemGroup>
+</Project>

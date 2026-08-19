@@ -2,3 +2,5 @@ target/
 docs/spec/
 docs/implementations/
 scripts/node_modules/
+reference-implementations/dotnet/**/bin/
+reference-implementations/dotnet/**/obj/

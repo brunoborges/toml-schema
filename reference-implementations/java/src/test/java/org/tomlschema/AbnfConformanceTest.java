@@ -15,7 +15,7 @@ import java.util.stream.Collectors;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 class AbnfConformanceTest {
-    private static final Pattern TOKEN_COMMENT = Pattern.compile(";\\s*\"([^\"]+)\"");
+    private static final Pattern QUOTED_TOKEN = Pattern.compile("\"([^\"]+)\"");
     private static final Set<String> NON_SCHEMA_KEYS = Set.of("version");
 
     @Test
@@ -47,9 +47,11 @@ class AbnfConformanceTest {
         String[] lines = abnf.split("\\R");
         StringBuilder expression = new StringBuilder();
         boolean inRule = false;
+        Pattern ruleStart = Pattern.compile("^" + Pattern.quote(ruleName) + "\\s*=\\s*(.*)$");
         for (String line : lines) {
-            if (line.startsWith(ruleName + " =")) {
-                expression.append(line.substring(line.indexOf('=') + 1).trim());
+            Matcher rule = ruleStart.matcher(line);
+            if (rule.matches()) {
+                expression.append(rule.group(1).trim());
                 inRule = true;
                 continue;
             }
@@ -65,11 +67,12 @@ class AbnfConformanceTest {
     }
 
     private Set<String> builtInTypeTokens(String abnf) {
-        return abnf.lines()
-                .map(TOKEN_COMMENT::matcher)
+        return Arrays.stream(ruleExpression("built-in-type", abnf).split("/"))
+                .map(String::trim)
+                .map(typeRule -> ruleExpression(typeRule, abnf))
+                .map(QUOTED_TOKEN::matcher)
                 .filter(Matcher::find)
                 .map(matcher -> matcher.group(1))
-                .filter(token -> SchemaLoader.DEFINITION_KEYS.stream().noneMatch(token::equals))
                 .collect(Collectors.toSet());
     }
 

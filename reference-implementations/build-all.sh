@@ -19,6 +19,9 @@ mkdir -p "$(dirname "$go_output")"
 run_step "Building Go reference implementation" \
     go -C "$script_dir/go" build -o "$go_output" .
 
+run_step "Building .NET reference implementation" \
+    dotnet build "$script_dir/dotnet"
+
 run_step "Building Rust reference implementation" \
     cargo build --locked --release --manifest-path "$script_dir/rust/Cargo.toml"
 
