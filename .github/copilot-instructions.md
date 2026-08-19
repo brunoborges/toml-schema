@@ -26,7 +26,7 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - `reference-implementations/go` is the `tomlschema.org/go` importable Go package.
 - `reference-implementations/rust` provides both the `toml_schema` Rust library and the canonical `toml-schema` CLI.
 - `reference-implementations/java/src/test/java/org/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, and validation errors.
-- Java, Go, and Rust ABNF conformance tests read `toml-schema.abnf` and check implementation schema properties and built-in type names against it.
+- Java, Go, .NET, and Rust ABNF conformance tests read `toml-schema.abnf` and check implementation schema properties and built-in type names against it.
 
 ## Key conventions
 
