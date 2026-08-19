@@ -13,7 +13,7 @@ library examples.
 | Language | Location | Requires | Interfaces |
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, CLI validation, schema extraction |
-| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.23 | Library, CLI validation, schema extraction |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, CLI validation, schema extraction |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, CLI validation, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
