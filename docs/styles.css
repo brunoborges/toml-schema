@@ -166,6 +166,8 @@ nav a[aria-current="page"] {
   display: grid;
   gap: 32px;
   grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+}
+:is(.hero, .editor-hero, .report-hero) {
   padding: 56px 0;
 }
 .eyebrow {
@@ -440,10 +442,8 @@ footer {
   display: grid;
   gap: 40px;
   grid-template-columns: minmax(0, 1fr) minmax(260px, 0.42fr);
-  padding: 72px 0 44px;
 }
 .editor-hero h1 {
-  font-size: clamp(52px, 7.5vw, 92px);
   max-width: 11ch;
 }
 .editor-hero-copy .lead {
@@ -629,12 +629,7 @@ footer {
   margin: 0 auto;
   max-width: 960px;
 }
-.report-hero {
-  padding: 72px 0 48px;
-}
 .report-hero h1 {
-  font-size: clamp(42px, 7vw, 72px);
-  letter-spacing: -0.04em;
   max-width: 13ch;
 }
 .evidence-line {
@@ -910,7 +905,7 @@ footer {
     justify-content: flex-start;
     margin-top: 16px;
   }
-  .hero {
+  :is(.hero, .editor-hero, .report-hero) {
     padding-top: 32px;
   }
   .panel {
@@ -975,9 +970,6 @@ footer {
   .editor-promo {
     gap: 28px;
   }
-  .editor-hero {
-    padding-top: 40px;
-  }
   .editor-hero-note {
     max-width: 420px;
   }
@@ -1029,11 +1021,11 @@ footer {
     padding-inline: 8px;
     text-align: center;
   }
-  .hero .actions {
+  :is(.hero, .editor-hero, .report-hero) .actions {
     align-items: stretch;
     flex-direction: column;
   }
-  .hero .actions a {
+  :is(.hero, .editor-hero, .report-hero) .actions a {
     justify-content: center;
     min-height: 44px;
     width: 100%;
@@ -1043,9 +1035,6 @@ footer {
   .tour-examples > div,
   .tour-step pre {
     max-width: 100%;
-  }
-  .report-hero {
-    padding-top: 36px;
   }
   .report-index {
     align-items: flex-start;
@@ -1069,17 +1058,6 @@ footer {
   .brand-logo {
     height: 40px;
     width: 176px;
-  }
-  .editor-hero h1 {
-    font-size: 50px;
-  }
-  .editor-hero .actions {
-    align-items: stretch;
-    flex-direction: column;
-  }
-  .editor-hero .actions a {
-    justify-content: center;
-    width: 100%;
   }
   .editor-atlas-frame,
   .editor-promo-image,
