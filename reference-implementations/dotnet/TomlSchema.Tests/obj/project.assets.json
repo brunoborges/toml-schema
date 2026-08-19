@@ -422,7 +422,7 @@
           "build/net6.0/xunit.runner.visualstudio.props": {}
         }
       },
-      "TomlSchema/1.0.0-rc.3": {
+      "TomlSchema/1.0.0-rc.2": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v9.0",
         "dependencies": {
@@ -915,7 +915,7 @@
         "xunit.runner.visualstudio.nuspec"
       ]
     },
-    "TomlSchema/1.0.0-rc.3": {
+    "TomlSchema/1.0.0-rc.2": {
       "type": "project",
       "path": "../TomlSchema/TomlSchema.csproj",
       "msbuildProject": "../TomlSchema/TomlSchema.csproj"
@@ -924,7 +924,7 @@
   "projectFileDependencyGroups": {
     "net9.0": [
       "Microsoft.NET.Test.Sdk >= 17.10.0",
-      "TomlSchema >= 1.0.0-rc.3",
+      "TomlSchema >= 1.0.0-rc.2",
       "xunit >= 2.8.1",
       "xunit.runner.visualstudio >= 2.5.6"
     ]

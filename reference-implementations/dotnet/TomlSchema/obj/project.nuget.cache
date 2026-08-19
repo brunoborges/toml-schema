@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "S29646PnKN4=",
+  "dgSpecHash": "YhU4eUnTZ58=",
   "success": true,
   "projectFilePath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/TomlSchema.csproj",
   "expectedPackageFiles": [

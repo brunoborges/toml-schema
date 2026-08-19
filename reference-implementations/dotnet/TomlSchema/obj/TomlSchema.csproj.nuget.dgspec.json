@@ -5,7 +5,7 @@
   },
   "projects": {
     "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/TomlSchema.csproj": {
-      "version": "1.0.0-rc.3",
+      "version": "1.0.0-rc.2",
       "restore": {
         "projectUniqueName": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/TomlSchema.csproj",
         "projectName": "TomlSchema",
