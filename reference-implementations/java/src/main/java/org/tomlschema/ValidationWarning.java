@@ -8,20 +8,20 @@ package org.tomlschema;
  * @param message a human-readable description
  */
 public record ValidationWarning(String code, String path, String message) implements ValidationDiagnostic {
-    @Override
     /**
      * {@inheritDoc}
      */
+    @Override
     public DiagnosticSeverity severity() {
         return DiagnosticSeverity.WARNING;
     }
 
-    @Override
     /**
      * Returns this warning as a path and message.
      *
      * @return the formatted warning
      */
+    @Override
     public String toString() {
         return path + ": " + message;
     }

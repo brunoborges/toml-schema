@@ -18,20 +18,20 @@ public record ValidationError(String code, String path, String message) implemen
         this("validation-error", path, message);
     }
 
-    @Override
     /**
      * {@inheritDoc}
      */
+    @Override
     public DiagnosticSeverity severity() {
         return DiagnosticSeverity.ERROR;
     }
 
-    @Override
     /**
      * Returns this error as a path and message.
      *
      * @return the formatted error
      */
+    @Override
     public String toString() {
         return path + ": " + message;
     }
