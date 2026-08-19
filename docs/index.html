@@ -223,17 +223,39 @@ role = "frontend"</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[types.database]
+                <pre><code>[types.sqliteDatabase]
+type = "table"
+
+[types.sqliteDatabase.engine]
+type = "string"
+
+[types.sqliteDatabase.path]
+type = "string"
+
+[types.serverDatabase]
+type = "table"
+
+[types.serverDatabase.engine]
+type = "string"
+
+[types.serverDatabase.host]
+type = "string"
+
+[types.serverDatabase.port]
+type = "integer"
+
+[types.database]
 if = { key = "engine", equals = "sqlite" }
 then = "types.sqliteDatabase"
 else = "types.serverDatabase"
 
-[elements.database]
-type = "types.database"</code></pre>
+[elements.storage]
+type = "types.database"
+optional = true</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>[database]
+                <pre class="toml-example"><code>[storage]
 engine = "postgresql"
 host = "db.internal"
 port = 5432</code></pre>
