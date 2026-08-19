@@ -9,7 +9,8 @@
 [![Go 1.27.0](https://img.shields.io/badge/Go-1.27.0-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4)](REFERENCE_IMPLEMENTATIONS.md#net)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11+-3776AB)](REFERENCE_IMPLEMENTATIONS.md#python)
-[![TypeScript 6](https://img.shields.io/badge/TypeScript-6-3178C6)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
+[![Node.js 26.7.0](https://img.shields.io/badge/Node.js-26.7.0-5FA04E)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
+[![TypeScript 7](https://img.shields.io/badge/TypeScript-7-3178C6)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
 
 TOML Schema is a TOML-based schema language for describing and validating the structure, names, value types, and common semantic relationships of TOML configuration files.
 

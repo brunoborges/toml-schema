@@ -14,7 +14,7 @@ command-line interface for validation, schema discovery through
 | .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
 | Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.97.1 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
-| Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 20.11+ and TypeScript 6 | Library, schema discovery, schema extraction |
+| Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 26.7+ and TypeScript 7 | Library, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
 They are reference-quality implementations rather than separately versioned,
@@ -302,7 +302,7 @@ The Rust test suite includes an ABNF conformance test (`tests/abnf_conformance.r
 
 ## Node.js / TypeScript
 
-The Node.js reference library is written in TypeScript 6 and uses
+The Node.js reference library is written in TypeScript 7 and uses
 [`smol-toml`](https://github.com/squirrelchat/smol-toml) to parse TOML. It
 preserves TOML integer, float, and temporal type distinctions and supports
 document-driven schema discovery and starter-schema extraction.
