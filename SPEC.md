@@ -941,14 +941,17 @@ may therefore describe a schema for which no document value is valid; it does
 not create last-wins behavior.
 
 Every component MUST resolve to an effective TOML kind compatible with the
-local definition. Scalar and array components must have the same kind as the
-local definition. Structured components must all be `table` or all be
-`collection`; a `table` and a `collection` are not interchangeable for
+local definition. When the local selector is `oneof` or `anyof`, all of its
+alternatives MUST resolve to the same effective kind before `allof` can be
+applied; a multi-kind local union combined with `allof` is indeterminate and
+MUST be rejected at schema-load time. Scalar and array components must have the
+same kind as the local definition. Structured components must all be `table` or
+all be `collection`; a `table` and a `collection` are not interchangeable for
 composition because they have different unknown-key semantics. A component
-whose alternatives resolve to different kinds is indeterminate and MUST be
-rejected. The bare built-ins `any` and `collection` MUST NOT appear directly in
-`allof`; a complete named definition may resolve to either where it is
-otherwise compatible.
+whose alternatives resolve to different kinds is likewise indeterminate and
+MUST be rejected. The bare built-ins `any` and `collection` MUST NOT appear
+directly in `allof`; a complete named definition may resolve to either where it
+is otherwise compatible.
 
 For composed arrays, the document array MUST independently satisfy the local
 array definition and every array component. Homogeneous `itemtype` constraints
