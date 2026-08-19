@@ -4,7 +4,7 @@
 [![License](https://img.shields.io/github/license/brunoborges/toml-schema)](LICENSE)
 [![TOML 1.0](https://img.shields.io/badge/TOML-1.0-9c4121)](https://toml.io/en/v1.0.0)
 [![Java 25](https://img.shields.io/badge/Java-25-007396)](REFERENCE_IMPLEMENTATIONS.md#java)
-[![Go 1.23](https://img.shields.io/badge/Go-1.23-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
+[![Go 1.26.6](https://img.shields.io/badge/Go-1.26.6-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
 [![Rust 1.75](https://img.shields.io/badge/Rust-1.75-dea584)](REFERENCE_IMPLEMENTATIONS.md#rust)
 
 TOML Schema is a TOML-based schema language for describing and validating the structure, names, value types, and common semantic relationships of TOML configuration files.
@@ -18,8 +18,11 @@ A TOML Schema document is itself a valid TOML document. Validators can use it to
 - [Self-schema](toml-schema.tosd) - a structural schema for TOML Schema documents;
   schema loaders enforce property types and conditional applicability.
 - [Example schema](config.tosd) and [example TOML document](config.toml) - a worked example used by the reference implementation tests.
-- [Industry examples](examples/) - representative schemas for Cargo,
-  `pyproject.toml`, Hugo, Netlify, GitLab Runner, and Cloudflare Wrangler.
+- [Examples](examples/) - conditional validation examples and representative
+  schemas for Cargo, `pyproject.toml`, Hugo, Netlify, GitLab Runner, and
+  Cloudflare Wrangler.
+- [Validation report](https://tomlschema.org/validation-report/) - results from
+  validating representative real-world TOML documents.
 - [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - implementation status, Java CLI/library usage, and conformance expectations.
 
 ## Quick example
