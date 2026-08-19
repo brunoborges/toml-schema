@@ -778,20 +778,20 @@ colors = [ "red", "green" ]
 	}
 }
 
-func TestRejectsRemovedArraytypeProperty(t *testing.T) {
+func TestRejectsUnknownProperty(t *testing.T) {
 	dir := t.TempDir()
-	schemaPath := write(t, dir, "arraytype.tosd", `
+	schemaPath := write(t, dir, "unknown-property.tosd", `
 [toml-schema]
 version = "1.0.0"
 
 [elements.values]
 type = "array"
-arraytype = "string"
+unknownproperty = "string"
 `)
 
 	if _, err := LoadSchema(schemaPath); err == nil ||
-		!strings.Contains(err.Error(), "unsupported property: arraytype") {
-		t.Fatalf("expected arraytype to be rejected as unsupported, got %v", err)
+		!strings.Contains(err.Error(), "unsupported property: unknownproperty") {
+		t.Fatalf("expected unknown property to be rejected as unsupported, got %v", err)
 	}
 }
 
@@ -1662,10 +1662,6 @@ location = "ignored.tosd"
 	if strings.Contains(schemaText, "[elements.toml-schema]") {
 		t.Fatalf("extracted schema should not include reserved metadata:\n%s", schemaText)
 	}
-	if strings.Contains(schemaText, "arraytype") {
-		t.Fatalf("extracted schema should not contain removed arraytype:\n%s", schemaText)
-	}
-
 	schema, err := LoadSchema(extractedSchema)
 	if err != nil {
 		t.Fatal(err)

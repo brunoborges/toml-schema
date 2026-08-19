@@ -883,7 +883,7 @@ function renderEditor() {
         box.append(listField("anyof", "anyof (at least one)", p.anyof || [], (arr) => setListProp(p, "anyof", arr), true));
     }
 
-    // string pattern + allowedvalues for simple types
+    // String pattern and allowed values for scalar types.
     if (t === "string") {
         box.append(textField("pattern", "Pattern (regex)", p.pattern || "", (v) => setProp(p, "pattern", v), true,
             "Portable RE2-profile regular expression."));

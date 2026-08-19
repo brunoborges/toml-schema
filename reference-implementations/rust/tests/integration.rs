@@ -813,8 +813,8 @@ min = 1
 }
 
 #[test]
-fn rejects_removed_arraytype_property() {
-    let directory = tempfile_dir("removed-arraytype");
+fn rejects_unknown_property() {
+    let directory = tempfile_dir("unknown-property");
     let schema_path = write_file(
         &directory,
         "schema.tosd",
@@ -824,11 +824,11 @@ version = "1.0.0"
 
 [elements.values]
 type = "array"
-arraytype = "integer"
+unknownproperty = "integer"
 "#,
     );
 
-    let error = Schema::load(&schema_path).expect_err("arraytype must be unsupported");
+    let error = Schema::load(&schema_path).expect_err("unknown property must be unsupported");
     assert!(
         error.contains("unsupported property"),
         "unexpected error: {error}"

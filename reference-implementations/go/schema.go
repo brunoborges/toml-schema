@@ -946,7 +946,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		return Definition{}, fmt.Errorf("%s can only define pattern when type is string", name)
 	}
 	if hasAllowedValues && (typeName == TypeTable || typeName == TypeCollection) {
-		return Definition{}, fmt.Errorf("%s can only define allowedvalues for simple types or arrays", name)
+		return Definition{}, fmt.Errorf("%s can only define allowedvalues for scalar, unconstrained, or array types", name)
 	}
 	if (minLength != nil || maxLength != nil) &&
 		typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {

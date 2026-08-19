@@ -115,9 +115,6 @@ final class SchemaLoader {
     }
 
     private SchemaDefinition parseDefinition(String name, TomlTable table) {
-        if (getPropertyValue(table, "arraytype") != null) {
-            throw new SchemaException(name + " contains unsupported property: arraytype");
-        }
         String typeSelector = getString(table, "type");
         SchemaType type = typeSelector == null
                 ? null
@@ -250,7 +247,7 @@ final class SchemaLoader {
             throw new SchemaException(name + " can only define pattern when type is string");
         }
         if (hasAllowedValues && (type == SchemaType.TABLE || type == SchemaType.COLLECTION)) {
-            throw new SchemaException(name + " can only define allowedvalues for simple types or arrays");
+            throw new SchemaException(name + " can only define allowedvalues for scalar, unconstrained, or array types");
         }
         if ((minLength != null || maxLength != null)
                 && type != SchemaType.STRING

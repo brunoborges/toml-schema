@@ -143,9 +143,6 @@ function tableToNode(name, table, path) {
             node.children.push(tableToNode(key, value, `${path}.${key}`));
         } else if (ALL_PROPS.has(key)) {
             node.props[key] = decodeProp(key, value, path);
-        } else if (key === "arraytype") {
-            // Preserve removed syntax long enough for validation to report it.
-            node.props[key] = String(value);
         } else {
             throw new TomlError(`Unsupported schema property at ${path}: ${key}`);
         }
@@ -1345,10 +1342,6 @@ export function validateModel(model) {
         const fixedChildren = fixedChildrenForNode(node);
         let compiledPattern = null;
 
-        if (p.arraytype != null) {
-            issues.push({ level: "error", path: label, message: "`arraytype` is not supported; use `itemtype`." });
-        }
-
         const exclusivity = ["type", "oneof", "anyof"].filter((key) => Object.prototype.hasOwnProperty.call(p, key));
         for (const key of ["type", "itemtype"]) {
             if (Object.prototype.hasOwnProperty.call(p, key) && !String(p[key]).trim()) {
@@ -1526,7 +1519,7 @@ export function validateModel(model) {
                 issues.push({ level: "error", path: label, message: "`allowedvalues` must be an array of TOML values." });
             }
             if (p.type && !SIMPLE_TYPES.has(p.type) && p.type !== "array") {
-                issues.push({ level: "error", path: label, message: "`allowedvalues` requires a simple type or `array`." });
+                issues.push({ level: "error", path: label, message: "`allowedvalues` requires a scalar, unconstrained, or `array` type." });
             }
             const expectedKind = p.type === "array"
                 ? (resolvedKinds(p.itemtype).size === 1 ? [...resolvedKinds(p.itemtype)][0] : null)
