@@ -12,7 +12,7 @@ public record SchemaCondition
     public object? IfEquals { get; init; }
 
     /// <summary>The array of values to test for membership</summary>
-    public List<object>? IfIn { get; init; }
+    public List<object?>? IfIn { get; init; }
 
     /// <summary>Type to apply when condition is true</summary>
     public string? ThenType { get; init; }

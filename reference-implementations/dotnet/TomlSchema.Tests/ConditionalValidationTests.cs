@@ -14,7 +14,7 @@ public class ConditionalValidationTests : TestBase
 
             [elements.config]
             type = "table"
-            mutuallyexclusive = ["option_a", "option_b"]
+            mutuallyexclusive = [ [ "option_a", "option_b" ] ]
 
                 [elements.config.option_a]
                 type = "string"
@@ -54,7 +54,7 @@ public class ConditionalValidationTests : TestBase
 
             [elements.server]
             type = "table"
-            dependentrequired = ["ssl_cert", "ssl_key"]
+            dependentrequired = { ssl_cert = [ "ssl_key" ] }
 
                 [elements.server.ssl_cert]
                 type = "string"
@@ -99,7 +99,7 @@ public class ConditionalValidationTests : TestBase
 
             [elements.config]
             type = "table"
-            exactlyone = ["env_file", "env_inline"]
+            exactlyone = [ [ "env_file", "env_inline" ] ]
 
                 [elements.config.env_file]
                 type = "string"
@@ -156,7 +156,7 @@ public class ConditionalValidationTests : TestBase
 
         var invalidResult = schemaObj.Validate(invalidToml);
         Assert.False(invalidResult.IsValid);
-        Assert.Contains(invalidResult.Errors, e => e.Code == "duplicate-items");
+        Assert.Contains(invalidResult.Errors, e => e.Code == "uniqueitems");
     }
 
     [Fact]
@@ -189,7 +189,6 @@ public class ConditionalValidationTests : TestBase
             version = "1.0.0"
 
             [elements.value]
-            type = "string"
             oneof = ["string", "integer"]
             """);
 
@@ -205,7 +204,6 @@ public class ConditionalValidationTests : TestBase
             version = "1.0.0"
 
             [elements.value]
-            type = "string"
             anyof = ["string", "integer"]
             """);
 
@@ -320,7 +318,7 @@ public class ConditionalValidationTests : TestBase
 
         var invalidResult = schemaObj.Validate(invalidToml);
         Assert.False(invalidResult.IsValid);
-        Assert.Contains(invalidResult.Errors, e => e.Code == "pattern-mismatch");
+        Assert.Contains(invalidResult.Errors, e => e.Code == "pattern");
     }
 
     [Fact]

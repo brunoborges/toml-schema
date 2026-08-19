@@ -32,11 +32,11 @@ public record SchemaDefinition
     /// <summary>Whether this element is optional</summary>
     public bool Optional { get; init; }
 
-    /// <summary>Minimum value (for numbers or array/string length)</summary>
-    public double? Min { get; init; }
+    /// <summary>Inclusive minimum value for comparable types</summary>
+    public object? Min { get; init; }
 
-    /// <summary>Maximum value (for numbers or array/string length)</summary>
-    public double? Max { get; init; }
+    /// <summary>Inclusive maximum value for comparable types</summary>
+    public object? Max { get; init; }
 
     /// <summary>Minimum string length (Unicode scalars)</summary>
     public long? MinLength { get; init; }
@@ -68,8 +68,8 @@ public record SchemaDefinition
     /// <summary>Nested child definitions</summary>
     public Dictionary<string, SchemaDefinition> Children { get; init; } = new();
 
-    /// <summary>Dependent required sibling rules (if key present, these are required)</summary>
-    public List<string>? DependentRequired { get; init; }
+    /// <summary>Dependent required sibling rules (if the trigger key is present, these are required)</summary>
+    public Dictionary<string, List<string>>? DependentRequired { get; init; }
 
     /// <summary>Mutually exclusive sibling groups</summary>
     public List<List<string>>? MutuallyExclusive { get; init; }

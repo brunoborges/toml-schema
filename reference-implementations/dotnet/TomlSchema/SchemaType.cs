@@ -77,6 +77,10 @@ public static class SchemaTypeExtensions
             ? type 
             : throw new ArgumentException($"Unknown type: {name}", nameof(name));
 
+    /// <summary>Tries to convert a schema-language built-in type name to its enum value.</summary>
+    public static bool TryFromSchemaName(string name, out SchemaType type) =>
+        NameTypes.TryGetValue(name, out type);
+
     /// <summary>Gets all supported schema-language built-in type names.</summary>
     public static IEnumerable<string> AllTypeNames => NameTypes.Keys;
 }

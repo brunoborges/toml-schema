@@ -1,8 +1,8 @@
 namespace TomlSchema;
 
+using Tomlyn;
 using Tomlyn.Model;
 using System.Text.RegularExpressions;
-using System.Globalization;
 
 /// <summary>
 /// Validates TOML documents against a schema.
@@ -12,409 +12,739 @@ internal class SchemaValidator
     private readonly TomlSchema _schema;
     private readonly List<ValidationError> _errors = new();
     private readonly List<ValidationWarning> _warnings = new();
+    private List<ValidationWarning> _nodeWarnings;
 
     public SchemaValidator(TomlSchema schema)
     {
         _schema = schema ?? throw new ArgumentNullException(nameof(schema));
+        _nodeWarnings = _warnings;
     }
 
     public ValidationResult Validate(TomlTable document)
     {
-        var workDoc = new TomlTable();
-        foreach (var kvp in document.Where(x => x.Key != "toml-schema"))
-            workDoc[kvp.Key] = kvp.Value;
+        ValidateFixedChildren("$", document, _schema.Elements);
 
-        // Validate top-level expected keys
-        foreach (var (key, schemaElem) in _schema.Elements)
+        foreach (var key in document.Keys)
         {
-            if (workDoc.TryGetValue(key, out var value))
-            {
-                ValidateElement(key, value, schemaElem, "$");
-            }
-            else if (!schemaElem.Optional)
-            {
-                _errors.Add(new ValidationError(AppendPath("$", key), $"required value is missing", "required"));
-            }
+            if (!_schema.Elements.ContainsKey(key) && key != "toml-schema")
+                Add("unexpected-key", AppendPath("$", key), "unexpected key");
         }
 
-        // Validate top-level unexpected keys
-        foreach (var key in workDoc.Keys)
-        {
-            if (!_schema.Elements.ContainsKey(key))
-            {
-                _errors.Add(new ValidationError(AppendPath("$", key), "unexpected key", "unexpected-key"));
-            }
-        }
-
-        return new ValidationResult(_errors.AsReadOnly(), _warnings.AsReadOnly());
+        return Result();
     }
 
-    private void ValidateElement(string name, object? value, SchemaDefinition schema, string path)
+    private ValidationResult Result() => new(_errors.AsReadOnly(), _warnings.AsReadOnly());
+
+    private void ValidateFixedChildren(
+        string path,
+        TomlTable table,
+        IReadOnlyDictionary<string, SchemaDefinition> definitions)
     {
-        string elemPath = AppendPath(path, name);
-
-        // Handle null values
-        if (value == null)
+        foreach (var (key, definition) in definitions)
         {
-            if (!schema.Optional)
-                _errors.Add(new ValidationError(elemPath, "required value is missing", "required"));
-            return;
-        }
-
-        // Emit deprecation warning
-        if (schema.Deprecated)
-            _warnings.Add(new ValidationWarning(elemPath, "Element is deprecated", "deprecated"));
-
-        ValidateType(value, schema, elemPath);
-    }
-
-    private void ValidateType(object? value, SchemaDefinition schema, string path)
-    {
-        // Handle null
-        if (value == null)
-        {
-            if (!schema.Optional)
-                _errors.Add(new ValidationError(path, "required value is missing", "required"));
-            return;
-        }
-
-        // Resolve reference
-        SchemaDefinition effectiveSchema = schema;
-        if (!string.IsNullOrEmpty(schema.Reference))
-        {
-            if (!_schema.Types.TryGetValue(schema.Reference, out var refSchema))
-                throw new InvalidOperationException($"Undefined type reference: {schema.Reference}");
-            effectiveSchema = refSchema;
-        }
-
-        // Handle conditionals
-        if (effectiveSchema.Condition != null)
-        {
-            bool matches = false;
-            if (value is TomlTable condTable
-                && condTable.TryGetValue(effectiveSchema.Condition.IfKey, out var testValue))
+            var childPath = AppendPath(path, key);
+            if (!table.TryGetValue(key, out var value) || value == null)
             {
-
-                if (effectiveSchema.Condition.IfEquals != null)
-                    matches = ValueEquals(testValue, effectiveSchema.Condition.IfEquals);
-                else if (effectiveSchema.Condition.IfIn != null)
-                    matches = effectiveSchema.Condition.IfIn.Any(v => ValueEquals(testValue, v));
-
+                if (!IsOptional(definition, new HashSet<string>()))
+                    Add("required", childPath, "required value is missing");
             }
-            string? selectedType = matches ? effectiveSchema.Condition.ThenType : effectiveSchema.Condition.ElseType;
-            var condSchema = _schema.ResolveType(selectedType)
-                ?? throw new InvalidOperationException($"Undefined type in conditional: {selectedType}");
-            ValidateType(value, condSchema, path);
-            return;
-        }
-
-        // Handle unions (oneof: exactly one)
-        if (effectiveSchema.OneOf != null && effectiveSchema.OneOf.Count > 0)
-        {
-            int matchCount = 0;
-            foreach (var typeRef in effectiveSchema.OneOf)
+            else
             {
-                var unionSchema = _schema.ResolveType(typeRef);
-                if (unionSchema != null)
-                {
-                    var testValidator = new SchemaValidator(_schema);
-                    testValidator.ValidateType(value, unionSchema, "$.test");
-                    if (testValidator._errors.Count == 0)
-                        matchCount++;
-                }
-            }
-            if (matchCount != 1)
-                _errors.Add(new ValidationError(path, $"expected exactly one matching type from oneof", "oneof"));
-            return;
-        }
-
-        // Handle unions (anyof: at least one)
-        if (effectiveSchema.AnyOf != null && effectiveSchema.AnyOf.Count > 0)
-        {
-            int matchCount = 0;
-            foreach (var typeRef in effectiveSchema.AnyOf)
-            {
-                var unionSchema = _schema.ResolveType(typeRef);
-                if (unionSchema != null)
-                {
-                    var testValidator = new SchemaValidator(_schema);
-                    testValidator.ValidateType(value, unionSchema, "$.test");
-                    if (testValidator._errors.Count == 0)
-                        matchCount++;
-                }
-            }
-            if (matchCount == 0)
-                _errors.Add(new ValidationError(path, "expected at least one matching type from anyof", "anyof"));
-            return;
-        }
-
-        // Type validation
-        var actualType = GetValueType(value);
-        if (effectiveSchema.Type.HasValue && !TypeMatches(actualType, effectiveSchema.Type.Value))
-        {
-            _errors.Add(new ValidationError(path, $"type mismatch", "type-mismatch"));
-            return;
-        }
-
-        // Allowed values
-        if (effectiveSchema.AllowedValues != null && effectiveSchema.AllowedValues.Count > 0)
-        {
-            if (!effectiveSchema.AllowedValues.Any(av => ValueEquals(av, value)))
-                _errors.Add(new ValidationError(path, "value not in allowed values", "invalid-value"));
-        }
-
-        // String constraints
-        if (effectiveSchema.Type == SchemaType.String && value is string strVal)
-        {
-            var length = CountUnicodeScalars(strVal);
-
-            if (effectiveSchema.MinLength.HasValue && length < effectiveSchema.MinLength)
-                _errors.Add(new ValidationError(path, $"string too short", "minlength"));
-
-            if (effectiveSchema.MaxLength.HasValue && length > effectiveSchema.MaxLength)
-                _errors.Add(new ValidationError(path, $"string too long", "maxlength"));
-
-            if (!string.IsNullOrEmpty(effectiveSchema.Pattern))
-            {
-                try
-                {
-                    if (!Regex.IsMatch(strVal, effectiveSchema.Pattern))
-                        _errors.Add(new ValidationError(path, "string does not match pattern", "pattern"));
-                }
-                catch (RegexParseException)
-                {
-                    _errors.Add(new ValidationError(path, $"invalid regex pattern", "pattern"));
-                }
-            }
-        }
-
-        // Numeric constraints
-        if ((effectiveSchema.Type == SchemaType.Integer || effectiveSchema.Type == SchemaType.Float) && value is IComparable)
-        {
-            double numValue = value is long l ? (double)l : value is double d ? d : 0;
-
-            if (effectiveSchema.Min.HasValue && numValue < effectiveSchema.Min.Value)
-                _errors.Add(new ValidationError(path, $"value below minimum", "min"));
-
-            if (effectiveSchema.Max.HasValue && numValue > effectiveSchema.Max.Value)
-                _errors.Add(new ValidationError(path, $"value above maximum", "max"));
-        }
-
-        // Table validation
-        if (effectiveSchema.Type == SchemaType.Table && value is TomlTable tableValue)
-            ValidateTable(tableValue, effectiveSchema, path);
-
-        // Array validation
-        if (effectiveSchema.Type == SchemaType.Array && value is TomlArray array)
-            ValidateArray(array, effectiveSchema, path);
-
-        // Collection validation
-        if (effectiveSchema.Type == SchemaType.Collection && value is TomlTable collTable)
-            ValidateCollection(collTable, effectiveSchema, path);
-    }
-
-    private void ValidateTable(TomlTable table, SchemaDefinition schema, string path)
-    {
-        // Validate fixed children
-        foreach (var (key, childSchema) in schema.Children)
-        {
-            if (table.TryGetValue(key, out var childValue))
-            {
-                ValidateElement(key, childValue, childSchema, path);
-            }
-            else if (!childSchema.Optional)
-            {
-                _errors.Add(new ValidationError(AppendPath(path, key), "required value is missing", "required"));
-            }
-        }
-
-        // Validate unexpected keys (nested)
-        foreach (var key in table.Keys)
-        {
-            if (!schema.Children.ContainsKey(key))
-                _errors.Add(new ValidationError(AppendPath(path, key), "unexpected key", "unexpected-key"));
-        }
-
-        // Sibling rules
-        ValidatePresenceRules(table, schema, path);
-    }
-
-    private void ValidatePresenceRules(TomlTable table, SchemaDefinition schema, string path)
-    {
-        // dependentrequired
-        if (schema.DependentRequired != null)
-        {
-            foreach (var dep in schema.DependentRequired)
-            {
-                if (table.ContainsKey(dep))
-                {
-                    foreach (var required in schema.Children.Keys)
-                    {
-                        if (!table.ContainsKey(required))
-                            _errors.Add(new ValidationError(AppendPath(path, required), 
-                                $"required by presence of {dep}", "dependentrequired"));
-                    }
-                }
-            }
-        }
-
-        // mutuallyexclusive
-        if (schema.MutuallyExclusive != null)
-        {
-            foreach (var group in schema.MutuallyExclusive)
-            {
-                var present = table.Keys.Where(k => group.Contains(k)).ToList();
-                if (present.Count > 1)
-                    _errors.Add(new ValidationError(path, "mutually exclusive keys present", "mutuallyexclusive"));
-            }
-        }
-
-        // exactlyone
-        if (schema.ExactlyOne != null)
-        {
-            foreach (var group in schema.ExactlyOne)
-            {
-                var present = table.Keys.Where(k => group.Contains(k)).ToList();
-                if (present.Count != 1)
-                    _errors.Add(new ValidationError(path, "exactly one key must be present", "exactlyone"));
+                ValidateNode(childPath, value, definition);
             }
         }
     }
 
-    private void ValidateArray(TomlArray array, SchemaDefinition schema, string path)
+    private void ValidateNode(string path, object? value, SchemaDefinition definition)
     {
-        // Unique items
-        if (schema.UniqueItems == true)
-        {
-            var seen = new HashSet<string>();
-            foreach (var item in array)
-            {
-                var itemStr = NormalizeValue(item);
-                if (!seen.Add(itemStr))
-                    _errors.Add(new ValidationError(path, "array contains duplicate items", "uniqueitems"));
-            }
-        }
-
-        // Array length
-        if (schema.Min.HasValue && array.Count < schema.Min)
-            _errors.Add(new ValidationError(path, "array too short", "min"));
-
-        if (schema.Max.HasValue && array.Count > schema.Max)
-            _errors.Add(new ValidationError(path, "array too long", "max"));
-
-        // Item type validation
-        if (!string.IsNullOrEmpty(schema.ItemType) && _schema.Types.TryGetValue(schema.ItemType, out var itemSchema))
-        {
-            for (int i = 0; i < array.Count; i++)
-            {
-                ValidateType(array[i], itemSchema, $"{path}[{i}]");
-            }
-        }
+        ValidateComposedNode(
+            path,
+            value,
+            definition,
+            new HashSet<string>(),
+            CollectFixedChildren(definition, new HashSet<string>()),
+            !ResolvesToUnionSelector(definition, new HashSet<string>()),
+            _warnings);
     }
 
-    private void ValidateCollection(TomlTable table, SchemaDefinition schema, string path)
+    /// <summary>
+    /// Validates every contributor of one composed node. Warnings raised for the node itself are
+    /// buffered and only committed when the node contributed no error.
+    /// </summary>
+    private void ValidateComposedNode(
+        string path,
+        object? value,
+        SchemaDefinition definition,
+        HashSet<string> externalChildren,
+        HashSet<string> closure,
+        bool enforceClosure,
+        List<ValidationWarning> nodeSink)
     {
-        // Collections allow any string keys matching keypattern
-        var keyPattern = schema.KeyPattern;
-
-        foreach (var (key, value) in table)
+        var enclosingWarnings = _nodeWarnings;
+        var scopedWarnings = new List<ValidationWarning>();
+        _nodeWarnings = scopedWarnings;
+        var errorsBefore = _errors.Count;
+        try
         {
-            var keyPath = AppendPath(path, key);
+            ValidateContributor(path, value, definition, externalChildren, new HashSet<string>());
 
-            // Validate key pattern
-            if (!string.IsNullOrEmpty(keyPattern))
+            if (enforceClosure
+                && EffectiveKind(definition, new HashSet<string>()) == SchemaType.Table
+                && value is TomlTable table
+                && closure.Count > 0)
             {
-                try
+                foreach (var key in table.Keys)
                 {
-                    if (!Regex.IsMatch(key, keyPattern))
-                        _errors.Add(new ValidationError(keyPath, "key does not match keypattern", "keypattern"));
-                }
-                catch (RegexParseException)
-                {
-                    _errors.Add(new ValidationError(keyPath, "invalid keypattern regex", "keypattern"));
+                    if (!closure.Contains(key))
+                        Add("unexpected-key", AppendPath(path, key), "unexpected key");
                 }
             }
 
-            // Validate value type
-            if (!string.IsNullOrEmpty(schema.ItemType) && _schema.Types.TryGetValue(schema.ItemType, out var valueSchema))
-            {
-                ValidateType(value, valueSchema, keyPath);
-            }
+            if (IsDeprecated(definition, new HashSet<string>()))
+                _nodeWarnings.Add(new ValidationWarning(path, "value is deprecated", "deprecated"));
         }
-    }
-
-    private SchemaType GetValueType(object value) => value switch
-    {
-        string => SchemaType.String,
-        long => SchemaType.Integer,
-        double => SchemaType.Float,
-        bool => SchemaType.Boolean,
-        DateTime dt when dt.Kind == DateTimeKind.Utc => SchemaType.OffsetDateTime,
-        DateTime => SchemaType.LocalDateTime,
-        DateOnly => SchemaType.LocalDate,
-        TimeOnly => SchemaType.LocalTime,
-        TomlArray => SchemaType.Array,
-        TomlTable => SchemaType.Table,
-        _ => SchemaType.Any
-    };
-
-    private bool TypeMatches(SchemaType actual, SchemaType expected) =>
-        expected == SchemaType.Any || actual == expected;
-
-    private bool ValueEquals(object? a, object? b)
-    {
-        if (ReferenceEquals(a, b))
-            return true;
-        if (a == null || b == null)
-            return false;
-        return a.Equals(b);
-    }
-
-    private string NormalizeValue(object? value) => value switch
-    {
-        null => "null",
-        string s => $"\"{s}\"",
-        bool b => b ? "true" : "false",
-        long l => l.ToString(),
-        double d => d.ToString(CultureInfo.InvariantCulture),
-        DateTime dt => dt.ToString("O"),
-        DateOnly d => d.ToString("O"),
-        TimeOnly t => t.ToString("O"),
-        _ => value.ToString() ?? "null"
-    };
-
-    private long CountUnicodeScalars(string str)
-    {
-        // Count Unicode scalar values (handling surrogate pairs correctly)
-        long count = 0;
-        for (int i = 0; i < str.Length; i++)
+        finally
         {
-            char c = str[i];
-            if (char.IsHighSurrogate(c))
-            {
-                i++; // Skip the low surrogate
-            }
-            count++;
+            _nodeWarnings = enclosingWarnings;
         }
-        return count;
+
+        if (_errors.Count == errorsBefore)
+            nodeSink.AddRange(scopedWarnings);
     }
 
-    private string AppendPath(string path, string key)
+    private void ValidateContributor(
+        string path,
+        object? value,
+        SchemaDefinition definition,
+        HashSet<string> externalChildren,
+        HashSet<string> visiting)
     {
-        // Quote key if it contains special characters
-        string formattedKey;
-        if (Regex.IsMatch(key, "^[A-Za-z0-9_-]+$"))
+        if (definition.Reference != null)
         {
-            formattedKey = key;
+            var referenceExternal = SiblingChildren(definition, externalChildren, true, null, visiting);
+            var referenceScope = new HashSet<string>(visiting);
+            ValidateContributor(path, value, Reference(definition.Reference, referenceScope),
+                referenceExternal, referenceScope);
+            ValidateNodeRules(path, value, definition);
+        }
+        else if (definition.Condition != null)
+        {
+            ValidateConditional(path, value, definition,
+                SiblingChildren(definition, externalChildren, true, null, visiting));
+        }
+        else if (Alternatives(definition) is { Count: > 0 })
+        {
+            ValidateUnion(path, value, definition,
+                SiblingChildren(definition, externalChildren, true, null, visiting));
+            ValidateNodeRules(path, value, definition);
         }
         else
         {
-            formattedKey = $"\"{EscapeString(key)}\"";
+            var type = definition.Type ?? SchemaType.Any;
+            if (!IsType(value, type))
+            {
+                Add("type-mismatch", path, $"expected {type.ToSchemaName()} but found {TypeName(value)}");
+            }
+            else
+            {
+                ValidateCommonConstraints(path, value, definition);
+                switch (type)
+                {
+                    case SchemaType.Table:
+                        ValidateTableContributor(path, (TomlTable)value!, definition);
+                        break;
+                    case SchemaType.Collection:
+                        ValidateCollectionContributor(path, (TomlTable)value!, definition,
+                            NodeChildren(definition, externalChildren, visiting));
+                        break;
+                    case SchemaType.Array:
+                        ValidateArray(path, AsArray(value)!, definition);
+                        break;
+                }
+            }
         }
 
-        return $"{path}.{formattedKey}";
+        foreach (var component in definition.AllOf ?? new List<string>())
+        {
+            var componentScope = new HashSet<string>(visiting);
+            var componentExternal = SiblingChildren(definition, externalChildren, false, component, visiting);
+            ValidateContributor(path, value, Reference(component, componentScope),
+                componentExternal, componentScope);
+        }
     }
 
-    private string EscapeString(string s) =>
-        s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    private void ValidateNodeRules(string path, object? value, SchemaDefinition definition)
+    {
+        if (value is TomlTable table)
+            ValidatePresenceRules(path, table, definition);
+
+        if (definition.UniqueItems == true && AsArray(value) is { } array)
+            ValidateUniqueItems(path, array);
+    }
+
+    private HashSet<string> SiblingChildren(
+        SchemaDefinition definition,
+        HashSet<string> externalChildren,
+        bool excludePrimary,
+        string? excludedComponent,
+        HashSet<string> visiting)
+    {
+        var result = new HashSet<string>(externalChildren);
+        result.UnionWith(definition.Children.Keys);
+        if (!excludePrimary)
+            result.UnionWith(PrimaryChildren(definition, visiting));
+
+        foreach (var component in definition.AllOf ?? new List<string>())
+        {
+            if (component == excludedComponent)
+                continue;
+            var scope = new HashSet<string>(visiting);
+            result.UnionWith(CollectFixedChildren(Reference(component, scope), scope));
+        }
+
+        return result;
+    }
+
+    private HashSet<string> PrimaryChildren(SchemaDefinition definition, HashSet<string> visiting)
+    {
+        if (definition.Reference != null)
+        {
+            var scope = new HashSet<string>(visiting);
+            return CollectFixedChildren(Reference(definition.Reference, scope), scope);
+        }
+
+        var result = new HashSet<string>();
+        if (definition.Condition != null)
+        {
+            foreach (var branch in ConditionBranches(definition.Condition))
+            {
+                var scope = new HashSet<string>(visiting);
+                result.UnionWith(CollectFixedChildren(Reference(branch, scope), scope));
+            }
+        }
+
+        foreach (var alternative in Alternatives(definition))
+        {
+            var scope = new HashSet<string>(visiting);
+            result.UnionWith(CollectFixedChildren(Reference(alternative, scope), scope));
+        }
+
+        return result;
+    }
+
+    private HashSet<string> NodeChildren(
+        SchemaDefinition definition,
+        HashSet<string> externalChildren,
+        HashSet<string> visiting)
+    {
+        var result = new HashSet<string>(externalChildren);
+        result.UnionWith(CollectFixedChildren(definition, new HashSet<string>(visiting)));
+        return result;
+    }
+
+    private static List<string> Alternatives(SchemaDefinition definition) =>
+        definition.OneOf ?? definition.AnyOf ?? new List<string>();
+
+    private static List<string> ConditionBranches(SchemaCondition condition)
+    {
+        var branches = new List<string>();
+        if (condition.ThenType != null)
+            branches.Add(condition.ThenType);
+        if (condition.ElseType != null)
+            branches.Add(condition.ElseType);
+        return branches;
+    }
+
+    private void ValidateConditional(
+        string path,
+        object? value,
+        SchemaDefinition definition,
+        HashSet<string> sharedChildren)
+    {
+        var condition = definition.Condition!;
+        if (value is not TomlTable table)
+        {
+            var kind = EffectiveKind(definition, new HashSet<string>());
+            Add("type-mismatch", path, $"expected {kind.ToSchemaName()} but found {TypeName(value)}");
+            return;
+        }
+
+        var matches = table.TryGetValue(condition.IfKey, out var discriminator)
+            && discriminator != null
+            && (condition.IfIn != null
+                ? condition.IfIn.Any(candidate => ValuesEqual(discriminator, candidate))
+                : ValuesEqual(discriminator, condition.IfEquals));
+
+        var selected = matches ? condition.ThenType : condition.ElseType;
+        if (selected == null)
+            throw new InvalidOperationException($"Conditional at {path} does not define a branch");
+
+        var branch = new SchemaValidator(_schema);
+        var selectedDefinition = branch.Reference(selected, new HashSet<string>());
+        var branchClosure = branch.CollectFixedChildren(selectedDefinition, new HashSet<string>());
+        branchClosure.UnionWith(sharedChildren);
+        var branchNodeWarnings = new List<ValidationWarning>();
+        branch.ValidateComposedNode(path, value, selectedDefinition,
+            sharedChildren, branchClosure, true, branchNodeWarnings);
+
+        var branchResult = branch.Result();
+        _errors.AddRange(branchResult.Errors);
+        _warnings.AddRange(branchResult.Warnings);
+        _nodeWarnings.AddRange(branchNodeWarnings);
+    }
+
+    private void ValidateUnion(
+        string path,
+        object? value,
+        SchemaDefinition definition,
+        HashSet<string> sharedChildren)
+    {
+        var successful = new List<(ValidationResult Result, List<ValidationWarning> NodeWarnings)>();
+        foreach (var alternative in Alternatives(definition))
+        {
+            var branch = new SchemaValidator(_schema);
+            var alternativeDefinition = branch.Reference(alternative, new HashSet<string>());
+            var branchClosure = branch.CollectFixedChildren(alternativeDefinition, new HashSet<string>());
+            branchClosure.UnionWith(sharedChildren);
+            var branchNodeWarnings = new List<ValidationWarning>();
+            branch.ValidateComposedNode(path, value, alternativeDefinition,
+                sharedChildren, branchClosure, true, branchNodeWarnings);
+
+            var branchResult = branch.Result();
+            if (branchResult.IsValid)
+                successful.Add((branchResult, branchNodeWarnings));
+        }
+
+        if (definition.OneOf != null && successful.Count != 1)
+        {
+            Add("oneof", path,
+                $"expected exactly one matching type from oneof but found {successful.Count}");
+            return;
+        }
+
+        if (definition.OneOf == null && definition.AnyOf != null && successful.Count == 0)
+        {
+            Add("anyof", path, "expected at least one matching type from anyof");
+            return;
+        }
+
+        foreach (var (result, nodeWarnings) in successful)
+        {
+            _warnings.AddRange(result.Warnings);
+            _nodeWarnings.AddRange(nodeWarnings);
+        }
+    }
+
+    private void ValidateTableContributor(string path, TomlTable table, SchemaDefinition definition)
+    {
+        ValidateFixedChildren(path, table, definition.Children);
+        ValidatePresenceRules(path, table, definition);
+    }
+
+    private void ValidateCollectionContributor(
+        string path,
+        TomlTable table,
+        SchemaDefinition definition,
+        HashSet<string> fixedChildren)
+    {
+        ValidateFixedChildren(path, table, definition.Children);
+        ValidatePresenceRules(path, table, definition);
+
+        var dynamicEntries = 0;
+        foreach (var (key, value) in table)
+        {
+            if (fixedChildren.Contains(key))
+                continue;
+
+            dynamicEntries++;
+            var childPath = AppendPath(path, key);
+            if (definition.KeyPattern != null && !Regex.IsMatch(key, definition.KeyPattern))
+                Add("keypattern", childPath, $"key does not match keypattern {definition.KeyPattern}");
+
+            if (definition.ItemType != null)
+                ValidateNode(childPath, value, Reference(definition.ItemType, new HashSet<string>()));
+        }
+
+        ValidateLength(path, dynamicEntries, definition);
+    }
+
+    private void ValidatePresenceRules(string path, TomlTable table, SchemaDefinition definition)
+    {
+        foreach (var (trigger, dependencies) in definition.DependentRequired
+            ?? new Dictionary<string, List<string>>())
+        {
+            if (!table.ContainsKey(trigger))
+                continue;
+
+            foreach (var required in dependencies)
+            {
+                if (!table.ContainsKey(required))
+                    Add("dependentrequired", AppendPath(path, required),
+                        $"{required} is required when {trigger} is present");
+            }
+        }
+
+        foreach (var group in definition.MutuallyExclusive ?? new List<List<string>>())
+        {
+            if (group.Count(table.ContainsKey) > 1)
+                Add("mutuallyexclusive", path,
+                    $"at most one of [{string.Join(", ", group)}] may be present");
+        }
+
+        foreach (var group in definition.ExactlyOne ?? new List<List<string>>())
+        {
+            if (group.Count(table.ContainsKey) != 1)
+                Add("exactlyone", path,
+                    $"exactly one of [{string.Join(", ", group)}] must be present");
+        }
+    }
+
+    private void ValidateArray(string path, IReadOnlyList<object?> array, SchemaDefinition definition)
+    {
+        ValidateLength(path, array.Count, definition);
+
+        if (definition.UniqueItems == true)
+            ValidateUniqueItems(path, array);
+
+        if (definition.Items is { Count: > 0 } items)
+        {
+            if (array.Count != items.Count)
+                Add("tuple-length", path, $"expected array length {items.Count} but found {array.Count}");
+
+            var upperBound = Math.Min(array.Count, items.Count);
+            for (var i = 0; i < upperBound; i++)
+                ValidateNode($"{path}[{i}]", array[i], Reference(items[i], new HashSet<string>()));
+
+            return;
+        }
+
+        for (var i = 0; i < array.Count; i++)
+        {
+            var item = array[i];
+            var itemPath = $"{path}[{i}]";
+            if (definition.ItemType != null)
+                ValidateNode(itemPath, item, Reference(definition.ItemType, new HashSet<string>()));
+
+            if (definition.AllowedValues != null)
+                ValidateAllowedValues(itemPath, item, definition);
+
+            if ((definition.Min != null || definition.Max != null) && BoundariesAreComparableWith(item, definition))
+                ValidateRange(itemPath, item, definition);
+        }
+    }
+
+    private void ValidateUniqueItems(string path, IReadOnlyList<object?> array)
+    {
+        for (var i = 0; i < array.Count; i++)
+        {
+            for (var j = 0; j < i; j++)
+            {
+                if (ValuesEqual(array[i], array[j]))
+                {
+                    Add("uniqueitems", $"{path}[{i}]", $"array item duplicates item at index {j}");
+                    break;
+                }
+            }
+        }
+    }
+
+    private void ValidateCommonConstraints(string path, object? value, SchemaDefinition definition)
+    {
+        if (AsArray(value) != null)
+            return;
+
+        ValidateAllowedValues(path, value, definition);
+        if (definition.AllowedValues == null)
+            ValidateRange(path, value, definition);
+
+        if (value is string text)
+        {
+            ValidateLength(path, CountUnicodeScalars(text), definition);
+            if (definition.Pattern != null && !Regex.IsMatch(text, definition.Pattern))
+                Add("pattern", path, $"does not match pattern {definition.Pattern}");
+        }
+    }
+
+    private void ValidateAllowedValues(string path, object? value, SchemaDefinition definition)
+    {
+        if (definition.AllowedValues is { Count: > 0 } allowedValues
+            && !allowedValues.Any(allowed => ValuesEqual(allowed, value)))
+            Add("allowedvalues", path, "value is not in allowedvalues");
+    }
+
+    private void ValidateRange(string path, object? value, SchemaDefinition definition)
+    {
+        if (definition.Min != null && Compare(value, definition.Min) is { } minComparison && minComparison < 0)
+            Add("min", path, "value is less than min");
+
+        if (definition.Max != null && Compare(value, definition.Max) is { } maxComparison && maxComparison > 0)
+            Add("max", path, "value is greater than max");
+    }
+
+    private void ValidateLength(string path, long length, SchemaDefinition definition)
+    {
+        if (definition.MinLength != null && length < definition.MinLength)
+            Add("minlength", path, "length is less than minlength");
+
+        if (definition.MaxLength != null && length > definition.MaxLength)
+            Add("maxlength", path, "length is greater than maxlength");
+    }
+
+    private static bool BoundariesAreComparableWith(object? value, SchemaDefinition definition) =>
+        BoundaryIsComparableWith(value, definition.Min) && BoundaryIsComparableWith(value, definition.Max);
+
+    private static bool BoundaryIsComparableWith(object? value, object? boundary)
+    {
+        if (boundary == null)
+            return true;
+
+        return Compare(value, boundary) != null;
+    }
+
+    private HashSet<string> CollectFixedChildren(SchemaDefinition definition, HashSet<string> visiting)
+    {
+        var result = new HashSet<string>(definition.Children.Keys);
+
+        if (definition.Reference != null)
+        {
+            result.UnionWith(CollectFixedChildren(
+                Reference(definition.Reference, visiting), new HashSet<string>(visiting)));
+        }
+
+        if (definition.Condition != null)
+        {
+            foreach (var branch in ConditionBranches(definition.Condition))
+            {
+                var scope = new HashSet<string>(visiting);
+                result.UnionWith(CollectFixedChildren(Reference(branch, scope), scope));
+            }
+        }
+
+        foreach (var alternative in Alternatives(definition))
+        {
+            result.UnionWith(CollectFixedChildren(
+                Reference(alternative, visiting), new HashSet<string>(visiting)));
+        }
+
+        foreach (var component in definition.AllOf ?? new List<string>())
+        {
+            result.UnionWith(CollectFixedChildren(
+                Reference(component, visiting), new HashSet<string>(visiting)));
+        }
+
+        return result;
+    }
+
+    private SchemaType EffectiveKind(SchemaDefinition definition, HashSet<string> visiting)
+    {
+        if (definition.Reference != null)
+            return EffectiveKind(Reference(definition.Reference, visiting), new HashSet<string>(visiting));
+
+        if (definition.Condition?.ThenType != null)
+        {
+            return EffectiveKind(
+                Reference(definition.Condition.ThenType, visiting), new HashSet<string>(visiting));
+        }
+
+        var alternatives = Alternatives(definition);
+        if (alternatives.Count > 0)
+        {
+            SchemaType? kind = null;
+            foreach (var alternative in alternatives)
+            {
+                var candidate = EffectiveKind(
+                    Reference(alternative, visiting), new HashSet<string>(visiting));
+                if (kind == null)
+                    kind = candidate;
+                else if (kind != candidate)
+                    return SchemaType.Any;
+            }
+
+            return kind ?? SchemaType.Any;
+        }
+
+        return definition.Type ?? SchemaType.Any;
+    }
+
+    private bool ResolvesToUnionSelector(SchemaDefinition definition, HashSet<string> visiting)
+    {
+        if (definition.Condition != null || Alternatives(definition).Count > 0)
+            return true;
+
+        return definition.Reference != null
+            && ResolvesToUnionSelector(
+                Reference(definition.Reference, visiting), new HashSet<string>(visiting));
+    }
+
+    private bool IsOptional(SchemaDefinition definition, HashSet<string> visiting)
+    {
+        if (definition.Optional)
+            return true;
+
+        return definition.Reference != null
+            && IsOptional(Reference(definition.Reference, visiting), new HashSet<string>(visiting));
+    }
+
+    private bool IsDeprecated(SchemaDefinition definition, HashSet<string> visiting)
+    {
+        if (definition.Deprecated)
+            return true;
+
+        if (definition.Reference != null
+            && IsDeprecated(Reference(definition.Reference, visiting), new HashSet<string>(visiting)))
+            return true;
+
+        foreach (var component in definition.AllOf ?? new List<string>())
+        {
+            if (IsDeprecated(Reference(component, visiting), new HashSet<string>(visiting)))
+                return true;
+        }
+
+        return false;
+    }
+
+    private SchemaDefinition Reference(string reference, HashSet<string> visiting)
+    {
+        var normalized = SchemaLoader.NormalizeReference(reference);
+        if (SchemaTypeExtensions.TryFromSchemaName(normalized, out var builtIn))
+            return new SchemaDefinition { Type = builtIn };
+
+        if (!visiting.Add(normalized))
+            throw new InvalidOperationException($"Cyclic schema reference involving types.{normalized}");
+
+        return _schema.Types.TryGetValue(normalized, out var definition)
+            ? definition
+            : throw new InvalidOperationException($"Unknown schema type reference: types.{normalized}");
+    }
+
+    private static bool IsType(object? value, SchemaType type) => type switch
+    {
+        SchemaType.Any => true,
+        SchemaType.String => value is string,
+        SchemaType.Integer => value is long,
+        SchemaType.Float => value is double,
+        SchemaType.Boolean => value is bool,
+        SchemaType.OffsetDateTime => IsDateTimeKind(value, TomlDateTimeKind.OffsetDateTimeByZ,
+            TomlDateTimeKind.OffsetDateTimeByNumber),
+        SchemaType.LocalDateTime => IsDateTimeKind(value, TomlDateTimeKind.LocalDateTime),
+        SchemaType.LocalDate => IsDateTimeKind(value, TomlDateTimeKind.LocalDate),
+        SchemaType.LocalTime => IsDateTimeKind(value, TomlDateTimeKind.LocalTime),
+        SchemaType.Array => AsArray(value) != null,
+        SchemaType.Table or SchemaType.Collection => value is TomlTable,
+        _ => false
+    };
+
+    private static bool IsDateTimeKind(object? value, params TomlDateTimeKind[] kinds) =>
+        value is TomlDateTime dateTime && kinds.Contains(dateTime.Kind);
+
+    private static string TypeName(object? value) => value switch
+    {
+        null => "null",
+        string => "string",
+        long => "integer",
+        double => "float",
+        bool => "boolean",
+        TomlDateTime dateTime => dateTime.Kind switch
+        {
+            TomlDateTimeKind.LocalDateTime => "local-date-time",
+            TomlDateTimeKind.LocalDate => "local-date",
+            TomlDateTimeKind.LocalTime => "local-time",
+            _ => "offset-date-time"
+        },
+        TomlTable => "table",
+        _ => AsArray(value) != null ? "array" : value.GetType().Name
+    };
+
+    private static IReadOnlyList<object?>? AsArray(object? value) => value switch
+    {
+        TomlArray array => array.Cast<object?>().ToList(),
+        TomlTableArray tableArray => tableArray.Cast<object?>().ToList(),
+        _ => null
+    };
+
+    private static bool ValuesEqual(object? left, object? right)
+    {
+        if (ReferenceEquals(left, right))
+            return true;
+        if (left == null || right == null)
+            return false;
+
+        if (left is TomlDateTime leftDateTime && right is TomlDateTime rightDateTime)
+        {
+            return leftDateTime.Kind == rightDateTime.Kind
+                && leftDateTime.DateTime.Equals(rightDateTime.DateTime);
+        }
+
+        if (AsArray(left) is { } leftArray && AsArray(right) is { } rightArray)
+        {
+            if (leftArray.Count != rightArray.Count)
+                return false;
+
+            for (var i = 0; i < leftArray.Count; i++)
+            {
+                if (!ValuesEqual(leftArray[i], rightArray[i]))
+                    return false;
+            }
+
+            return true;
+        }
+
+        if (left is TomlTable leftTable && right is TomlTable rightTable)
+        {
+            if (leftTable.Count != rightTable.Count)
+                return false;
+
+            foreach (var (key, leftValue) in leftTable)
+            {
+                if (!rightTable.TryGetValue(key, out var rightValue) || !ValuesEqual(leftValue, rightValue))
+                    return false;
+            }
+
+            return true;
+        }
+
+        if (IsNumber(left) && IsNumber(right))
+            return Convert.ToDouble(left).Equals(Convert.ToDouble(right));
+
+        return left.Equals(right);
+    }
+
+    private static bool IsNumber(object value) => value is long or double;
+
+    private static int? Compare(object? value, object? boundary)
+    {
+        if (value == null || boundary == null)
+            return null;
+
+        if (IsNumber(value) && IsNumber(boundary))
+            return Convert.ToDouble(value).CompareTo(Convert.ToDouble(boundary));
+
+        if (value is TomlDateTime valueDateTime && boundary is TomlDateTime boundaryDateTime)
+            return valueDateTime.DateTime.CompareTo(boundaryDateTime.DateTime);
+
+        return null;
+    }
+
+    private static long CountUnicodeScalars(string text)
+    {
+        long count = 0;
+        for (var i = 0; i < text.Length; i++)
+        {
+            if (char.IsHighSurrogate(text[i]) && i + 1 < text.Length && char.IsLowSurrogate(text[i + 1]))
+                i++;
+            count++;
+        }
+
+        return count;
+    }
+
+    private static string AppendPath(string path, string key) => $"{path}.{FormatKey(key)}";
+
+    private static string FormatKey(string key) =>
+        Regex.IsMatch(key, "^[A-Za-z0-9_-]+$")
+            ? key
+            : $"\"{key.Replace("\\", "\\\\").Replace("\"", "\\\"")}\"";
+
+    private void Add(string code, string path, string message) =>
+        _errors.Add(new ValidationError(path, message, code));
 }
