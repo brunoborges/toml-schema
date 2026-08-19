@@ -1,6 +1,6 @@
 # Reference Implementations
 
-Build and use the TOML Schema reference libraries in Java, Go, .NET, and Rust. Rust also
+Build and use the TOML Schema reference libraries in Java, Go, .NET, Python, and Rust. Rust also
 provides the canonical `toml-schema` command-line interface for validation, schema
 discovery through `[toml-schema].location`, and starter-schema extraction.
 
@@ -11,6 +11,7 @@ discovery through `[toml-schema].location`, and starter-schema extraction.
 | Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, schema discovery |
 | Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, schema discovery, schema extraction |
 | .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
+| Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
@@ -166,6 +167,51 @@ returned `DiscoveredSchema`.
 
 The .NET test suite reads `toml-schema.abnf` as a conformance guard and checks that the implementation's supported schema properties and built-in type names match the grammar.
 
+## Python
+
+The Python 3.11+ reference library uses the standard-library
+[`tomllib`](https://docs.python.org/3/library/tomllib.html) parser to validate
+parsed TOML documents against a `.tosd` schema. Its library API also supports
+document-driven schema discovery through `[toml-schema].location`.
+
+Run the full Python test suite:
+
+```shell
+python3 -m unittest discover -s reference-implementations/python/tests -v
+```
+
+Use the library API:
+
+```python
+from toml_schema import load_schema
+
+schema = load_schema("config.tosd")
+result = schema.validate_file("config.toml")
+
+if not result.valid:
+    for error in result.errors:
+        print(f"{error.path}: {error.message}")
+```
+
+Validate using `[toml-schema].location` from the TOML document:
+
+```python
+from toml_schema import validate_document
+
+result = validate_document("config.toml")
+```
+
+Schema discovery resolves relative locations from the document's parent
+directory, accepts absolute local paths and hierarchical `file` URIs, and
+rejects unsupported schemes, opaque `file` URIs, non-local hosts, and
+query/fragment components. An optional document `[toml-schema].version` must
+have a compatible major version; other version differences are reported as
+warnings.
+
+The Python test suite reads `toml-schema.abnf` as a conformance guard and checks
+that the implementation's supported schema properties and built-in type names
+match the grammar.
+
 ## Rust
 
 The Rust reference implementation uses the [`toml`](https://crates.io/crates/toml)
@@ -255,7 +301,7 @@ language-version compatibility rules from `SPEC.md`, and expose validation and
 schema extraction commands suitable for automation and editor integration.
 
 The GitHub Actions workflow in `.github/workflows/reference-implementations.yml`
-enforces these expectations for Java, Go, .NET, and Rust. Rust additionally exercises
+enforces these expectations for Java, Go, .NET, Python, and Rust. Rust additionally exercises
 the canonical CLI end to end.
 
 ## TOML version profile
@@ -267,6 +313,7 @@ The current reference implementations parse TOML with libraries that target TOML
 - Java: [Tomlj](https://github.com/tomlj/tomlj) `1.1.1`, which documents support up to TOML 1.0.0.
 - Go: [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1`, which targets TOML 1.0.
 - .NET: [Tomlyn](https://github.com/xoofx/Tomlyn) `2.10.1`, which targets TOML 1.0.
+- Python: [`tomllib`](https://docs.python.org/3/library/tomllib.html), which targets TOML 1.0.
 - Rust: [`toml`](https://crates.io/crates/toml) `1`, which targets TOML 1.0.
 
 For that reason, the reference implementations' current effective parser profile is **TOML 1.0**. TOML 1.1 syntax (for example multi-line inline tables, trailing commas in inline tables, omitted seconds in date-times, or the `\e` and `\xHH` string escapes) is not guaranteed to parse in any reference implementation until the underlying TOML parser declares TOML 1.1 conformance.
