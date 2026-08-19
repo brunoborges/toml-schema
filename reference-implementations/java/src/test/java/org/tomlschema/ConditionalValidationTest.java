@@ -268,6 +268,69 @@ class ConditionalValidationTest {
     }
 
     @Test
+    void selectsConditionalBranchesThatUseUnions() throws IOException {
+        TomlSchema schema = load("""
+                [types.file]
+                type = "table"
+                [types.file.scope]
+                type = "string"
+                [types.file.kind]
+                type = "string"
+                [types.file.path]
+                type = "string"
+
+                [types.memory]
+                type = "table"
+                [types.memory.scope]
+                type = "string"
+                [types.memory.kind]
+                type = "string"
+                [types.memory.capacity]
+                type = "integer"
+
+                [types.storage]
+                anyof = ["types.file", "types.memory"]
+
+                [types.remote]
+                type = "table"
+                [types.remote.scope]
+                type = "string"
+                [types.remote.kind]
+                type = "string"
+                [types.remote.host]
+                type = "string"
+
+                [elements.target]
+                if = { key = "scope", equals = "local" }
+                then = "types.storage"
+                else = "types.remote"
+                """);
+
+        assertTrue(schema.validate(write("local-file.toml", """
+                [target]
+                scope = "local"
+                kind = "file"
+                path = "/data"
+                """)).isValid());
+        assertTrue(schema.validate(write("remote.toml", """
+                [target]
+                scope = "remote"
+                kind = "remote"
+                host = "example.test"
+                """)).isValid());
+
+        ValidationResult invalid = schema.validate(write("local-remote.toml", """
+                [target]
+                scope = "local"
+                kind = "remote"
+                host = "example.test"
+                """));
+        assertFalse(invalid.isValid());
+        assertTrue(invalid.errors().stream().anyMatch(error ->
+                error.code().equals("anyof") && error.path().equals("$.target")));
+    }
+
+    @Test
     void rejectsMalformedConditionalSchemas() {
         List<String> definitions = new ArrayList<>(List.of(
                 "if = { key = \"engine\", equals = \"sqlite\" }\nthen = \"types.a\"",
