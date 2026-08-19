@@ -66,6 +66,46 @@ public final class TomlSchema {
         return new TomlSchemaValidator(this).validate(document);
     }
 
+    /**
+     * Discovers and loads the schema referenced by a TOML document's reserved
+     * {@code [toml-schema].location}, following the resolution and
+     * version-compatibility rules of SPEC.md's
+     * "TOML Reference of a TOML Schema" section.
+     *
+     * <p>A relative {@code location} is resolved against {@code documentPath}'s
+     * parent, not the current working directory. An absolute local path or a
+     * {@code file} URI with a hierarchical, local path is also supported.
+     * Unsupported URI schemes, opaque {@code file} URIs, non-local hosts,
+     * query/fragment components, and encoded path separators are rejected.
+     * When the document declares an optional {@code [toml-schema].version}, a
+     * major-version mismatch against the resolved schema fails discovery,
+     * while any other version difference is reported as a warning on the
+     * returned {@link DiscoveredSchema}.
+     *
+     * @param documentPath the TOML document whose schema-reference metadata is discovered
+     * @return the discovered schema, the parsed document, and any version-compatibility warnings
+     * @throws IOException if the document cannot be read or parsed
+     * @throws SchemaException if the schema-reference metadata is missing or invalid, the
+     *         location cannot be resolved safely, or the schema versions are incompatible
+     */
+    public static DiscoveredSchema discover(Path documentPath) throws IOException {
+        return SchemaDiscovery.discover(documentPath);
+    }
+
+    /**
+     * Discovers the schema referenced by a TOML document and validates that same
+     * document against it in one step, without parsing the document twice.
+     *
+     * @param documentPath the TOML document to discover a schema for and validate
+     * @return the validation result, including any discovery version-compatibility warnings
+     * @throws IOException if the document cannot be read or parsed
+     * @throws SchemaException if the schema-reference metadata is missing or invalid, the
+     *         location cannot be resolved safely, or the schema versions are incompatible
+     */
+    public static ValidationResult validateDocument(Path documentPath) throws IOException {
+        return discover(documentPath).validate();
+    }
+
     Path source() {
         return source;
     }

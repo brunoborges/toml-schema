@@ -8,9 +8,9 @@ discovery through `[toml-schema].location`, and starter-schema extraction.
 
 | Language | Location | Requires | Interfaces |
 | --- | --- | --- | --- |
-| Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library |
+| Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, schema discovery |
 | Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, schema discovery, schema extraction |
-| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library |
+| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
@@ -20,7 +20,9 @@ package-registry releases.
 ## Java
 
 The Java 25 reference library uses [Tomlj](https://github.com/tomlj/tomlj) to
-parse TOML and validates the parsed data model against a `.tosd` schema.
+parse TOML and validates the parsed data model against a `.tosd` schema. Its
+library API also supports document-driven schema discovery through
+`[toml-schema].location`.
 
 Run the full Java test suite:
 
@@ -51,6 +53,24 @@ ValidationResult result = TomlSchema
     .load(Path.of("config.tosd"))
     .validate(Path.of("config.toml"));
 ```
+
+Validate using `[toml-schema].location` from the TOML document:
+
+```java
+import java.nio.file.Path;
+import org.tomlschema.TomlSchema;
+import org.tomlschema.ValidationResult;
+
+ValidationResult result = TomlSchema.validateDocument(Path.of("config.toml"));
+```
+
+`TomlSchema.discover(...)` resolves a relative `[toml-schema].location` from the
+document's parent directory, also accepts an absolute local path or a
+hierarchical `file` URI, and rejects unsupported URI schemes, opaque `file`
+URIs, non-local hosts, and query/fragment components. The document's
+`[toml-schema].version` is optional; when present, discovery rejects a
+major-version mismatch and reports other unequal versions as warnings on the
+returned `DiscoveredSchema`.
 
 The Java test suite reads `toml-schema.abnf` as a conformance guard and checks that the implementation's supported schema properties and built-in type names match the grammar.
 
@@ -92,6 +112,8 @@ The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`)
 
 The .NET 9.0 reference library uses [Tomlyn](https://github.com/xoofx/Tomlyn)
 to parse TOML and validates the parsed data model against a `.tosd` schema.
+Its library API also supports document-driven schema discovery through
+`[toml-schema].location`.
 
 Run the full .NET test suite:
 
@@ -125,6 +147,22 @@ if (!result.IsValid)
         Console.WriteLine($"{error.Path}: {error.Message}");
 }
 ```
+
+Validate using `[toml-schema].location` from the TOML document:
+
+```csharp
+using TomlSchema;
+
+var result = TomlSchema.TomlSchema.ValidateDocument("config.toml");
+```
+
+`TomlSchema.Discover(...)` resolves a relative `[toml-schema].location` from
+the document's parent directory, also accepts an absolute local path or a
+hierarchical `file` URI, and rejects unsupported URI schemes, opaque `file`
+URIs, non-local hosts, and query/fragment components. The document's
+`[toml-schema].version` is optional; when present, discovery rejects a
+major-version mismatch and reports other unequal versions as warnings on the
+returned `DiscoveredSchema`.
 
 The .NET test suite reads `toml-schema.abnf` as a conformance guard and checks that the implementation's supported schema properties and built-in type names match the grammar.
 
