@@ -846,19 +846,16 @@ When `type` selects a named reusable definition, the reference inherits that
 definition's validation rules as-is. This inheritance includes `optional`: the
 referencing slot is optional when either the use site or the referenced
 definition declares `optional = true`. A use-site `optional = false` cannot
-make an optional referenced definition required. The referencing definition
-MAY also declare `optional` and `description`, but it MUST NOT declare any other
-sibling property or child definition. In particular, validation constraints
-such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`,
-`allowedvalues`, `itemtype`, and `items` cannot be added or overridden at the
-reference site. Schema loaders MUST reject such schemas at schema-load time.
-
-In version 1.0, a named reference MAY also declare `allof`, `default`, and
-`deprecated`. `allof` adds conjunctive components rather than overriding the
-named reference. A local `default` is the use-site annotation described below,
-and `deprecated = false` cannot cancel deprecation inherited from a reference.
-Other kind-specific constraints and fixed children remain prohibited at a
-named-reference site.
+make an optional referenced definition required. In version 1.0, the
+referencing definition MAY additionally declare only `allof`, `description`,
+`optional`, `default`, and `deprecated`; it MUST NOT declare any other sibling
+property or child definition. `allof` adds conjunctive components rather than
+overriding the named reference. A local `default` is the use-site annotation
+described below, and `deprecated = false` cannot cancel deprecation inherited
+from a reference. In particular, validation constraints such as `pattern`,
+`keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`,
+`itemtype`, and `items` cannot be added or overridden at the reference site.
+Schema loaders MUST reject such schemas at schema-load time.
 
 To specialize validation rules, declare another named reusable definition rather than adding constraints to a reference:
 
@@ -944,14 +941,17 @@ may therefore describe a schema for which no document value is valid; it does
 not create last-wins behavior.
 
 Every component MUST resolve to an effective TOML kind compatible with the
-local definition. Scalar and array components must have the same kind as the
-local definition. Structured components must all be `table` or all be
-`collection`; a `table` and a `collection` are not interchangeable for
+local definition. When the local selector is `oneof` or `anyof`, all of its
+alternatives MUST resolve to the same effective kind before `allof` can be
+applied; a multi-kind local union combined with `allof` is indeterminate and
+MUST be rejected at schema-load time. Scalar and array components must have the
+same kind as the local definition. Structured components must all be `table` or
+all be `collection`; a `table` and a `collection` are not interchangeable for
 composition because they have different unknown-key semantics. A component
-whose alternatives resolve to different kinds is indeterminate and MUST be
-rejected. The bare built-ins `any` and `collection` MUST NOT appear directly in
-`allof`; a complete named definition may resolve to either where it is
-otherwise compatible.
+whose alternatives resolve to different kinds is likewise indeterminate and
+MUST be rejected. The bare built-ins `any` and `collection` MUST NOT appear
+directly in `allof`; a complete named definition may resolve to either where it
+is otherwise compatible.
 
 For composed arrays, the document array MUST independently satisfy the local
 array definition and every array component. Homogeneous `itemtype` constraints
@@ -1073,10 +1073,18 @@ oneof = [ "types.cascadeEntry", "types.cascadeEntries" ]
 ```
 
 When alternatives contain annotations, only successful branches contribute
-them. `oneof` contributes annotations from its single successful branch.
-`anyof` contributes annotations from every successful branch, with duplicate
-diagnostics removed. A branch that fails validation contributes neither
-defaults nor deprecation warnings.
+them, and only for a value that is present. Deprecation warnings follow the
+successful-branch rule: `oneof` reports the warning of its single successful
+branch, and `anyof` reports the warnings of every successful branch,
+deduplicated by code, path, and message. Consequently, a deprecated successful
+branch contributes a warning even when another successful `anyof` branch is not
+deprecated; this preserves all annotations attached to definitions that
+accepted the value. Alternative `default` annotations are governed by
+[Default](#default---default): they are never combined into the slot's
+effective default and never cause a schema-load conflict. For a present value,
+an implementation MAY surface the default of each successful branch as a hint,
+deduplicated by [Parsed Value Equality](#parsed-value-equality). A branch that
+fails validation contributes neither defaults nor deprecation warnings.
 
 ### Sibling Presence Rules
 
@@ -1201,6 +1209,26 @@ definition has no default, the schema is malformed because it has no single
 effective default. A valid local default resolves that annotation conflict and
 must still satisfy every component.
 
+Alternative selectors do not contribute to a slot's effective default. The
+effective default of a slot whose selector resolves to `oneof` or `anyof` is
+determined only by a use-site `default`, a default inherited through the named
+`type` reference chain that resolves to the union, and defaults composed
+through `allof`, using the precedence and conflict rules above. A `default`
+declared on an individual alternative is never aggregated into the union's
+effective default and never causes a schema-load conflict, even when several
+`anyof` alternatives declare unequal defaults. A loader MUST NOT reject a
+schema solely because two alternatives declare defaults, equal or unequal.
+Resolving effective defaults therefore never requires deciding whether two
+alternatives can match the same value.
+
+When a union slot is absent, only this effective default applies; if none
+exists, the slot has no default. When the slot value is present, `default` does
+not change it, so alternative defaults surfaced under the successful-branch
+rule are informational hints. An implementation MAY expose the default of each
+successful alternative, deduplicated by
+[Parsed Value Equality](#parsed-value-equality), but MUST NOT treat multiple
+present-value alternative defaults as an error.
+
 ### Deprecation - `deprecated`
 
 `deprecated` is a boolean annotation. When `true`, it advises that the present
@@ -1240,7 +1268,11 @@ optional if either the use site or any definition in the reference chain
 declares `optional = true`. An explicit `optional = false` cannot cancel an
 inherited `true`. In contrast, `optional` values contributed only through
 `allof` components do not affect presence, as defined under
-[Conjunctive Composition](#conjunctive-composition---allof).
+[Conjunctive Composition](#conjunctive-composition---allof). The presence of a
+`oneof` or `anyof` slot is governed only by `optional` on the union definition
+or inherited through a named `type` reference to that union. `optional`
+declared inside an alternative does not make the union slot optional because
+no alternative is selected when the slot is absent.
 
 ### Pattern - `pattern`
 
@@ -1359,9 +1391,10 @@ reference, or invalid keyword application prevents validation from starting.
 
 Document-validation diagnostics have a severity, stable machine-readable code,
 document path, and human-readable message. Errors determine document validity.
-Warnings do not. Except for codes explicitly assigned by this specification,
-diagnostic codes and path serialization are implementation-defined, but they
-MUST remain stable across compatible releases of that implementation.
+Warnings do not. Except for the `deprecated` code assigned below and any codes
+assigned by a future revision of this specification, diagnostic codes and path
+serialization are implementation-defined, but they MUST remain stable across
+compatible releases of that implementation.
 An implementation MAY expose additional diagnostic fields, but MUST provide
 separate access to errors and warnings. A command-line validator MUST exit
 successfully for a document whose only diagnostics are warnings.
