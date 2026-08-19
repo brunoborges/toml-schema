@@ -189,7 +189,6 @@ public class ConditionalValidationTests : TestBase
             version = "1.0.0"
 
             [elements.value]
-            type = "string"
             oneof = ["string", "integer"]
             """);
 
@@ -205,7 +204,6 @@ public class ConditionalValidationTests : TestBase
             version = "1.0.0"
 
             [elements.value]
-            type = "string"
             anyof = ["string", "integer"]
             """);
 

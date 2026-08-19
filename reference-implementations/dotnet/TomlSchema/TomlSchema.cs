@@ -75,7 +75,9 @@ public class TomlSchema
             return _types.TryGetValue(typeName, out var type) ? type : null;
         }
 
-        return null;
+        return SchemaTypeExtensions.AllTypeNames.Contains(typeRef)
+            ? new SchemaDefinition { Type = SchemaTypeExtensions.FromSchemaName(typeRef) }
+            : null;
     }
 
     /// <summary>

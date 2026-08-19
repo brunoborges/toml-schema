@@ -107,7 +107,7 @@ public class SchemaLoader
                 if (typeValue is not TomlTable typeTable)
                     throw new InvalidOperationException($"[types.{typeName}] must be a table");
 
-                types[typeName] = ParseDefinition($"[types].{typeName}", typeTable, isNamedReference: true);
+                types[typeName] = ParseDefinition($"[types].{typeName}", typeTable);
             }
         }
 
@@ -126,7 +126,7 @@ public class SchemaLoader
         return new TomlSchema(version, types, elements);
     }
 
-    private SchemaDefinition ParseDefinition(string location, TomlTable table, bool isNamedReference = false)
+    private SchemaDefinition ParseDefinition(string location, TomlTable table)
     {
         var typeStr = GetString(table, "type");
         SchemaType? type = null;
@@ -155,7 +155,7 @@ public class SchemaLoader
             if (!DefinitionKeys.Contains(key) && !IsPotentialChild(table, key))
                 throw new InvalidOperationException($"{location} contains unsupported property: {key}");
 
-            if (isNamedReference && !NamedReferenceKeys.Contains(key) && !IsPotentialChild(table, key))
+            if (reference != null && !NamedReferenceKeys.Contains(key) && !IsPotentialChild(table, key))
                 throw new InvalidOperationException($"{location} (named reference) cannot define {key}");
 
             if (hasOneOf || hasAnyOf)
@@ -200,11 +200,11 @@ public class SchemaLoader
             : null;
 
         var mutuallyExclusive = table.TryGetValue("mutuallyexclusive", out var meValue) && meValue is TomlArray meArray
-            ? meArray.Cast<object>().OfType<TomlArray>().Select(ta => ta.Cast<string>().ToList()).ToList()
+            ? ParseNameGroups(meArray)
             : null;
 
         var exactlyOne = table.TryGetValue("exactlyone", out var eoValue) && eoValue is TomlArray eoArray
-            ? eoArray.Cast<object>().OfType<TomlArray>().Select(ta => ta.Cast<string>().ToList()).ToList()
+            ? ParseNameGroups(eoArray)
             : null;
 
         return new SchemaDefinition
@@ -273,8 +273,21 @@ public class SchemaLoader
         return table.TryGetValue(key, out var value) && value is TomlTable;
     }
 
-    private string? GetString(TomlTable table, string key) =>
-        table.TryGetValue(key, out var value) && value is string str ? str : null;
+    private static List<List<string>> ParseNameGroups(TomlArray values) =>
+        values.All(value => value is string)
+            ? [values.Cast<string>().ToList()]
+            : values.Cast<object>().OfType<TomlArray>().Select(group => group.Cast<string>().ToList()).ToList();
+
+    private string? GetString(TomlTable table, string key)
+    {
+        if (!table.TryGetValue(key, out var value))
+            return null;
+
+        if (value is TomlTable)
+            return null;
+
+        return value as string ?? throw new InvalidOperationException($"{key} must be a string");
+    }
 
     private bool? GetBool(TomlTable table, string key) =>
         table.TryGetValue(key, out var value) && value is bool b ? b : null;

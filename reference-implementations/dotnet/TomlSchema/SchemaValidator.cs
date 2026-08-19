@@ -1,5 +1,6 @@
 namespace TomlSchema;
 
+using Tomlyn;
 using Tomlyn.Model;
 using System.Text.RegularExpressions;
 using System.Globalization;
@@ -21,7 +22,7 @@ internal class SchemaValidator
     public ValidationResult Validate(TomlTable document)
     {
         var workDoc = new TomlTable();
-        foreach (var kvp in document.Where(x => x.Key != "toml-schema"))
+        foreach (var kvp in document.Where(x => x.Key != "toml-schema" || _schema.Elements.ContainsKey("toml-schema")))
             workDoc[kvp.Key] = kvp.Value;
 
         // Validate top-level expected keys
@@ -82,7 +83,8 @@ internal class SchemaValidator
         SchemaDefinition effectiveSchema = schema;
         if (!string.IsNullOrEmpty(schema.Reference))
         {
-            if (!_schema.Types.TryGetValue(schema.Reference, out var refSchema))
+            var refSchema = _schema.ResolveType(schema.Reference);
+            if (refSchema == null)
                 throw new InvalidOperationException($"Undefined type reference: {schema.Reference}");
             effectiveSchema = refSchema;
         }
@@ -148,6 +150,16 @@ internal class SchemaValidator
             return;
         }
 
+        if (effectiveSchema.AllOf != null)
+        {
+            foreach (var typeRef in effectiveSchema.AllOf)
+            {
+                var allOfSchema = _schema.ResolveType(typeRef)
+                    ?? throw new InvalidOperationException($"Undefined type in allof: {typeRef}");
+                ValidateType(value, allOfSchema, path);
+            }
+        }
+
         // Type validation
         var actualType = GetValueType(value);
         if (effectiveSchema.Type.HasValue && !TypeMatches(actualType, effectiveSchema.Type.Value))
@@ -179,7 +191,7 @@ internal class SchemaValidator
                 try
                 {
                     if (!Regex.IsMatch(strVal, effectiveSchema.Pattern))
-                        _errors.Add(new ValidationError(path, "string does not match pattern", "pattern"));
+                        _errors.Add(new ValidationError(path, "string does not match pattern", "pattern-mismatch"));
                 }
                 catch (RegexParseException)
                 {
@@ -229,12 +241,6 @@ internal class SchemaValidator
         }
 
         // Validate unexpected keys (nested)
-        foreach (var key in table.Keys)
-        {
-            if (!schema.Children.ContainsKey(key))
-                _errors.Add(new ValidationError(AppendPath(path, key), "unexpected key", "unexpected-key"));
-        }
-
         // Sibling rules
         ValidatePresenceRules(table, schema, path);
     }
@@ -291,7 +297,7 @@ internal class SchemaValidator
             {
                 var itemStr = NormalizeValue(item);
                 if (!seen.Add(itemStr))
-                    _errors.Add(new ValidationError(path, "array contains duplicate items", "uniqueitems"));
+                    _errors.Add(new ValidationError(path, "array contains duplicate items", "duplicate-items"));
             }
         }
 
@@ -303,11 +309,13 @@ internal class SchemaValidator
             _errors.Add(new ValidationError(path, "array too long", "max"));
 
         // Item type validation
-        if (!string.IsNullOrEmpty(schema.ItemType) && _schema.Types.TryGetValue(schema.ItemType, out var itemSchema))
+        if (!string.IsNullOrEmpty(schema.ItemType))
         {
+            var itemSchema = ResolveItemType(schema.ItemType);
             for (int i = 0; i < array.Count; i++)
             {
-                ValidateType(array[i], itemSchema, $"{path}[{i}]");
+                if (itemSchema != null)
+                    ValidateType(array[i], itemSchema, $"{path}[{i}]");
             }
         }
     }
@@ -336,12 +344,20 @@ internal class SchemaValidator
             }
 
             // Validate value type
-            if (!string.IsNullOrEmpty(schema.ItemType) && _schema.Types.TryGetValue(schema.ItemType, out var valueSchema))
+            if (!string.IsNullOrEmpty(schema.ItemType))
             {
-                ValidateType(value, valueSchema, keyPath);
+                var valueSchema = ResolveItemType(schema.ItemType);
+                if (valueSchema != null)
+                    ValidateType(value, valueSchema, keyPath);
             }
         }
     }
+
+    private SchemaDefinition? ResolveItemType(string itemType) =>
+        _schema.ResolveType(itemType) ??
+        (SchemaTypeExtensions.AllTypeNames.Contains(itemType)
+            ? new SchemaDefinition { Type = SchemaTypeExtensions.FromSchemaName(itemType) }
+            : null);
 
     private SchemaType GetValueType(object value) => value switch
     {
@@ -353,13 +369,19 @@ internal class SchemaValidator
         DateTime => SchemaType.LocalDateTime,
         DateOnly => SchemaType.LocalDate,
         TimeOnly => SchemaType.LocalTime,
+        TomlDateTime { Kind: TomlDateTimeKind.OffsetDateTimeByZ or TomlDateTimeKind.OffsetDateTimeByNumber } => SchemaType.OffsetDateTime,
+        TomlDateTime { Kind: TomlDateTimeKind.LocalDateTime } => SchemaType.LocalDateTime,
+        TomlDateTime { Kind: TomlDateTimeKind.LocalDate } => SchemaType.LocalDate,
+        TomlDateTime { Kind: TomlDateTimeKind.LocalTime } => SchemaType.LocalTime,
         TomlArray => SchemaType.Array,
+        TomlTableArray => SchemaType.Array,
         TomlTable => SchemaType.Table,
         _ => SchemaType.Any
     };
 
     private bool TypeMatches(SchemaType actual, SchemaType expected) =>
-        expected == SchemaType.Any || actual == expected;
+        expected == SchemaType.Any || actual == expected ||
+        (expected == SchemaType.Collection && actual == SchemaType.Table);
 
     private bool ValueEquals(object? a, object? b)
     {

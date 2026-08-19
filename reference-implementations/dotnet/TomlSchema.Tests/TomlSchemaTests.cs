@@ -113,7 +113,7 @@ public class TomlSchemaTests : TestBase
         Assert.NotNull(schema);
 
         // Invalid schema should fail on load
-        var ex = Assert.Throws<Exception>(() => TomlSchema.Load(invalidSchema));
+        var ex = Assert.ThrowsAny<Exception>(() => TomlSchema.Load(invalidSchema));
         Assert.NotNull(ex);
     }
 
