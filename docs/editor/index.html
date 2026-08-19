@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Visually edit TOML Schema .tosd files in the GitHub Copilot App with schema maps, property controls, live TOML preview, inference, and Copilot generation.">
+  <link rel="canonical" href="https://toml-schema.org/editor/">
+  <title>TOML Schema Editor for GitHub Copilot</title>
+  <script>
+    (() => {
+      const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
+      const theme =
+        param || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <link rel="stylesheet" href="../styles.css">
+</head>
+<body class="editor-page">
+  <!--
+    THESIS: The editor itself is the evidence; this page refuses the generic app-landing hero.
+    OWN-WORLD: TOML Schema's warm neutral field, oxblood accent, ruled sections, and crisp product captures.
+    STORY: See the complete authoring loop, understand the capabilities, then open the repository in Copilot.
+    FIRST VIEWPORT: A compact proposition and action sit above a dominant annotated capture of the real editor.
+    FORM: Annotated schema atlas, third grounded structure, staged as one synchronized multi-frame argument; seed d5a951e4.
+  -->
+  <div class="page editor-shell">
+    <header>
+      <a class="brand" href="/" aria-label="TOML Schema home">
+        <svg class="brand-logo" viewBox="0 0 420 128" preserveAspectRatio="xMinYMid meet" aria-hidden="true" focusable="false">
+          <polygon class="logo-bracket" points="0 0 34 0 34 14 18 14 18 114 34 114 34 128 0 128" />
+          <polygon class="logo-t" points="42 26 104 26 104 42 80 42 80 110 66 110 66 42 42 42" />
+          <polygon class="logo-bracket" points="112 0 146 0 146 128 112 128 112 114 128 114 128 14 112 14" />
+          <text class="logo-schema" x="160" y="110">Schema</text>
+        </svg>
+        <span class="visually-hidden">TOML Schema</span>
+      </a>
+      <nav aria-label="Primary navigation">
+        <a href="/editor/" aria-current="page">Editor</a>
+        <a href="/validation-report/">Evidence</a>
+        <a href="/spec/">Spec</a>
+        <a href="/implementations/">Implementations</a>
+        <a href="https://github.com/brunoborges/toml-schema">GitHub</a>
+      </nav>
+    </header>
+
+    <main>
+      <section class="editor-hero">
+        <div class="editor-hero-copy">
+          <h1>See your schema.<br>Keep the TOML.</h1>
+          <p class="lead">
+            The TOML Schema Editor turns <code>.tosd</code> documents into a visual
+            map inside the GitHub Copilot App—while the canonical TOML stays visible,
+            inspectable, and yours.
+          </p>
+          <div class="actions">
+            <a class="button" href="https://github.com/brunoborges/toml-schema">Open the repository</a>
+            <a class="button-secondary" href="#how-to-open">How to open the editor</a>
+          </div>
+        </div>
+        <div class="editor-hero-note">
+          <span>Project canvas extension</span>
+          <strong>Visual structure. Live source. One workspace.</strong>
+        </div>
+      </section>
+
+      <figure class="editor-atlas">
+        <div class="editor-atlas-frame">
+          <img src="./assets/editor-overview.png" width="1440" height="1000" alt="TOML Schema Editor with the config schema visualized as connected nodes, a selected field's properties on the right, and generated TOML below">
+        </div>
+        <figcaption class="editor-callouts">
+          <span class="editor-callout callout-map"><strong>Navigate the shape</strong> Follow tables, arrays, collections, and reusable type references as a connected schema map.</span>
+          <span class="editor-callout callout-properties"><strong>Edit with context</strong> Change type, constraints, documentation, and children from focused property controls.</span>
+          <span class="editor-callout callout-preview"><strong>Trust the source</strong> Watch the canonical TOML update and resolve structural issues before saving.</span>
+        </figcaption>
+      </figure>
+
+      <section class="editor-feature-ledger" aria-labelledby="feature-title">
+        <div class="editor-section-heading">
+          <h2 id="feature-title">Every route into a schema, in one canvas.</h2>
+          <p>Start from an existing definition, a representative TOML file, or a plain-language description.</p>
+        </div>
+        <div class="feature-ledger">
+          <article>
+            <span>01</span>
+            <h3>Open and map</h3>
+            <p>Load an existing <code>.tosd</code> document and move between elements and reusable types without losing its hierarchy.</p>
+          </article>
+          <article>
+            <span>02</span>
+            <h3>Infer from TOML</h3>
+            <p>Use a representative TOML document to infer an editable starting structure, then refine the constraints that matter.</p>
+          </article>
+          <article>
+            <span>03</span>
+            <h3>Generate with Copilot</h3>
+            <p>Describe sections, fields, and rules in natural language. Copilot drafts the schema for review before anything is saved.</p>
+          </article>
+          <article>
+            <span>04</span>
+            <h3>Preview and validate</h3>
+            <p>Inspect generated TOML and structural issues together. Save only after the editor's model validation passes.</p>
+          </article>
+        </div>
+      </section>
+
+      <section class="editor-copilot">
+        <div class="editor-copilot-image">
+          <img src="./assets/editor-generate.png" width="1200" height="820" loading="lazy" alt="Generate schema with Copilot dialog asking for a description of the configuration file">
+        </div>
+        <div class="editor-copilot-copy">
+          <h2>Describe the configuration. Review the schema.</h2>
+          <p>
+            Copilot generation is deliberately reviewable: the draft replaces the
+            in-memory model, the live preview exposes the resulting TOML, and the file
+            is not written until you choose Save.
+          </p>
+          <ul class="editor-facts">
+            <li>Undo and redo preserve meaningful editing steps.</li>
+            <li>Validation issues stay beside the generated TOML.</li>
+            <li>Revert reloads the checked-in file from disk.</li>
+          </ul>
+        </div>
+      </section>
+
+      <section class="editor-open" id="how-to-open">
+        <div>
+          <h2>Open the canvas in three moves.</h2>
+          <p>The editor is a project extension in this repository and loads automatically when the project is opened in the GitHub Copilot App.</p>
+        </div>
+        <ol class="open-steps">
+          <li><span>1</span><strong>Open the repository</strong><small>Clone or open <code>brunoborges/toml-schema</code> in the GitHub Copilot App.</small></li>
+          <li><span>2</span><strong>Choose a schema</strong><small>Use <code>config.tosd</code>, <code>toml-schema.tosd</code>, or another <code>.tosd</code> file.</small></li>
+          <li><span>3</span><strong>Ask Copilot</strong><small>Say: “Open <code>config.tosd</code> in the TOML Schema Editor.”</small></li>
+        </ol>
+        <div class="actions">
+          <a class="button" href="https://github.com/brunoborges/toml-schema">View the repository on GitHub</a>
+          <a class="button-secondary" href="https://github.com/brunoborges/toml-schema/tree/main/.github/extensions/tosd-editor">Inspect the extension source</a>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>TOML Schema is licensed under MIT.</span>
+      <span>
+        <a href="/">Home</a>
+        <span class="muted"> / </span>
+        <a href="/spec/">Spec</a>
+        <span class="muted"> / </span>
+        <a href="https://github.com/brunoborges/toml-schema/issues">Feedback</a>
+      </span>
+    </footer>
+  </div>
+</body>
+</html>
