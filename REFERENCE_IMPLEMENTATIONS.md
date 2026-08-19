@@ -1,20 +1,16 @@
 # Reference Implementations
 
-Build and use the TOML Schema reference implementations as libraries or command-line
-tools. Each implementation validates TOML documents, resolves schemas declared with
-`[toml-schema].location`, and can extract a starter schema from an existing document.
-
-All implementations currently build from source. Choose the language that best fits
-your project, then follow its section for test, build, validation, extraction, and
-library examples.
+Build and use the TOML Schema reference libraries in Java, Go, and Rust. Rust also
+provides the canonical `toml-schema` command-line interface for validation, schema
+discovery through `[toml-schema].location`, and starter-schema extraction.
 
 ## Status
 
 | Language | Location | Requires | Interfaces |
 | --- | --- | --- | --- |
-| Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, CLI validation, schema extraction |
-| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, CLI validation, schema extraction |
-| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, CLI validation, schema extraction |
+| Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, schema discovery, schema extraction |
+| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
 They are reference-quality implementations rather than separately versioned,
@@ -22,7 +18,8 @@ package-registry releases.
 
 ## Java
 
-The Java 25 reference implementation uses [Tomlj](https://github.com/tomlj/tomlj) to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+The Java 25 reference library uses [Tomlj](https://github.com/tomlj/tomlj) to
+parse TOML and validates the parsed data model against a `.tosd` schema.
 
 Run the full Java test suite:
 
@@ -36,47 +33,10 @@ Run one test:
 mvn -f reference-implementations/java/pom.xml -Dtest=TomlSchemaTest#validatesCheckedInExample test
 ```
 
-Build the CLI jar:
+Build the library jar:
 
 ```shell
 mvn -f reference-implementations/java/pom.xml package
-```
-
-Validate with an explicit schema:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate config.tosd config.toml
-```
-
-Validate using `[toml-schema].location` from the TOML document:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate config.toml
-```
-
-For document-driven lookup, each reference CLI resolves a relative
-`[toml-schema].location` from the TOML document's directory. The document's
-`[toml-schema].version` is optional; when present, the CLI rejects a major-version
-mismatch with the resolved schema and warns about other unequal versions.
-Reference CLIs currently support local files and reject unsupported URI schemes
-explicitly.
-
-Validate the example schema against the TOML Schema self-schema:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate toml-schema.tosd config.tosd
-```
-
-Validate the TOML Schema self-schema against itself:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate toml-schema.tosd toml-schema.tosd
-```
-
-Extract a schema from a sample TOML document:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar extract config.toml extracted.tosd
 ```
 
 Use the library API:
@@ -95,42 +55,15 @@ The Java test suite reads `toml-schema.abnf` as a conformance guard and checks t
 
 ## Go
 
-The Go reference implementation uses [go-toml](https://github.com/pelletier/go-toml) to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+The Go reference library uses [go-toml](https://github.com/pelletier/go-toml)
+to parse TOML and validates the parsed data model against a `.tosd` schema. Its
+library API also supports document-driven schema discovery and starter-schema
+extraction.
 
 Run the Go test suite:
 
 ```shell
 go -C reference-implementations/go test ./...
-```
-
-Validate with an explicit schema:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../config.tosd ../../config.toml
-```
-
-Validate using `[toml-schema].location` from the TOML document:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../config.toml
-```
-
-Validate the example schema against the TOML Schema self-schema:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../config.tosd
-```
-
-Validate the TOML Schema self-schema against itself:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../toml-schema.tosd
-```
-
-Extract a schema from a sample TOML document:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema extract ../../config.toml /tmp/config.generated.tosd
 ```
 
 Use the library API:
@@ -156,7 +89,9 @@ The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`)
 
 ## Rust
 
-The Rust reference implementation uses the [`toml`](https://crates.io/crates/toml) crate to parse TOML and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+The Rust reference implementation uses the [`toml`](https://crates.io/crates/toml)
+crate to parse TOML and validates the parsed data model against a `.tosd` schema.
+It provides both a library and the canonical `toml-schema` CLI.
 
 Run the Rust test suite:
 
@@ -169,6 +104,12 @@ Build the CLI binary:
 ```shell
 cargo build --manifest-path reference-implementations/rust/Cargo.toml --release
 ```
+
+For document-driven lookup, the CLI resolves a relative
+`[toml-schema].location` from the TOML document's directory. The document's
+`[toml-schema].version` is optional; when present, the CLI rejects a major-version
+mismatch and warns about other unequal versions. The CLI currently supports local
+files and explicitly rejects unsupported URI schemes.
 
 Validate with an explicit schema:
 
@@ -220,8 +161,6 @@ Every reference implementation should:
 1. Treat `.tosd` schemas as valid TOML documents.
 1. Require a schema document's `[toml-schema].version` to be a SemVer string compatible with the implementation's supported TOML Schema version.
 1. Validate the checked-in `config.toml` document against `config.tosd`.
-1. Support schema lookup through `[toml-schema].location`.
-1. Enforce the document schema-reference URI and optional language-version compatibility rules from `SPEC.md`.
 1. Validate `config.tosd` against `toml-schema.tosd`.
 1. Validate `toml-schema.tosd` against itself.
 1. Keep supported schema vocabulary aligned with `toml-schema.abnf` and `toml-schema.tosd`.
@@ -231,7 +170,14 @@ Every reference implementation should:
 1. Keep validation non-mutating and expose warnings separately from errors;
    warning-only validation remains valid.
 
-The GitHub Actions workflow in `.github/workflows/reference-implementations.yml` currently enforces these expectations for Java, Go, and Rust.
+The canonical CLI must additionally support schema lookup through
+`[toml-schema].location`, enforce the document schema-reference URI and optional
+language-version compatibility rules from `SPEC.md`, and expose validation and
+schema extraction commands suitable for automation and editor integration.
+
+The GitHub Actions workflow in `.github/workflows/reference-implementations.yml`
+enforces these expectations for Java, Go, and Rust. Rust additionally exercises
+the canonical CLI end to end.
 
 ## TOML version profile
 
@@ -255,11 +201,9 @@ Upgrading either reference implementation to a TOML 1.1-conformant parser is tra
 
 Future implementations should live under `reference-implementations/<language>` and include language-native build and test instructions. When a new implementation is added, update this file and extend `.github/workflows/reference-implementations.yml` with a separate job for that language.
 
-Each implementation should expose the same practical surfaces as Java where possible:
+Each implementation should expose a library API that accepts a schema path and a
+TOML document path. Every implementation should include:
 
-1. A library API that accepts a schema path and a TOML document path.
-1. A CLI validation command suitable for automation and editor/tool integration.
-1. A CLI extraction command that can generate a starter schema from a sample TOML document.
 1. Tests for the checked-in example, self-schema validation, schema-location
    lookup, unions, composition, arrays, collections, sibling rules,
    annotations, diagnostics, and key-escaping behavior.

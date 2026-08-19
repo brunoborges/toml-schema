@@ -68,13 +68,11 @@ Scope](../SPEC.md#expressiveness-and-validation-scope).
 
 ## Using the examples
 
-You can validate a TOML file against any of these schemas using one of the
-[reference implementations](../REFERENCE_IMPLEMENTATIONS.md). For example,
-with the Java CLI from the repository root:
+You can validate a TOML file against any of these schemas using the canonical
+Rust CLI. From the repository root:
 
 ```bash
-mvn -f reference-implementations/java/pom.xml package
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar \
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- \
     validate examples/pyproject.tosd path/to/your/pyproject.toml
 ```
 

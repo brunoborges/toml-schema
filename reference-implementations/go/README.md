@@ -1,9 +1,12 @@
 # TOML Schema — Go reference implementation
 
-Go reference implementation of [TOML Schema](../../SPEC.md). It targets the current, unreleased TOML Schema language version 1.0.0. It parses TOML with [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1` (TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+Go reference library for [TOML Schema](../../SPEC.md). It targets the current,
+unreleased TOML Schema language version 1.0.0. It parses TOML with
+[`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1` (TOML
+1.0), validates the parsed data model against a `.tosd` schema, and can extract
+a starter schema from a sample TOML document.
 
 - Module path: `tomlschema.org/go`
-- CLI package: `tomlschema.org/go/cmd/toml-schema`
 
 All commands below assume you run them from the repository root.
 
@@ -13,44 +16,6 @@ Run the test suite:
 
 ```shell
 go -C reference-implementations/go test ./...
-```
-
-Build the CLI binary:
-
-```shell
-go -C reference-implementations/go build -o target/toml-schema ./cmd/toml-schema
-```
-
-## CLI usage
-
-Validate with an explicit schema:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../config.tosd ../../config.toml
-```
-
-Validate using `[toml-schema].location` from the TOML document:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../config.toml
-```
-
-Validate the example schema against the TOML Schema self-schema:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../config.tosd
-```
-
-Validate the TOML Schema self-schema against itself:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../toml-schema.tosd
-```
-
-Extract a starter schema from a sample TOML document:
-
-```shell
-go -C reference-implementations/go run ./cmd/toml-schema extract ../../config.toml target/config.generated.tosd
 ```
 
 ## Library usage
@@ -71,6 +36,10 @@ func main() {
     }
     for _, warning := range result.Warnings {
         println(string(warning.Severity), warning.Code, warning.Path, warning.Message)
+    }
+
+    if err := tomlschema.ExtractSchemaFile("config.toml", "config.generated.tosd"); err != nil {
+        panic(err)
     }
 }
 ```

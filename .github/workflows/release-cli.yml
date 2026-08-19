@@ -1,4 +1,4 @@
-name: Rust release
+name: TOML Schema CLI release
 
 on:
   push:
@@ -17,7 +17,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: rust-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
+  group: cli-release-${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag_name || github.ref_name }}
   cancel-in-progress: false
 
 env:
@@ -42,7 +42,7 @@ jobs:
         run: cargo test --locked
 
   build:
-    name: Build Rust CLI (${{ matrix.asset }})
+    name: Build TOML Schema CLI (${{ matrix.asset }})
     needs: test
     strategy:
       fail-fast: false
@@ -78,7 +78,7 @@ jobs:
           release_version="${RELEASE_TAG##*/}"
           release_version="${release_version#rust-v}"
           release_version="${release_version#v}"
-          asset_name="toml-schema-rust-${release_version}-${{ matrix.asset }}"
+          asset_name="toml-schema-${release_version}-${{ matrix.asset }}"
           cargo build --locked --release
 
           "./target/release/${{ matrix.binary }}" validate ../../config.tosd ../../config.toml
@@ -93,12 +93,12 @@ jobs:
       - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
-          name: toml-schema-rust-${{ matrix.asset }}
+          name: toml-schema-${{ matrix.asset }}
           path: reference-implementations/rust/dist/*.tar.gz
           if-no-files-found: error
 
   publish:
-    name: Publish Rust release assets
+    name: Publish TOML Schema CLI release assets
     needs: build
     runs-on: ubuntu-latest
 
@@ -115,7 +115,7 @@ jobs:
           release_version="${release_version#rust-v}"
           release_version="${release_version#v}"
           cd dist
-          shasum -a 256 *.tar.gz > "toml-schema-rust-${release_version}-SHA256SUMS.txt"
+          shasum -a 256 *.tar.gz > "toml-schema-${release_version}-SHA256SUMS.txt"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2
