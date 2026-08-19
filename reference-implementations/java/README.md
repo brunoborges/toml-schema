@@ -1,10 +1,12 @@
 # TOML Schema — Java reference implementation
 
-Java 25 reference implementation targeting the current, unreleased [TOML Schema 1.0.0](../../SPEC.md). It parses TOML with [Tomlj](https://github.com/tomlj/tomlj) `1.1.1` (TOML 1.0) and validates the parsed data model against a `.tosd` schema. It can be used as a library or as an executable CLI, and it can extract a starter schema from a sample TOML document.
+Java 25 reference library targeting the current, unreleased
+[TOML Schema 1.0.0](../../SPEC.md). It parses TOML with
+[Tomlj](https://github.com/tomlj/tomlj) `1.1.1` (TOML 1.0) and validates the
+parsed data model against a `.tosd` schema.
 
 - Coordinates: `org.tomlschema:toml-schema`
 - Java package: `org.tomlschema`
-- Main class: `org.tomlschema.TomlSchemaCli`
 
 All commands below assume you run them from the repository root.
 
@@ -22,45 +24,14 @@ Run a single test:
 mvn -f reference-implementations/java/pom.xml -Dtest=TomlSchemaTest#validatesCheckedInExample test
 ```
 
-Build the CLI jar (shaded, executable):
+Build the library jar:
 
 ```shell
 mvn -f reference-implementations/java/pom.xml package
 ```
 
-The packaged artifact is written to `reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar`.
-
-## CLI usage
-
-Validate with an explicit schema:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate config.tosd config.toml
-```
-
-Validate using `[toml-schema].location` from the TOML document:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate config.toml
-```
-
-Validate the example schema against the TOML Schema self-schema:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate toml-schema.tosd config.tosd
-```
-
-Validate the TOML Schema self-schema against itself:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar validate toml-schema.tosd toml-schema.tosd
-```
-
-Extract a starter schema from a sample TOML document:
-
-```shell
-java -jar reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar extract config.toml extracted.tosd
-```
+The packaged artifact is written to
+`reference-implementations/java/target/toml-schema-1.0.0-rc.2.jar`.
 
 ## Library usage
 

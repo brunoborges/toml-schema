@@ -33,23 +33,8 @@ jobs:
           cache: maven
           cache-dependency-path: reference-implementations/java/pom.xml
 
-      - name: Build and test
-        run: mvn -B -f reference-implementations/java/pom.xml package
-
-      - name: Locate Java CLI jar
-        run: echo "JAVA_CLI_JAR=$(find reference-implementations/java/target -maxdepth 1 -name 'toml-schema-*.jar' ! -name 'original-*' | head -n 1)" >> "$GITHUB_ENV"
-
-      - name: Validate checked-in example with explicit schema
-        run: java -jar "${JAVA_CLI_JAR}" validate config.tosd config.toml
-
-      - name: Validate checked-in example with schema reference
-        run: java -jar "${JAVA_CLI_JAR}" validate config.toml
-
-      - name: Validate example schema against self-schema
-        run: java -jar "${JAVA_CLI_JAR}" validate toml-schema.tosd config.tosd
-
-      - name: Validate self-schema against itself
-        run: java -jar "${JAVA_CLI_JAR}" validate toml-schema.tosd toml-schema.tosd
+      - name: Test
+        run: mvn -B -f reference-implementations/java/pom.xml test
 
   go:
     name: Go reference implementation
@@ -68,30 +53,6 @@ jobs:
       - name: Test
         working-directory: reference-implementations/go
         run: go test ./...
-
-      - name: Validate checked-in example with explicit schema
-        working-directory: reference-implementations/go
-        run: go run ./cmd/toml-schema validate ../../config.tosd ../../config.toml
-
-      - name: Validate checked-in example with schema reference
-        working-directory: reference-implementations/go
-        run: go run ./cmd/toml-schema validate ../../config.toml
-
-      - name: Validate example schema against self-schema
-        working-directory: reference-implementations/go
-        run: go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../config.tosd
-
-      - name: Validate self-schema against itself
-        working-directory: reference-implementations/go
-        run: go run ./cmd/toml-schema validate ../../toml-schema.tosd ../../toml-schema.tosd
-
-      - name: Extract schema from checked-in example
-        working-directory: reference-implementations/go
-        run: go run ./cmd/toml-schema extract ../../config.toml /tmp/config.generated.tosd
-
-      - name: Validate checked-in example with extracted schema
-        working-directory: reference-implementations/go
-        run: go run ./cmd/toml-schema validate /tmp/config.generated.tosd ../../config.toml
 
   rust:
     name: Rust reference implementation
@@ -117,7 +78,7 @@ jobs:
         working-directory: reference-implementations/rust
         run: cargo test --locked
 
-      - name: Build CLI
+      - name: Build canonical CLI
         working-directory: reference-implementations/rust
         run: cargo build --locked --release
 

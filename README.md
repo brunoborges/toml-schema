@@ -20,7 +20,7 @@ A TOML Schema document is itself a valid TOML document. Validators can use it to
 - [Example schema](config.tosd) and [example TOML document](config.toml) - a worked example used by the reference implementation tests.
 - [Industry examples](examples/) - representative schemas for Cargo,
   `pyproject.toml`, Hugo, Netlify, GitLab Runner, and Cloudflare Wrangler.
-- [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - implementation status, Java CLI/library usage, and conformance expectations.
+- [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - canonical CLI and reference library usage, status, and conformance expectations.
 
 ## Quick example
 
@@ -57,7 +57,10 @@ type = "table"
 
 ## Reference implementations
 
-Java, Go, and Rust reference implementations live under `reference-implementations/`. See [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation status, build/test commands, CLI usage, schema extraction, and conformance expectations.
+Java, Go, and Rust reference libraries live under `reference-implementations/`.
+The Rust implementation provides the canonical `toml-schema` CLI. See
+[Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation
+status, CLI usage, schema extraction, and conformance expectations.
 
 ## Schema reference from TOML
 

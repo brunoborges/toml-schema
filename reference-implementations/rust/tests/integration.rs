@@ -3324,7 +3324,7 @@ fn tempfile_dir(name: &str) -> PathBuf {
         .join("target")
         .join("test-workspaces")
         .join(format!(
-            "toml-schema-rust-{}-{}-{}",
+            "toml-schema-{}-{}-{}",
             name,
             std::process::id(),
             std::time::SystemTime::now()
