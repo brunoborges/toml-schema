@@ -72,7 +72,7 @@ You can validate a TOML file against any of these schemas using the canonical
 Rust CLI. From the repository root:
 
 ```bash
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- \
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- \
     validate examples/pyproject.tosd path/to/your/pyproject.toml
 ```
 

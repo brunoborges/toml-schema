@@ -6,9 +6,9 @@
 - Single Java test method: `mvn -f reference-implementations/java/pom.xml -Dtest=TomlSchemaTest#validatesCheckedInExample test`
 - Full Go test suite: `go -C reference-implementations/go test ./...`
 - Full Rust test suite: `cargo test --manifest-path reference-implementations/rust/Cargo.toml`
-- Build the canonical Rust CLI: `cargo build --manifest-path reference-implementations/rust/Cargo.toml --release`
-- Validate with an explicit schema: `cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.tosd config.toml`
-- Validate using `[toml-schema].location`: `cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.toml`
+- Build the canonical Rust CLI: `cargo build --manifest-path reference-implementations/rust/Cargo.toml --release --bin tosd`
+- Validate with an explicit schema: `cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate config.tosd config.toml`
+- Validate using `[toml-schema].location`: `cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate config.toml`
 
 No separate lint command is defined.
 
@@ -24,7 +24,7 @@ This repository contains the TOML Schema specification/proposal plus reference i
 - `config.tosd` and `config.toml` are the worked example pair: `config.toml` declares `[toml-schema] location = "config.tosd"`, and `config.tosd` describes the allowed document shape.
 - `reference-implementations/java/src/main/java/org/tomlschema` contains the Java reference implementation under the `org.tomlschema` package with Maven coordinate `org.tomlschema:toml-schema`.
 - `reference-implementations/go` is the `tomlschema.org/go` importable Go package.
-- `reference-implementations/rust` provides both the `toml_schema` Rust library and the canonical `toml-schema` CLI.
+- `reference-implementations/rust` provides both the `toml_schema` Rust library and the canonical `tosd` CLI.
 - `reference-implementations/java/src/test/java/org/tomlschema/TomlSchemaTest.java` covers the checked-in examples, self-schema validation, and validation errors.
 - Java, Go, .NET, and Rust ABNF conformance tests read `toml-schema.abnf` and check implementation schema properties and built-in type names against it.
 

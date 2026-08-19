@@ -4,6 +4,7 @@
 use std::fs;
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use toml_schema::cli::run;
 use toml_schema::schema::{schema_from_document, Schema, ValidationResult};
@@ -45,6 +46,19 @@ fn capture(args: &[&str]) -> (u8, String, String) {
         String::from_utf8(out.into_inner()).expect("stdout utf-8"),
         String::from_utf8(err.into_inner()).expect("stderr utf-8"),
     )
+}
+
+#[test]
+fn canonical_binary_is_named_tosd() {
+    let output = Command::new(env!("CARGO_BIN_EXE_tosd"))
+        .arg("--help")
+        .output()
+        .expect("run tosd binary");
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
+    assert!(stdout.contains("tosd validate"));
+    assert!(!stdout.contains("toml-schema validate"));
 }
 
 #[test]

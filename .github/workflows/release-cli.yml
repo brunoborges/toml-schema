@@ -1,4 +1,4 @@
-name: TOML Schema CLI release
+name: tosd CLI release
 
 on:
   push:
@@ -42,7 +42,7 @@ jobs:
         run: cargo test --locked
 
   build:
-    name: Build TOML Schema CLI (${{ matrix.asset }})
+    name: Build tosd CLI (${{ matrix.asset }})
     needs: test
     strategy:
       fail-fast: false
@@ -50,16 +50,16 @@ jobs:
         include:
           - os: ubuntu-latest
             asset: linux-x86_64
-            binary: toml-schema
+            binary: tosd
           - os: macos-15-intel
             asset: macos-x86_64
-            binary: toml-schema
+            binary: tosd
           - os: macos-15
             asset: macos-arm64
-            binary: toml-schema
+            binary: tosd
           - os: windows-latest
             asset: windows-x86_64
-            binary: toml-schema.exe
+            binary: tosd.exe
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -78,8 +78,8 @@ jobs:
           release_version="${RELEASE_TAG##*/}"
           release_version="${release_version#rust-v}"
           release_version="${release_version#v}"
-          asset_name="toml-schema-${release_version}-${{ matrix.asset }}"
-          cargo build --locked --release
+          asset_name="tosd-${release_version}-${{ matrix.asset }}"
+          cargo build --locked --release --bin tosd
 
           "./target/release/${{ matrix.binary }}" validate ../../config.tosd ../../config.toml
           "./target/release/${{ matrix.binary }}" validate ../../config.toml
@@ -93,12 +93,12 @@ jobs:
       - name: Upload archive
         uses: actions/upload-artifact@v4
         with:
-          name: toml-schema-${{ matrix.asset }}
+          name: tosd-${{ matrix.asset }}
           path: reference-implementations/rust/dist/*.tar.gz
           if-no-files-found: error
 
   publish:
-    name: Publish TOML Schema CLI release assets
+    name: Publish tosd CLI release assets
     needs: build
     runs-on: ubuntu-latest
 
@@ -115,7 +115,7 @@ jobs:
           release_version="${release_version#rust-v}"
           release_version="${release_version#v}"
           cd dist
-          shasum -a 256 *.tar.gz > "toml-schema-${release_version}-SHA256SUMS.txt"
+          shasum -a 256 *.tar.gz > "tosd-${release_version}-SHA256SUMS.txt"
 
       - name: Upload release assets
         uses: softprops/action-gh-release@v2

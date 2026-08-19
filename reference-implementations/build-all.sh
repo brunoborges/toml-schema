@@ -26,7 +26,7 @@ run_step "Building Python reference implementation" \
     python3 -m compileall -q "$script_dir/python/src"
 
 run_step "Building Rust reference implementation" \
-    cargo build --locked --release --manifest-path "$script_dir/rust/Cargo.toml"
+    cargo build --locked --release --manifest-path "$script_dir/rust/Cargo.toml" --bin tosd
 
 run_step "Installing TypeScript reference implementation dependencies" \
     npm --prefix "$script_dir/typescript" ci

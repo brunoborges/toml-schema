@@ -123,13 +123,7 @@ fn report(
 
 fn usage(stream: &mut dyn Write) {
     let _ = writeln!(stream, "Usage:");
-    let _ = writeln!(
-        stream,
-        "  toml-schema validate <schema.tosd> <document.toml>"
-    );
-    let _ = writeln!(stream, "  toml-schema validate <document.toml>");
-    let _ = writeln!(
-        stream,
-        "  toml-schema extract <document.toml> <schema.tosd>"
-    );
+    let _ = writeln!(stream, "  tosd validate <schema.tosd> <document.toml>");
+    let _ = writeln!(stream, "  tosd validate <document.toml>");
+    let _ = writeln!(stream, "  tosd extract <document.toml> <schema.tosd>");
 }
