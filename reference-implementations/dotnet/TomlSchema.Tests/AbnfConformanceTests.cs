@@ -71,17 +71,15 @@ public class AbnfConformanceTests : TestBase
     {
         var expression = new System.Text.StringBuilder();
         var inRule = false;
+        var ruleStart = new Regex($"^{Regex.Escape(ruleName)}\\s*=\\s*(.*)$");
 
         foreach (var line in abnf.Split('\n'))
         {
-            if (line.StartsWith($"{ruleName} ="))
+            var match = ruleStart.Match(line);
+            if (match.Success)
             {
-                var parts = line.Split('=');
-                if (parts.Length > 1)
-                {
-                    expression.Append(parts[1].Trim());
-                    inRule = true;
-                }
+                expression.Append(match.Groups[1].Value.Trim());
+                inRule = true;
                 continue;
             }
 
@@ -110,10 +108,10 @@ public class AbnfConformanceTests : TestBase
         foreach (var token in expression.Split('/'))
         {
             var trimmed = token.Trim();
-            if (!string.IsNullOrEmpty(trimmed) && !trimmed.StartsWith(";"))
-            {
-                tokens.Add(trimmed);
-            }
+            var typeRule = RuleExpression(trimmed, abnf);
+            var match = Regex.Match(typeRule, "\"([^\"]+)\"");
+            if (match.Success)
+                tokens.Add(match.Groups[1].Value);
         }
 
         return tokens;

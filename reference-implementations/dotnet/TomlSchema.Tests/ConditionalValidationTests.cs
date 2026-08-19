@@ -1,5 +1,6 @@
 namespace TomlSchema.Tests;
 
+using Tomlyn.Model;
 using Xunit;
 
 public class ConditionalValidationTests : TestBase
@@ -210,6 +211,86 @@ public class ConditionalValidationTests : TestBase
 
         var schemaObj = TomlSchema.Load(schema);
         Assert.NotNull(schemaObj);
+    }
+
+    [Fact]
+    public void ConditionalSelectsUnionBranch()
+    {
+        var stringDefinition = new SchemaDefinition { Type = SchemaType.String };
+        var fileDefinition = new SchemaDefinition
+        {
+            Type = SchemaType.Table,
+            Children = new Dictionary<string, SchemaDefinition>
+            {
+                ["scope"] = stringDefinition,
+                ["kind"] = stringDefinition,
+                ["path"] = stringDefinition
+            }
+        };
+        var memoryDefinition = new SchemaDefinition
+        {
+            Type = SchemaType.Table,
+            Children = new Dictionary<string, SchemaDefinition>
+            {
+                ["scope"] = stringDefinition,
+                ["kind"] = stringDefinition,
+                ["capacity"] = new() { Type = SchemaType.Integer }
+            }
+        };
+        var remoteDefinition = new SchemaDefinition
+        {
+            Type = SchemaType.Table,
+            Children = new Dictionary<string, SchemaDefinition>
+            {
+                ["scope"] = stringDefinition,
+                ["kind"] = stringDefinition,
+                ["host"] = stringDefinition
+            }
+        };
+        var schema = new TomlSchema(
+            "1.0.0",
+            new Dictionary<string, SchemaDefinition>
+            {
+                ["file"] = fileDefinition,
+                ["memory"] = memoryDefinition,
+                ["storage"] = new() { AnyOf = ["types.file", "types.memory"] },
+                ["remote"] = remoteDefinition
+            },
+            new Dictionary<string, SchemaDefinition>
+            {
+                ["target"] = new()
+                {
+                    Condition = new()
+                    {
+                        IfKey = "scope",
+                        IfEquals = "local",
+                        ThenType = "types.storage",
+                        ElseType = "types.remote"
+                    }
+                }
+            });
+
+        var local = new TomlTable
+        {
+            ["target"] = new TomlTable
+            {
+                ["scope"] = "local",
+                ["kind"] = "file",
+                ["path"] = "/data"
+            }
+        };
+        var invalid = new TomlTable
+        {
+            ["target"] = new TomlTable
+            {
+                ["scope"] = "local",
+                ["kind"] = "remote",
+                ["host"] = "example.test"
+            }
+        };
+
+        Assert.True(schema.Validate(local).IsValid);
+        Assert.Contains(schema.Validate(invalid).Errors, error => error.Code == "anyof");
     }
 
     [Fact]

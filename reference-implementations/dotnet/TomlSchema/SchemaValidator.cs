@@ -90,24 +90,22 @@ internal class SchemaValidator
         // Handle conditionals
         if (effectiveSchema.Condition != null)
         {
-            if (value is TomlTable condTable && condTable.TryGetValue(effectiveSchema.Condition.IfKey, out var testValue))
+            bool matches = false;
+            if (value is TomlTable condTable
+                && condTable.TryGetValue(effectiveSchema.Condition.IfKey, out var testValue))
             {
-                bool matches = false;
 
                 if (effectiveSchema.Condition.IfEquals != null)
                     matches = ValueEquals(testValue, effectiveSchema.Condition.IfEquals);
                 else if (effectiveSchema.Condition.IfIn != null)
                     matches = effectiveSchema.Condition.IfIn.Any(v => ValueEquals(testValue, v));
 
-                string? selectedType = matches ? effectiveSchema.Condition.ThenType : effectiveSchema.Condition.ElseType;
-                if (!string.IsNullOrEmpty(selectedType))
-                {
-                    if (!_schema.Types.TryGetValue(selectedType, out var condSchema))
-                        throw new InvalidOperationException($"Undefined type in conditional: {selectedType}");
-                    ValidateType(value, condSchema, path);
-                    return;
-                }
             }
+            string? selectedType = matches ? effectiveSchema.Condition.ThenType : effectiveSchema.Condition.ElseType;
+            var condSchema = _schema.ResolveType(selectedType)
+                ?? throw new InvalidOperationException($"Undefined type in conditional: {selectedType}");
+            ValidateType(value, condSchema, path);
+            return;
         }
 
         // Handle unions (oneof: exactly one)
@@ -116,7 +114,8 @@ internal class SchemaValidator
             int matchCount = 0;
             foreach (var typeRef in effectiveSchema.OneOf)
             {
-                if (_schema.Types.TryGetValue(typeRef, out var unionSchema))
+                var unionSchema = _schema.ResolveType(typeRef);
+                if (unionSchema != null)
                 {
                     var testValidator = new SchemaValidator(_schema);
                     testValidator.ValidateType(value, unionSchema, "$.test");
@@ -135,7 +134,8 @@ internal class SchemaValidator
             int matchCount = 0;
             foreach (var typeRef in effectiveSchema.AnyOf)
             {
-                if (_schema.Types.TryGetValue(typeRef, out var unionSchema))
+                var unionSchema = _schema.ResolveType(typeRef);
+                if (unionSchema != null)
                 {
                     var testValidator = new SchemaValidator(_schema);
                     testValidator.ValidateType(value, unionSchema, "$.test");

@@ -3,12 +3,12 @@
     <TargetFramework>net9.0</TargetFramework>
     <RootNamespace>TomlSchema</RootNamespace>
     <AssemblyName>TomlSchema</AssemblyName>
-    <Version>1.0.0-rc.3</Version>
+    <Version>1.0.0-rc.2</Version>
     <Description>.NET reference implementation for TOML Schema</Description>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

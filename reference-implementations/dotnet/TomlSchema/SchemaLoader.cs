@@ -45,12 +45,22 @@ public class SchemaLoader
         RegexOptions.Compiled
     );
 
+    /// <summary>
+    /// Loads a TOML Schema document from a file.
+    /// </summary>
+    /// <param name="schemaPath">The path to the schema document.</param>
+    /// <returns>The loaded schema.</returns>
     public static TomlSchema Load(string schemaPath)
     {
         var loader = new SchemaLoader();
         return loader.LoadSchema(schemaPath);
     }
 
+    /// <summary>
+    /// Parses TOML content into a table.
+    /// </summary>
+    /// <param name="content">The TOML text to parse.</param>
+    /// <returns>The parsed TOML table.</returns>
     public static TomlTable ParseToml(string content)
     {
         return TomlSerializer.Deserialize<TomlTable>(content) 

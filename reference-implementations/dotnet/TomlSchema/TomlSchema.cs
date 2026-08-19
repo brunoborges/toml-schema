@@ -11,6 +11,9 @@ public class TomlSchema
     private readonly Dictionary<string, SchemaDefinition> _elements;
     private readonly string _version;
 
+    /// <summary>
+    /// Initializes a schema from its version, reusable types, and root elements.
+    /// </summary>
     public TomlSchema(string version, Dictionary<string, SchemaDefinition> types, Dictionary<string, SchemaDefinition> elements)
     {
         _version = version ?? throw new ArgumentNullException(nameof(version));
@@ -52,10 +55,13 @@ public class TomlSchema
         return validator.Validate(document);
     }
 
+    /// <summary>Gets the schema language version.</summary>
     public string Version => _version;
 
+    /// <summary>Gets the reusable type definitions keyed by name.</summary>
     public IReadOnlyDictionary<string, SchemaDefinition> Types => _types;
 
+    /// <summary>Gets the root element definitions keyed by name.</summary>
     public IReadOnlyDictionary<string, SchemaDefinition> Elements => _elements;
 
     internal SchemaDefinition? ResolveType(string? typeRef)
@@ -92,5 +98,6 @@ public class TomlSchema
         return definition?.Default;
     }
 
+    /// <summary>Returns a concise description of this schema.</summary>
     public override string ToString() => $"TomlSchema(version={_version}, elements={_elements.Count})";
 }

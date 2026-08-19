@@ -5,20 +5,35 @@ namespace TomlSchema;
 /// </summary>
 public enum SchemaType
 {
+    /// <summary>Any TOML value.</summary>
     Any,
+    /// <summary>A TOML string.</summary>
     String,
+    /// <summary>A TOML integer.</summary>
     Integer,
+    /// <summary>A TOML floating-point number.</summary>
     Float,
+    /// <summary>A TOML boolean.</summary>
     Boolean,
+    /// <summary>A TOML offset date-time.</summary>
     OffsetDateTime,
+    /// <summary>A TOML local date-time.</summary>
     LocalDateTime,
+    /// <summary>A TOML local date.</summary>
     LocalDate,
+    /// <summary>A TOML local time.</summary>
     LocalTime,
+    /// <summary>A TOML array.</summary>
     Array,
+    /// <summary>A TOML table.</summary>
     Table,
+    /// <summary>A TOML table with dynamic keys.</summary>
     Collection
 }
 
+/// <summary>
+/// Conversion helpers for TOML Schema built-in type names.
+/// </summary>
 public static class SchemaTypeExtensions
 {
     private static readonly Dictionary<SchemaType, string> TypeNames = new()
@@ -53,12 +68,15 @@ public static class SchemaTypeExtensions
         { "collection", SchemaType.Collection }
     };
 
+    /// <summary>Returns the schema-language name for a built-in type.</summary>
     public static string ToSchemaName(this SchemaType type) => TypeNames[type];
 
+    /// <summary>Converts a schema-language built-in type name to its enum value.</summary>
     public static SchemaType FromSchemaName(string name) =>
         NameTypes.TryGetValue(name, out var type) 
             ? type 
             : throw new ArgumentException($"Unknown type: {name}", nameof(name));
 
+    /// <summary>Gets all supported schema-language built-in type names.</summary>
     public static IEnumerable<string> AllTypeNames => NameTypes.Keys;
 }
