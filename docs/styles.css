@@ -235,7 +235,10 @@ h3 {
   width: 10px;
 }
 pre {
+  max-width: 100%;
+  min-width: 0;
   margin: 0;
+  overscroll-behavior-inline: contain;
   overflow-x: auto;
   padding: 20px;
   white-space: pre;
@@ -285,6 +288,10 @@ pre {
   grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
   padding: 22px;
 }
+.tour-step > *,
+.tour-examples > div {
+  min-width: 0;
+}
 .tour-step h3 {
   margin-top: 12px;
 }
@@ -311,8 +318,10 @@ pre {
   background: var(--cp-surface-soft);
   border: 1px solid var(--cp-border);
   border-radius: 0.625rem;
-  height: calc(100% - 24px);
+  height: auto;
   padding: 16px;
+  scrollbar-color: var(--cp-border-strong) transparent;
+  scrollbar-width: thin;
 }
 .spec-item {
   background: var(--cp-surface);
@@ -1006,24 +1015,37 @@ footer {
 }
 
 @media (max-width: 560px) {
-  body {
-    overflow-x: hidden;
-  }
   .page {
-    padding-inline: 18px;
+    padding-left: max(18px, env(safe-area-inset-left));
+    padding-right: max(18px, env(safe-area-inset-right));
   }
   nav {
-    flex-wrap: nowrap;
-    margin-inline: -18px;
-    overflow-x: auto;
-    padding: 0 18px 4px;
-    scrollbar-width: none;
-  }
-  nav::-webkit-scrollbar {
-    display: none;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
   }
   nav a {
-    flex: 0 0 auto;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding-inline: 8px;
+    text-align: center;
+  }
+  .hero .actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .hero .actions a {
+    justify-content: center;
+    min-height: 44px;
+    width: 100%;
+  }
+  .tour-step,
+  .tour-examples,
+  .tour-examples > div,
+  .tour-step pre {
+    max-width: 100%;
   }
   .report-hero {
     padding-top: 36px;
@@ -1079,6 +1101,12 @@ footer {
   .editor-copilot,
   .editor-open {
     padding-block: 64px;
+  }
+}
+
+@media (max-width: 420px) {
+  nav {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
