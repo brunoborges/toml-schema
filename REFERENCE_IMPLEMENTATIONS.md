@@ -232,6 +232,26 @@ Build the CLI binary:
 cargo build --manifest-path reference-implementations/rust/Cargo.toml --release --bin tosd
 ```
 
+Install CLI artifact version `1.0.0-rc.2` on Linux x86_64, Linux arm64, or
+Apple Silicon macOS from GitHub Releases:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSfL \
+  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  bash -s -- --version 1.0.0-rc.2
+```
+
+The installer verifies the release checksum and writes to `$HOME/.local/bin`;
+set `TOSD_INSTALL_DIR` to override the destination. Windows x86_64 users can
+download `tosd-1.0.0-rc.2-windows-x86_64.tar.gz` directly. All four platform
+archives and `tosd-1.0.0-rc.2-SHA256SUMS.txt` are attached to the
+`rust-v1.0.0-rc.2` GitHub Release. See the
+[Rust README](reference-implementations/rust/README.md#install-the-cli) for
+archive names, checksum verification, and inspect-before-run instructions.
+
+The CLI artifact version is `1.0.0-rc.2`; the TOML Schema language version
+embedded in schema documents remains `1.0.0`.
+
 For document-driven lookup, the CLI resolves a relative
 `[toml-schema].location` from the TOML document's directory. The document's
 `[toml-schema].version` is optional; when present, the CLI rejects a major-version

@@ -11,6 +11,71 @@ canonical `tosd` CLI, and can be used as a library.
 
 All commands below assume you run them from the repository root.
 
+## Install the CLI
+
+The canonical CLI is distributed through
+[GitHub Releases](https://github.com/brunoborges/toml-schema/releases).
+Install `1.0.0-rc.2` on Linux or Apple Silicon macOS:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSfL \
+  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  bash -s -- --version 1.0.0-rc.2
+```
+
+The installer downloads the matching release archive, verifies its SHA-256
+checksum, and atomically installs `tosd` to `$HOME/.local/bin/tosd`. Ensure that
+directory is on `PATH`. Override the destination when needed:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSfL \
+  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  TOSD_INSTALL_DIR="$HOME/bin" bash -s -- --version 1.0.0-rc.2
+```
+
+To inspect the installer before running it:
+
+```shell
+curl --proto '=https' --tlsv1.2 -sSfLo install-tosd.sh \
+  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh
+less install-tosd.sh
+bash install-tosd.sh --version 1.0.0-rc.2
+```
+
+Release assets use these names:
+
+| Platform | Archive |
+| --- | --- |
+| Linux x86_64 | `tosd-1.0.0-rc.2-linux-x86_64.tar.gz` |
+| Linux arm64 | `tosd-1.0.0-rc.2-linux-arm64.tar.gz` |
+| macOS arm64 | `tosd-1.0.0-rc.2-macos-arm64.tar.gz` |
+| Windows x86_64 | `tosd-1.0.0-rc.2-windows-x86_64.tar.gz` |
+
+Windows users download and extract the Windows archive directly, then place
+`tosd.exe` on `PATH`. Every release includes
+`tosd-1.0.0-rc.2-SHA256SUMS.txt`; verify the selected archive before extracting
+it. For example, on Windows PowerShell:
+
+```powershell
+$archive = "tosd-1.0.0-rc.2-windows-x86_64.tar.gz"
+$expected = ((Select-String " $archive$" tosd-1.0.0-rc.2-SHA256SUMS.txt).Line -split "\s+")[0]
+$actual = (Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant()
+if ($actual -ne $expected) { throw "Checksum verification failed" }
+tar -xzf $archive
+```
+
+On Linux:
+
+```shell
+grep ' tosd-1.0.0-rc.2-linux-x86_64.tar.gz$' \
+  tosd-1.0.0-rc.2-SHA256SUMS.txt > selected-SHA256SUMS.txt
+sha256sum -c selected-SHA256SUMS.txt
+```
+
+CLI releases use `rust-v<version>` tags. The CLI artifact version
+`1.0.0-rc.2` identifies this implementation prerelease; schemas continue to
+declare the TOML Schema language version `1.0.0`.
+
 ## Build and test
 
 Run the test suite:
@@ -26,6 +91,12 @@ cargo build --manifest-path reference-implementations/rust/Cargo.toml --release 
 ```
 
 ## CLI usage
+
+Display the installed CLI version:
+
+```shell
+tosd --version
+```
 
 Validate with an explicit schema:
 

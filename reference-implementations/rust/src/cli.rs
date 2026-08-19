@@ -14,6 +14,10 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> u8 {
         usage(out);
         return 0;
     }
+    if args[0] == "--version" || args[0] == "-V" {
+        let _ = writeln!(out, "tosd {}", env!("CARGO_PKG_VERSION"));
+        return 0;
+    }
     match args[0].as_str() {
         "validate" => match args.len() {
             2 => validate_with_embedded_schema(&args[1], out, err),

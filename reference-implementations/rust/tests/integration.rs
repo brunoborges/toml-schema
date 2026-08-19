@@ -50,15 +50,27 @@ fn capture(args: &[&str]) -> (u8, String, String) {
 
 #[test]
 fn canonical_binary_is_named_tosd() {
-    let output = Command::new(env!("CARGO_BIN_EXE_tosd"))
+    let help = Command::new(env!("CARGO_BIN_EXE_tosd"))
         .arg("--help")
         .output()
         .expect("run tosd binary");
-    assert!(output.status.success());
+    assert!(help.status.success());
 
-    let stdout = String::from_utf8(output.stdout).expect("stdout utf-8");
-    assert!(stdout.contains("tosd validate"));
-    assert!(!stdout.contains("toml-schema validate"));
+    let help_stdout = String::from_utf8(help.stdout).expect("stdout utf-8");
+    assert!(help_stdout.contains("tosd validate"));
+    assert!(!help_stdout.contains("toml-schema validate"));
+
+    let version = Command::new(env!("CARGO_BIN_EXE_tosd"))
+        .arg("--version")
+        .output()
+        .expect("run tosd binary");
+    assert!(version.status.success());
+
+    let version_stdout = String::from_utf8(version.stdout).expect("stdout utf-8");
+    assert_eq!(
+        version_stdout.trim(),
+        format!("tosd {}", env!("CARGO_PKG_VERSION"))
+    );
 }
 
 #[test]
