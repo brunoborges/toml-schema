@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("TomlSchema.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+8555fca2f00387c88482af229af3beb0cadc3788")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a8dfab97edd86e176ec04d3983e197c1ad2cba00")]
 [assembly: System.Reflection.AssemblyProductAttribute("TomlSchema.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TomlSchema.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

@@ -99,3 +99,4 @@
 /home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.Tests/obj/Debug/net9.0/TomlSchema.Tests.pdb
 /home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.Tests/obj/Debug/net9.0/TomlSchema.Tests.genruntimeconfig.cache
 /home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.Tests/obj/Debug/net9.0/ref/TomlSchema.Tests.dll
+/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.Tests/bin/Debug/net9.0/TomlSchema.xml

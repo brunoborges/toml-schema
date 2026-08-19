@@ -9,7 +9,7 @@
       "TomlSchema.Tests/1.0.0": {
         "dependencies": {
           "Microsoft.NET.Test.Sdk": "17.10.0",
-          "TomlSchema": "1.0.0-rc.3",
+          "TomlSchema": "1.0.0-rc.2",
           "xunit": "2.8.1"
         },
         "runtime": {
@@ -339,7 +339,7 @@
           }
         }
       },
-      "TomlSchema/1.0.0-rc.3": {
+      "TomlSchema/1.0.0-rc.2": {
         "dependencies": {
           "Tomlyn": "2.10.1"
         },
@@ -442,7 +442,7 @@
       "path": "xunit.extensibility.execution/2.8.1",
       "hashPath": "xunit.extensibility.execution.2.8.1.nupkg.sha512"
     },
-    "TomlSchema/1.0.0-rc.3": {
+    "TomlSchema/1.0.0-rc.2": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

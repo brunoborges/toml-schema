@@ -10,3 +10,5 @@
 /home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/obj/Debug/net9.0/refint/TomlSchema.dll
 /home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/obj/Debug/net9.0/TomlSchema.pdb
 /home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/obj/Debug/net9.0/ref/TomlSchema.dll
+/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/bin/Debug/net9.0/TomlSchema.xml
+/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/obj/Debug/net9.0/TomlSchema.xml

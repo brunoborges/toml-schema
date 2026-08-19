@@ -14,7 +14,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute(".NET reference implementation for TOML Schema")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0-rc.3+8555fca2f00387c88482af229af3beb0cadc3788")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0-rc.2+a8dfab97edd86e176ec04d3983e197c1ad2cba00")]
 [assembly: System.Reflection.AssemblyProductAttribute("TomlSchema")]
 [assembly: System.Reflection.AssemblyTitleAttribute("TomlSchema")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

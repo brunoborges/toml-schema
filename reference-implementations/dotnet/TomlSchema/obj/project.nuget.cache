@@ -1,12 +1,10 @@
 {
   "version": 2,
-  "dgSpecHash": "YhU4eUnTZ58=",
+  "dgSpecHash": "doZGOdVgx/c=",
   "success": true,
   "projectFilePath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/TomlSchema.csproj",
   "expectedPackageFiles": [
-    "/tmp/codeql-scratch-20b714ea8d3ef6f8/dbs/csharp/working/packages/tomlyn/2.10.1/tomlyn.2.10.1.nupkg.sha512",
-    "/tmp/codeql-scratch-20b714ea8d3ef6f8/dbs/csharp/working/packages/microsoft.netcore.app.ref/9.0.18/microsoft.netcore.app.ref.9.0.18.nupkg.sha512",
-    "/tmp/codeql-scratch-20b714ea8d3ef6f8/dbs/csharp/working/packages/microsoft.aspnetcore.app.ref/9.0.18/microsoft.aspnetcore.app.ref.9.0.18.nupkg.sha512"
+    "/home/runner/.nuget/packages/tomlyn/2.10.1/tomlyn.2.10.1.nupkg.sha512"
   ],
   "logs": []
 }

@@ -10,7 +10,7 @@
         "projectUniqueName": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.Tests/TomlSchema.Tests.csproj",
         "projectName": "TomlSchema.Tests",
         "projectPath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.Tests/TomlSchema.Tests.csproj",
-        "packagesPath": "/tmp/codeql-scratch-20b714ea8d3ef6f8/dbs/csharp/working/packages",
+        "packagesPath": "/home/runner/.nuget/packages/",
         "outputPath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema.Tests/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
@@ -74,16 +74,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[9.0.18, 9.0.18]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[9.0.18, 9.0.18]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
@@ -99,7 +89,7 @@
         "projectUniqueName": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/TomlSchema.csproj",
         "projectName": "TomlSchema",
         "projectPath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/TomlSchema.csproj",
-        "packagesPath": "/tmp/codeql-scratch-20b714ea8d3ef6f8/dbs/csharp/working/packages",
+        "packagesPath": "/home/runner/.nuget/packages/",
         "outputPath": "/home/runner/work/toml-schema/toml-schema/reference-implementations/dotnet/TomlSchema/obj/",
         "projectStyle": "PackageReference",
         "configFilePaths": [
@@ -151,16 +141,6 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
-          "downloadDependencies": [
-            {
-              "name": "Microsoft.AspNetCore.App.Ref",
-              "version": "[9.0.18, 9.0.18]"
-            },
-            {
-              "name": "Microsoft.NETCore.App.Ref",
-              "version": "[9.0.18, 9.0.18]"
-            }
-          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
