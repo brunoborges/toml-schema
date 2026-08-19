@@ -123,6 +123,69 @@
         </div>
       </section>
 
+      <section class="editor-cli" aria-labelledby="editor-cli-title">
+        <div class="editor-section-heading">
+          <h2 id="editor-cli-title">Author visually. Validate in the terminal.</h2>
+          <p>
+            The editor and the canonical <code>tosd</code> CLI work on the same
+            <code>.tosd</code> source. Save the schema, then run the check locally
+            or in CI without converting formats.
+          </p>
+          <a class="text-link" href="/implementations/#rust">Open the complete CLI documentation <span aria-hidden="true">→</span></a>
+        </div>
+        <div class="editor-cli-workflow">
+          <ol class="cli-steps">
+            <li>
+              <span>1</span>
+              <div>
+                <strong>Install the release</strong>
+                <small>The verified installer supports Linux and Apple Silicon macOS and writes to <code>$HOME/.local/bin</code>.</small>
+              </div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <strong>Save the schema</strong>
+                <small>Use the editor to review the live TOML, resolve structural issues, and save the canonical <code>.tosd</code> file.</small>
+              </div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <strong>Validate the document</strong>
+                <small>Pass the schema explicitly or let <code>tosd</code> discover it from <code>[toml-schema].location</code>.</small>
+              </div>
+            </li>
+          </ol>
+
+          <div class="cli-command-set">
+            <div class="command-block">
+              <div class="panel-header">
+                <strong>Install version 1.0.0-rc.2</strong>
+              </div>
+              <pre><code>curl --proto '=https' --tlsv1.2 -sSfL \
+  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  bash -s -- --version 1.0.0-rc.2</code></pre>
+            </div>
+            <div class="cli-command-grid">
+              <div class="command-block">
+                <div class="panel-header"><strong>Explicit schema</strong></div>
+                <pre><code>tosd validate config.tosd config.toml</code></pre>
+              </div>
+              <div class="command-block">
+                <div class="panel-header"><strong>Schema discovery</strong></div>
+                <pre><code>tosd validate config.toml</code></pre>
+              </div>
+            </div>
+            <p class="cli-platform-note">
+              Windows users install from the release archive. Checksums, destination
+              overrides, extraction, and all supported commands are covered in the
+              <a href="/implementations/#rust">Rust reference implementation guide</a>.
+            </p>
+          </div>
+        </div>
+      </section>
+
       <section class="editor-open" id="how-to-open">
         <div>
           <h2>Open the canvas in three moves.</h2>
