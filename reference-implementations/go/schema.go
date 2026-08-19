@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -878,10 +879,8 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	for property, references := range map[string][]string{
 		"items": items, "oneof": oneOf, "anyof": anyOf, "allof": allOf,
 	} {
-		for _, reference := range references {
-			if reference == "" {
-				return Definition{}, fmt.Errorf("%s %s references must not be blank", name, property)
-			}
+		if slices.Contains(references, "") {
+			return Definition{}, fmt.Errorf("%s %s references must not be blank", name, property)
 		}
 	}
 	if hasOneOf && len(oneOf) == 0 {
@@ -2040,7 +2039,7 @@ func (v *validator) validateArray(path string, array []any, definition Definitio
 	v.validateLength(path, len(array), definition)
 	if definition.uniqueItems != nil && *definition.uniqueItems {
 		for index := range array {
-			for previous := 0; previous < index; previous++ {
+			for previous := range index {
 				if valuesEqual(array[previous], array[index]) {
 					v.add(fmt.Sprintf("%s[%d]", path, index),
 						fmt.Sprintf("duplicate item equals item at index %d", previous))
@@ -2125,10 +2124,7 @@ func (v *validator) validateTupleArray(path string, array []any, definition Defi
 	if len(array) != len(definition.items) {
 		v.add(path, fmt.Sprintf("expected array length %d but found %d", len(definition.items), len(array)))
 	}
-	upperBound := len(array)
-	if len(definition.items) < upperBound {
-		upperBound = len(definition.items)
-	}
+	upperBound := min(len(definition.items), len(array))
 	for i := range upperBound {
 		itemPath := fmt.Sprintf("%s[%d]", path, i)
 		itemDefinition, err := v.resolveReference(definition.items[i], map[string]bool{})

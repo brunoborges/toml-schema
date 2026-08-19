@@ -10,7 +10,7 @@ command-line interface for validation, schema discovery through
 | Language | Location | Requires | Interfaces |
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, schema discovery |
-| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, schema discovery, schema extraction |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.27.0 | Library, schema discovery, schema extraction |
 | .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
 | Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |

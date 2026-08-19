@@ -58,7 +58,7 @@ func abnfPath() string {
 func alternativesFor(ruleName, abnf string) []string {
 	expression := ruleExpression(ruleName, abnf)
 	tokens := []string{}
-	for _, token := range strings.Split(expression, "/") {
+	for token := range strings.SplitSeq(expression, "/") {
 		token = strings.TrimSpace(token)
 		if token == "" || token == "version" {
 			continue
@@ -71,7 +71,7 @@ func alternativesFor(ruleName, abnf string) []string {
 func ruleExpression(ruleName, abnf string) string {
 	var expression strings.Builder
 	inRule := false
-	for _, line := range strings.Split(abnf, "\n") {
+	for line := range strings.SplitSeq(abnf, "\n") {
 		if strings.HasPrefix(line, ruleName+" =") {
 			_, value, _ := strings.Cut(line, "=")
 			expression.WriteString(strings.TrimSpace(value))
@@ -92,7 +92,7 @@ func ruleExpression(ruleName, abnf string) string {
 
 func builtInTypeTokens(abnf string) []string {
 	tokens := []string{}
-	for _, line := range strings.Split(abnf, "\n") {
+	for line := range strings.SplitSeq(abnf, "\n") {
 		matches := tokenCommentPattern.FindStringSubmatch(line)
 		if len(matches) != 2 {
 			continue
