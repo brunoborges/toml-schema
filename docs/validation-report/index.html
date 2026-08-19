@@ -48,7 +48,9 @@
         <h1>16 of 18 real-world TOML files validated unchanged.</h1>
         <p class="lead">
           We took public configuration files from six established TOML ecosystems,
-          downloaded them directly from GitHub, and ran the Java reference validator.
+          downloaded them directly from GitHub, and validated them against proposed
+          schemas. The results were reproduced with the canonical Rust CLI at the
+          pinned revision below.
           No source file was rewritten to fit the schema.
         </p>
         <div class="actions">
@@ -61,7 +63,7 @@
         <span><strong>18</strong> public files</span>
         <span><strong>6</strong> ecosystems</span>
         <span><strong>5 of 6</strong> schemas passed every file</span>
-        <span><strong>2</strong> precise diagnostics</span>
+        <span><strong>4</strong> diagnostic paths across 2 files</span>
       </div>
 
       <section class="report-section report-intro">
@@ -103,7 +105,7 @@
               <div><h3>Cargo</h3><p>Packages, workspaces, target dependencies, profiles, and metadata.</p></div>
               <div class="result-actions">
                 <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
-                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/cargo.tosd">View schema <span aria-hidden="true">→</span></a>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/a7ced5595bdae08af9390f54c4997e91719b8e12/examples/cargo.tosd">View schema <span aria-hidden="true">→</span></a>
               </div>
             </div>
             <ul class="source-list">
@@ -118,7 +120,7 @@
               <div><h3>pyproject</h3><p>PEP 621 metadata, dependency groups, build systems, and open tool namespaces.</p></div>
               <div class="result-actions">
                 <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
-                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/pyproject.tosd">View schema <span aria-hidden="true">→</span></a>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/a7ced5595bdae08af9390f54c4997e91719b8e12/examples/pyproject.tosd">View schema <span aria-hidden="true">→</span></a>
               </div>
             </div>
             <ul class="source-list">
@@ -133,7 +135,7 @@
               <div><h3>Hugo</h3><p>Site settings, modules, theme parameters, languages, and pagination.</p></div>
               <div class="result-actions">
                 <span class="status status-mixed"><span aria-hidden="true">!</span> 1 / 3 valid</span>
-                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/hugo.tosd">View schema <span aria-hidden="true">→</span></a>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/a7ced5595bdae08af9390f54c4997e91719b8e12/examples/hugo.tosd">View schema <span aria-hidden="true">→</span></a>
               </div>
             </div>
             <ul class="source-list">
@@ -148,7 +150,7 @@
               <div><h3>Netlify</h3><p>Build contexts, redirects, headers, environment values, and deployment behavior.</p></div>
               <div class="result-actions">
                 <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
-                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/netlify.tosd">View schema <span aria-hidden="true">→</span></a>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/a7ced5595bdae08af9390f54c4997e91719b8e12/examples/netlify.tosd">View schema <span aria-hidden="true">→</span></a>
               </div>
             </div>
             <ul class="source-list">
@@ -163,7 +165,7 @@
               <div><h3>Cloudflare Wrangler</h3><p>Worker entry points, bindings, routes, variables, and compatibility settings.</p></div>
               <div class="result-actions">
                 <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
-                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/wrangler.tosd">View schema <span aria-hidden="true">→</span></a>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/a7ced5595bdae08af9390f54c4997e91719b8e12/examples/wrangler.tosd">View schema <span aria-hidden="true">→</span></a>
               </div>
             </div>
             <ul class="source-list">
@@ -178,7 +180,7 @@
               <div><h3>GitLab Runner</h3><p>Global settings, runner arrays, executors, and service configuration.</p></div>
               <div class="result-actions">
                 <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
-                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/gitlab-runner.tosd">View schema <span aria-hidden="true">→</span></a>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/a7ced5595bdae08af9390f54c4997e91719b8e12/examples/gitlab-runner.tosd">View schema <span aria-hidden="true">→</span></a>
               </div>
             </div>
             <ul class="source-list">
@@ -218,7 +220,7 @@
         <ol class="method-list">
           <li><strong>Search public GitHub repositories.</strong><span>Prefer project configuration over vendor documentation and template-only examples.</span></li>
           <li><strong>Pin and download the source.</strong><span>Use repository content directly; do not normalize casing, remove unknown keys, or otherwise prepare it for the schema.</span></li>
-          <li><strong>Validate with the reference CLI.</strong><span>Pair each file with the corresponding proposed <code>.tosd</code> schema.</span></li>
+          <li><strong>Validate with the canonical CLI.</strong><span>At revision <code>a7ced5595bda</code>, pair each file with the corresponding pinned <code>.tosd</code> schema.</span></li>
           <li><strong>Record every outcome.</strong><span>Count strict validation failures as failures and retain the diagnostic paths.</span></li>
         </ol>
         <div class="command-block">
@@ -226,7 +228,10 @@
             <strong>Reproduce a validation</strong>
             <button class="copy-button" type="button" data-copy-target="validation-command" aria-live="polite">Copy command</button>
           </div>
-          <pre><code id="validation-command">java -jar toml-schema-1.0.0-rc.2.jar \
+          <pre><code id="validation-command">git clone https://github.com/brunoborges/toml-schema.git toml-schema-report
+cd toml-schema-report
+git checkout a7ced5595bdae08af9390f54c4997e91719b8e12
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- \
   validate examples/cargo.tosd path/to/Cargo.toml</code></pre>
         </div>
       </section>

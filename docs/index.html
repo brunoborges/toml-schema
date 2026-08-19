@@ -95,7 +95,7 @@ uniqueitems = true</code></pre>
           <article class="card">
             <span class="badge">Toolable</span>
             <h3>Reference implementations</h3>
-            <p>Java, Go, and Rust implementations validate examples, self-schema behavior, and CLI workflows in CI.</p>
+            <p>Java, Go, .NET, and Rust libraries validate examples and self-schema behavior in CI; Rust also exercises the canonical CLI end to end.</p>
           </article>
         </div>
       </section>
@@ -367,18 +367,23 @@ retries = 3</code></pre>
         <div class="implementations">
           <article class="card">
             <span class="badge">Java</span>
-            <h3>Library and CLI</h3>
+            <h3>Library</h3>
             <p>Uses Tomlj to parse TOML and validates documents against <code>.tosd</code> schemas.</p>
           </article>
           <article class="card">
             <span class="badge">Go</span>
-            <h3>Library and CLI</h3>
+            <h3>Library</h3>
             <p>Uses go-toml and supports explicit schema validation and schema-location lookup.</p>
           </article>
           <article class="card">
+            <span class="badge">.NET</span>
+            <h3>Library</h3>
+            <p>Uses Tomlyn to parse TOML and validates documents against <code>.tosd</code> schemas.</p>
+          </article>
+          <article class="card">
             <span class="badge">Rust</span>
-            <h3>Library and CLI</h3>
-            <p>Uses the Rust <code>toml</code> crate and mirrors cross-language behavior.</p>
+            <h3>Library and canonical CLI</h3>
+            <p>Uses the Rust <code>toml</code> crate and provides validation, schema discovery, and schema extraction commands.</p>
           </article>
         </div>
         <div class="actions">

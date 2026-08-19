@@ -20,7 +20,7 @@ TOML Schema keeps schemas in TOML itself. Its GitHub Copilot App canvas editor t
 
 ## Operating Context
 
-Developers work in the GitHub Copilot App with this repository open, edit `.tosd` schema files, inspect their generated TOML, and use the repository's Java, Go, or Rust reference implementations to validate TOML documents.
+Developers work in the GitHub Copilot App with this repository open, edit `.tosd` schema files, inspect their generated TOML, and use the repository's Java, Go, .NET, or Rust reference implementations to validate TOML documents.
 
 ## Capabilities and Constraints
 
@@ -37,7 +37,7 @@ Use the names "TOML Schema" and "TOML Schema Editor." Describe the product direc
 
 - The working canvas extension lives in `.github/extensions/tosd-editor/`.
 - Checked-in `.tosd` examples and the TOML Schema self-schema provide real demonstration content.
-- Java, Go, and Rust reference implementations and the real-world validation report provide implementation evidence.
+- Java, Go, .NET, and Rust reference implementations and the real-world validation report provide implementation evidence.
 - No testimonials, customer logos, or benchmark claims are available and none should be invented.
 
 ## Product Principles

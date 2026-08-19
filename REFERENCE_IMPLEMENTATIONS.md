@@ -1,6 +1,6 @@
 # Reference Implementations
 
-Build and use the TOML Schema reference libraries in Java, Go, and Rust. Rust also
+Build and use the TOML Schema reference libraries in Java, Go, .NET, and Rust. Rust also
 provides the canonical `toml-schema` command-line interface for validation, schema
 discovery through `[toml-schema].location`, and starter-schema extraction.
 
@@ -124,7 +124,7 @@ dotnet test reference-implementations/dotnet
 Run one test:
 
 ```shell
-dotnet test reference-implementations/dotnet -k "ValidatesCheckedInExample"
+dotnet test reference-implementations/dotnet --filter "ValidatesCheckedInExample"
 ```
 
 Build the library:
@@ -255,7 +255,7 @@ language-version compatibility rules from `SPEC.md`, and expose validation and
 schema extraction commands suitable for automation and editor integration.
 
 The GitHub Actions workflow in `.github/workflows/reference-implementations.yml`
-enforces these expectations for Java, Go, and Rust. Rust additionally exercises
+enforces these expectations for Java, Go, .NET, and Rust. Rust additionally exercises
 the canonical CLI end to end.
 
 ## TOML version profile
@@ -266,11 +266,12 @@ The current reference implementations parse TOML with libraries that target TOML
 
 - Java: [Tomlj](https://github.com/tomlj/tomlj) `1.1.1`, which documents support up to TOML 1.0.0.
 - Go: [`pelletier/go-toml`](https://github.com/pelletier/go-toml) `v2.3.1`, which targets TOML 1.0.
+- .NET: [Tomlyn](https://github.com/xoofx/Tomlyn) `2.10.1`, which targets TOML 1.0.
 - Rust: [`toml`](https://crates.io/crates/toml) `1`, which targets TOML 1.0.
 
-For that reason, the reference implementations' current effective parser profile is **TOML 1.0**. TOML 1.1 syntax (for example multi-line inline tables, trailing commas in inline tables, omitted seconds in date-times, or the `\e` and `\xHH` string escapes) is not guaranteed to parse in either reference implementation until the underlying TOML parser declares TOML 1.1 conformance.
+For that reason, the reference implementations' current effective parser profile is **TOML 1.0**. TOML 1.1 syntax (for example multi-line inline tables, trailing commas in inline tables, omitted seconds in date-times, or the `\e` and `\xHH` string escapes) is not guaranteed to parse in any reference implementation until the underlying TOML parser declares TOML 1.1 conformance.
 
-Upgrading either reference implementation to a TOML 1.1-conformant parser is tracked separately. When that happens, the expected follow-up changes are:
+Upgrading a reference implementation to a TOML 1.1-conformant parser is tracked separately. When that happens, the expected follow-up changes are:
 
 1. Bump the TOML badge in [`README.md`](README.md) and the parser notes in the status table above to TOML 1.1.
 1. Update the ABNF preamble in [`toml-schema.abnf`](toml-schema.abnf) to reference TOML 1.1 as the underlying grammar.

@@ -22,7 +22,7 @@ dotnet test reference-implementations/dotnet
 Run a single test:
 
 ```shell
-dotnet test reference-implementations/dotnet -k "ValidatesCheckedInExample"
+dotnet test reference-implementations/dotnet --filter "ValidatesCheckedInExample"
 ```
 
 Build the library:
