@@ -139,6 +139,9 @@ final class TomlSchemaValidator {
             if (value instanceof TomlArray array && Boolean.TRUE.equals(definition.uniqueItems())) {
                 validateUniqueItems(path, array);
             }
+        } else if (definition.condition() != null) {
+            validateConditional(path, value, definition,
+                    siblingChildren(definition, externalChildren, true, null, visiting));
         } else if (!definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
             validateUnion(path, value, definition,
                     siblingChildren(definition, externalChildren, true, null, visiting));
@@ -207,6 +210,12 @@ final class TomlSchemaValidator {
             return collectFixedChildren(reference(definition.reference(), scope), scope);
         }
         Set<String> result = new HashSet<>();
+        if (definition.condition() != null) {
+            for (String branch : List.of(definition.thenReference(), definition.elseReference())) {
+                Set<String> scope = new HashSet<>(visiting);
+                result.addAll(collectFixedChildren(reference(branch, scope), scope));
+            }
+        }
         for (String alternative : alternatives(definition)) {
             Set<String> scope = new HashSet<>(visiting);
             result.addAll(collectFixedChildren(reference(alternative, scope), scope));
@@ -237,6 +246,44 @@ final class TomlSchemaValidator {
             ValidationResult result,
             LinkedHashSet<ValidationWarning> nodeWarnings
     ) {
+    }
+
+    private void validateConditional(
+            String path,
+            Object value,
+            SchemaDefinition definition,
+            Set<String> sharedChildren
+    ) {
+        if (!(value instanceof TomlTable table)) {
+            SchemaType kind = effectiveKind(definition, new HashSet<>());
+            add("type-mismatch", path,
+                    "expected " + kind.schemaName() + " but found " + typeName(value));
+            return;
+        }
+        SchemaCondition condition = definition.condition();
+        Object discriminator = table.get(List.of(condition.key()));
+        boolean matches = discriminator != null
+                && (condition.usesEquals()
+                ? ValueSemantics.valuesEqual(discriminator, condition.equalsValue())
+                : condition.inValues().stream()
+                .anyMatch(candidate -> ValueSemantics.valuesEqual(discriminator, candidate)));
+        String selected = matches ? definition.thenReference() : definition.elseReference();
+
+        TomlSchemaValidator branch = new TomlSchemaValidator(schema);
+        branch.suppressWarnings = suppressWarnings;
+        SchemaDefinition selectedDefinition = branch.reference(selected, new HashSet<>());
+        Set<String> branchClosure = branch.collectFixedChildren(
+                selectedDefinition, new HashSet<>());
+        branchClosure.addAll(sharedChildren);
+        LinkedHashSet<ValidationWarning> branchNodeWarnings = new LinkedHashSet<>();
+        branch.validateComposedNode(path, value, selectedDefinition,
+                sharedChildren, branchClosure, true, branchNodeWarnings);
+        ValidationResult branchResult = branch.result();
+        errors.addAll(branchResult.errors());
+        if (!suppressWarnings) {
+            warnings.addAll(branchResult.warnings());
+            nodeWarnings.addAll(branchNodeWarnings);
+        }
     }
 
     private void validateUnion(
@@ -466,6 +513,12 @@ final class TomlSchemaValidator {
             result.addAll(collectFixedChildren(reference(definition.reference(), visiting),
                     new HashSet<>(visiting)));
         }
+        if (definition.condition() != null) {
+            for (String branch : List.of(definition.thenReference(), definition.elseReference())) {
+                Set<String> scope = new HashSet<>(visiting);
+                result.addAll(collectFixedChildren(reference(branch, scope), scope));
+            }
+        }
         List<String> alternatives = definition.oneOf().isEmpty()
                 ? definition.anyOf() : definition.oneOf();
         for (String alternative : alternatives) {
@@ -482,6 +535,10 @@ final class TomlSchemaValidator {
     private SchemaType effectiveKind(SchemaDefinition definition, Set<String> visiting) {
         if (definition.reference() != null) {
             return effectiveKind(reference(definition.reference(), visiting), new HashSet<>(visiting));
+        }
+        if (definition.condition() != null) {
+            return effectiveKind(
+                    reference(definition.thenReference(), visiting), new HashSet<>(visiting));
         }
         if (!definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
             List<String> alternatives = definition.oneOf().isEmpty()
@@ -502,7 +559,8 @@ final class TomlSchemaValidator {
     }
 
     private boolean resolvesToUnionSelector(SchemaDefinition definition, Set<String> visiting) {
-        if (!definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
+        if (definition.condition() != null
+                || !definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
             return true;
         }
         return definition.reference() != null
@@ -558,7 +616,8 @@ final class TomlSchemaValidator {
     private SchemaDefinition builtIn(String name, SchemaType type) {
         return new SchemaDefinition(name, type, null, null, null, List.of(), false,
                 List.of(), null, null, null, null, null, null, List.of(), List.of(),
-                List.of(), Map.of(), List.of(), List.of(), null, false, null, false, Map.of());
+                null, null, null, List.of(), Map.of(), List.of(), List.of(), null,
+                false, null, false, Map.of());
     }
 
     private boolean isType(Object value, SchemaType type) {

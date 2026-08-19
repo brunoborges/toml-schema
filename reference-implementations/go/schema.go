@@ -39,6 +39,7 @@ var definitionKeys = map[string]bool{
 	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true, "dependentrequired": true, "mutuallyexclusive": true,
 	"exactlyone": true, "allof": true, "uniqueitems": true, "default": true, "deprecated": true,
+	"if": true, "then": true, "else": true,
 }
 
 var namedReferenceKeys = map[string]bool{
@@ -48,6 +49,10 @@ var namedReferenceKeys = map[string]bool{
 var unionKeys = map[string]bool{
 	"oneof": true, "anyof": true, "description": true, "optional": true, "allof": true,
 	"default": true, "deprecated": true,
+}
+var conditionalKeys = map[string]bool{
+	"if": true, "then": true, "else": true, "description": true, "optional": true,
+	"allof": true, "default": true, "deprecated": true,
 }
 
 // currentTomlSchemaVersion is the TOML Schema language version this implementation
@@ -113,6 +118,9 @@ type Definition struct {
 	maxLength         *int
 	oneOf             []string
 	anyOf             []string
+	condition         *condition
+	thenReference     string
+	elseReference     string
 	allOf             []string
 	dependentRequired map[string][]string
 	mutuallyExclusive [][]string
@@ -123,6 +131,13 @@ type Definition struct {
 	deprecated        bool
 	hasDeprecated     bool
 	children          map[string]Definition
+}
+
+type condition struct {
+	key       string
+	equals    any
+	in        []any
+	hasEquals bool
 }
 
 type Severity string
@@ -312,6 +327,11 @@ func (s *Schema) validateDefinitionSemantics(definition Definition) error {
 			return fmt.Errorf("%s effective collection must define at least one itemtype", definition.name)
 		}
 	}
+	if definition.condition != nil {
+		if !resolved || (kind != TypeTable && kind != TypeCollection) {
+			return fmt.Errorf("%s conditional selector requires compatible table or collection branches", definition.name)
+		}
+	}
 	for _, child := range definition.children {
 		if err := s.validateDefinitionSemantics(child); err != nil {
 			return err
@@ -360,6 +380,21 @@ func (s *Schema) effectiveKind(definition Definition, visiting map[string]bool) 
 			}
 			kind, resolved = alternativeKind, true
 		}
+	case definition.condition != nil:
+		for _, reference := range []string{definition.thenReference, definition.elseReference} {
+			branch, err := s.definitionForReference(reference)
+			if err != nil {
+				return "", false, err
+			}
+			branchKind, ok, err := s.effectiveKind(branch, visiting)
+			if err != nil {
+				return "", false, err
+			}
+			if !ok || (resolved && branchKind != kind) {
+				return "", false, fmt.Errorf("conditional branches have incompatible effective kinds")
+			}
+			kind, resolved = branchKind, true
+		}
 	default:
 		kind, resolved = definition.typeName, definition.typeName != ""
 	}
@@ -396,6 +431,9 @@ func (s *Schema) effectiveFixedChildren(definition Definition, visiting map[stri
 	}
 	references = append(references, definition.oneOf...)
 	references = append(references, definition.anyOf...)
+	if definition.condition != nil {
+		references = append(references, definition.thenReference, definition.elseReference)
+	}
 	for _, reference := range references {
 		if _, builtIn := parseSchemaType(reference); builtIn {
 			continue
@@ -433,6 +471,9 @@ func (s *Schema) hasCollectionItemConstraint(definition Definition, visiting map
 	}
 	references = append(references, definition.oneOf...)
 	references = append(references, definition.anyOf...)
+	if definition.condition != nil {
+		references = append(references, definition.thenReference, definition.elseReference)
+	}
 	references = append(references, definition.allOf...)
 	for _, reference := range references {
 		if _, builtIn := parseSchemaType(reference); builtIn {
@@ -830,6 +871,10 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	if err != nil {
 		return Definition{}, err
 	}
+	condition, thenReference, elseReference, err := getConditional(name, path, table, source)
+	if err != nil {
+		return Definition{}, err
+	}
 	for property, references := range map[string][]string{
 		"items": items, "oneof": oneOf, "anyof": anyOf, "allof": allOf,
 	} {
@@ -876,8 +921,11 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	if hasAnyOf {
 		typeSelectors++
 	}
+	if condition != nil {
+		typeSelectors++
+	}
 	if typeSelectors > 1 {
-		return Definition{}, fmt.Errorf("%s cannot define more than one of type, oneof, and anyof", name)
+		return Definition{}, fmt.Errorf("%s cannot define more than one of type, oneof, anyof, and if", name)
 	}
 	children := map[string]Definition{}
 	for key, value := range table {
@@ -905,7 +953,17 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 			}
 		}
 	}
-	if typeName == "" && reference == "" && !hasOneOf && !hasAnyOf {
+	if condition != nil {
+		for key := range table {
+			if !conditionalKeys[key] {
+				return Definition{}, fmt.Errorf("%s conditional selector cannot define %s", name, key)
+			}
+		}
+		if len(children) > 0 {
+			return Definition{}, fmt.Errorf("%s conditional selector cannot define child definitions", name)
+		}
+	}
+	if typeName == "" && reference == "" && !hasOneOf && !hasAnyOf && condition == nil {
 		if len(children) == 0 {
 			return Definition{}, fmt.Errorf("%s must define type, oneof, anyof, or child definitions", name)
 		}
@@ -995,6 +1053,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		items:         normalizeReferences(items),
 		allowedValues: allowedValues, pattern: pattern, keyPattern: keyPattern, min: min, max: max,
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
+		condition: condition, thenReference: normalizeReference(thenReference), elseReference: normalizeReference(elseReference),
 		allOf: normalizeReferences(allOf), dependentRequired: dependentRequired,
 		mutuallyExclusive: mutuallyExclusive, exactlyOne: exactlyOne, uniqueItems: uniqueItems,
 		defaultValue: defaultValue, hasDefault: hasDefault,
@@ -1009,6 +1068,9 @@ func (s *Schema) validateReferences(definitions map[string]Definition) error {
 		references = append(references, definition.items...)
 		references = append(references, definition.oneOf...)
 		references = append(references, definition.anyOf...)
+		if definition.condition != nil {
+			references = append(references, definition.thenReference, definition.elseReference)
+		}
 		references = append(references, definition.allOf...)
 		for _, reference := range references {
 			if reference == "" {
@@ -1053,6 +1115,9 @@ func (s *Schema) validateSelectorCycle(typeName string, visiting, visited map[st
 	references := []string{definition.reference}
 	references = append(references, definition.oneOf...)
 	references = append(references, definition.anyOf...)
+	if definition.condition != nil {
+		references = append(references, definition.thenReference, definition.elseReference)
+	}
 	references = append(references, definition.allOf...)
 	for _, reference := range references {
 		if reference != "" {
@@ -1240,6 +1305,14 @@ func (s *Schema) collectReferenceTypes(
 	if definition.reference != "" {
 		return s.collectReferenceTypes(definition.reference, seen, types)
 	}
+	if definition.condition != nil {
+		for _, reference := range []string{definition.thenReference, definition.elseReference} {
+			if err := s.collectReferenceTypes(reference, seen, types); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
 	alternatives := definition.oneOf
 	if len(alternatives) == 0 {
 		alternatives = definition.anyOf
@@ -1275,6 +1348,20 @@ func (s *Schema) resolveItemKind(reference string, seen map[string]bool) (Schema
 	defer delete(seen, normalized)
 	if definition.reference != "" {
 		return s.resolveItemKind(definition.reference, seen)
+	}
+	if definition.condition != nil {
+		var kind SchemaType
+		for _, reference := range []string{definition.thenReference, definition.elseReference} {
+			branchKind, resolved, err := s.resolveItemKind(reference, seen)
+			if err != nil {
+				return "", false, err
+			}
+			if !resolved || (kind != "" && branchKind != kind) {
+				return "", false, nil
+			}
+			kind = branchKind
+		}
+		return kind, kind != "", nil
 	}
 	alternatives := definition.oneOf
 	if len(alternatives) == 0 {
@@ -1439,7 +1526,9 @@ func (v *validator) validateValueInternal(path string, value any, definition Def
 		v.add(path, err.Error())
 		return
 	}
-	if len(resolved.oneOf) > 0 || len(resolved.anyOf) > 0 {
+	if resolved.condition != nil {
+		v.validateConditional(path, value, resolved)
+	} else if len(resolved.oneOf) > 0 || len(resolved.anyOf) > 0 {
 		v.validateUnion(path, value, resolved)
 	} else if len(resolved.allOf) > 0 {
 		v.validateAllOf(path, value, resolved)
@@ -1449,6 +1538,36 @@ func (v *validator) validateValueInternal(path string, value any, definition Def
 	if len(v.errors) == 0 && resolved.deprecated {
 		v.warn(path, "deprecated", "value is deprecated")
 	}
+}
+
+func (v *validator) validateConditional(path string, value any, definition Definition) {
+	reference := definition.elseReference
+	if table, ok := value.(map[string]any); ok && conditionMatches(table, definition.condition) {
+		reference = definition.thenReference
+	}
+	branch, err := v.resolveReference(reference, map[string]bool{})
+	if err != nil {
+		v.add(path, err.Error())
+		return
+	}
+	branch.allOf = append(branch.allOf, definition.allOf...)
+	v.validateValue(path, value, branch)
+}
+
+func conditionMatches(table map[string]any, condition *condition) bool {
+	value, present := table[condition.key]
+	if !present {
+		return false
+	}
+	if condition.hasEquals {
+		return valuesEqual(condition.equals, value)
+	}
+	for _, candidate := range condition.in {
+		if valuesEqual(candidate, value) {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *validator) validatePlainValue(path string, value any, definition Definition) {
@@ -1543,8 +1662,9 @@ func (v *validator) validateAllOf(path string, value any, definition Definition)
 // constraints directly, and union contributors, whose alternatives are selected
 // per document value.
 type compositionParts struct {
-	structural []Definition
-	unions     []Definition
+	structural   []Definition
+	unions       []Definition
+	conditionals []Definition
 }
 
 func (v *validator) compositionParts(definition Definition, visiting map[string]bool) (compositionParts, error) {
@@ -1555,7 +1675,9 @@ func (v *validator) compositionParts(definition Definition, visiting map[string]
 	references := append([]string(nil), resolved.allOf...)
 	resolved.allOf = nil
 	parts := compositionParts{}
-	if len(resolved.oneOf) > 0 || len(resolved.anyOf) > 0 {
+	if resolved.condition != nil {
+		parts.conditionals = append(parts.conditionals, resolved)
+	} else if len(resolved.oneOf) > 0 || len(resolved.anyOf) > 0 {
 		parts.unions = append(parts.unions, resolved)
 	} else {
 		parts.structural = append(parts.structural, resolved)
@@ -1577,6 +1699,7 @@ func (v *validator) compositionParts(definition Definition, visiting map[string]
 		}
 		parts.structural = append(parts.structural, nested.structural...)
 		parts.unions = append(parts.unions, nested.unions...)
+		parts.conditionals = append(parts.conditionals, nested.conditionals...)
 	}
 	return parts, nil
 }
@@ -1646,6 +1769,24 @@ func (v *validator) validateComposedParts(
 		unions = append(unions, union)
 		unionKeys = append(unionKeys, alternativeKeys)
 	}
+	conditionals := make([]Definition, 0, len(parts.conditionals))
+	conditionalKeys := make([]map[string]bool, 0, len(parts.conditionals))
+	for _, conditional := range parts.conditionals {
+		branchKeys, err := v.schema.effectiveFixedChildren(conditional, map[string]bool{})
+		if err != nil {
+			v.add(path, err.Error())
+			continue
+		}
+		if len(branchKeys) > 0 {
+			hasFixedStructure = true
+		}
+		for name := range branchKeys {
+			knownKeys[name] = true
+		}
+		conditionals = append(conditionals, conditional)
+		conditionalKeys = append(conditionalKeys, branchKeys)
+	}
+	selectorKeys := append(append([]map[string]bool{}, unionKeys...), conditionalKeys...)
 	for name, definitions := range children {
 		childPath := appendPath(path, name)
 		childValue, present := table[name]
@@ -1675,7 +1816,7 @@ func (v *validator) validateComposedParts(
 		for name := range children {
 			branchKeys[name] = true
 		}
-		for otherIndex, keys := range unionKeys {
+		for otherIndex, keys := range selectorKeys {
 			if otherIndex == index {
 				continue
 			}
@@ -1684,6 +1825,25 @@ func (v *validator) validateComposedParts(
 			}
 		}
 		v.validateComposedUnion(path, value, kind, union, branchKeys)
+	}
+	for index, conditional := range conditionals {
+		branchKeys := map[string]bool{}
+		for name := range inheritedKeys {
+			branchKeys[name] = true
+		}
+		for name := range children {
+			branchKeys[name] = true
+		}
+		selectorIndex := len(unions) + index
+		for otherIndex, keys := range selectorKeys {
+			if otherIndex == selectorIndex {
+				continue
+			}
+			for name := range keys {
+				branchKeys[name] = true
+			}
+		}
+		v.validateComposedConditional(path, value, kind, conditional, branchKeys)
 	}
 	for _, component := range parts.structural {
 		v.validateSiblingRules(path, table, component)
@@ -1736,6 +1896,11 @@ func (v *validator) validateComposedParts(
 			v.warn(path, "deprecated", "value is deprecated")
 		}
 	}
+	for _, conditional := range conditionals {
+		if conditional.deprecated {
+			v.warn(path, "deprecated", "value is deprecated")
+		}
+	}
 }
 
 // validateComposedUnion selects an alternative of a union contributor against
@@ -1753,6 +1918,7 @@ func (v *validator) validateComposedUnion(
 	if len(alternatives) == 0 {
 		alternatives = definition.anyOf
 	}
+
 	matches := 0
 	successes := []*validator{}
 	for _, reference := range alternatives {
@@ -1790,6 +1956,33 @@ func (v *validator) validateComposedUnion(
 	}
 	for _, candidate := range successes {
 		v.appendWarnings(candidate.warnings)
+	}
+}
+
+func (v *validator) validateComposedConditional(
+	path string,
+	value any,
+	kind SchemaType,
+	definition Definition,
+	knownKeys map[string]bool,
+) {
+	reference := definition.elseReference
+	if table, ok := value.(map[string]any); ok && conditionMatches(table, definition.condition) {
+		reference = definition.thenReference
+	}
+	branch, err := v.resolveReference(reference, map[string]bool{})
+	if err != nil {
+		v.add(path, err.Error())
+		return
+	}
+	branchKind, resolved, err := v.schema.effectiveKind(branch, map[string]bool{})
+	switch {
+	case err != nil:
+		v.add(path, err.Error())
+	case !resolved || branchKind != kind:
+		v.add(path, fmt.Sprintf("expected %s conditional branch but found %s", kind, branchKind))
+	default:
+		v.validateComposedStructure(path, value, kind, branch, knownKeys)
 	}
 }
 
@@ -2282,6 +2475,66 @@ func getOptionalBool(table map[string]any, key string) (*bool, error) {
 		return nil, fmt.Errorf("expected %s to be a boolean", key)
 	}
 	return &boolValue, nil
+}
+
+func getConditional(
+	name string,
+	path []string,
+	table map[string]any,
+	source *schemaSource,
+) (*condition, string, string, error) {
+	hasIf := source.isProperty(table, path, "if")
+	hasThen := source.isProperty(table, path, "then")
+	hasElse := source.isProperty(table, path, "else")
+	if !hasIf && !hasThen && !hasElse {
+		return nil, "", "", nil
+	}
+	if !hasIf || !hasThen || !hasElse {
+		return nil, "", "", fmt.Errorf("%s must define if, then, and else together", name)
+	}
+	if !source.isProperty(table, path, "if") {
+		return nil, "", "", fmt.Errorf("%s if must be an inline table", name)
+	}
+	rawCondition, ok := asMap(table["if"])
+	if !ok {
+		return nil, "", "", fmt.Errorf("%s if must be an inline table", name)
+	}
+	for key := range rawCondition {
+		if key != "key" && key != "equals" && key != "in" {
+			return nil, "", "", fmt.Errorf("%s if contains unsupported property: %s", name, key)
+		}
+	}
+	key, ok := rawCondition["key"].(string)
+	if !ok {
+		return nil, "", "", fmt.Errorf("%s if.key must be a string", name)
+	}
+	equals, hasEquals := rawCondition["equals"]
+	rawIn, hasIn := rawCondition["in"]
+	if hasEquals == hasIn {
+		return nil, "", "", fmt.Errorf("%s if must define exactly one of equals and in", name)
+	}
+	var in []any
+	if hasIn {
+		in, ok = rawIn.([]any)
+		if !ok || len(in) == 0 {
+			return nil, "", "", fmt.Errorf("%s if.in must be a non-empty array", name)
+		}
+	}
+	thenReference, ok := table["then"].(string)
+	if !ok || strings.TrimSpace(thenReference) == "" {
+		return nil, "", "", fmt.Errorf("%s then must be a non-blank named type reference", name)
+	}
+	elseReference, ok := table["else"].(string)
+	if !ok || strings.TrimSpace(elseReference) == "" {
+		return nil, "", "", fmt.Errorf("%s else must be a non-blank named type reference", name)
+	}
+	for property, reference := range map[string]string{"then": thenReference, "else": elseReference} {
+		if _, builtIn := parseSchemaType(normalizeReference(reference)); builtIn {
+			return nil, "", "", fmt.Errorf("%s %s must be a named reusable type reference", name, property)
+		}
+	}
+	return &condition{key: key, equals: equals, in: in, hasEquals: hasEquals},
+		thenReference, elseReference, nil
 }
 
 func getDependentRequired(name string, path []string, table map[string]any, source *schemaSource) (map[string][]string, error) {

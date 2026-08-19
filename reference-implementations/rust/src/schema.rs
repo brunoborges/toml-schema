@@ -113,12 +113,29 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "uniqueitems",
     "default",
     "deprecated",
+    "if",
+    "then",
+    "else",
 ];
 
 pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0";
 
 fn is_definition_key(key: &str) -> bool {
     DEFINITION_KEYS.contains(&key)
+}
+
+#[derive(Debug, Clone)]
+enum ConditionPredicate {
+    Equals(Value),
+    In(Vec<Value>),
+}
+
+#[derive(Debug, Clone)]
+struct ConditionalSelector {
+    key: String,
+    predicate: ConditionPredicate,
+    then_reference: String,
+    else_reference: String,
 }
 
 /// A single TOML Schema definition (either a reusable `[types.*]` entry or an
@@ -141,6 +158,7 @@ pub struct Definition {
     max_length: Option<i64>,
     one_of: Vec<String>,
     any_of: Vec<String>,
+    conditional: Option<ConditionalSelector>,
     all_of: Vec<String>,
     dependent_required: BTreeMap<String, Vec<String>>,
     mutually_exclusive: Vec<Vec<String>>,
@@ -491,6 +509,12 @@ impl Schema {
                 .chain(definition.items.iter())
                 .chain(definition.one_of.iter())
                 .chain(definition.any_of.iter())
+                .chain(
+                    definition
+                        .conditional
+                        .iter()
+                        .flat_map(|selector| [&selector.then_reference, &selector.else_reference]),
+                )
                 .chain(definition.all_of.iter())
             {
                 if SchemaType::parse(reference).is_none() && !self.types.contains_key(reference) {
@@ -537,6 +561,12 @@ impl Schema {
             .one_of
             .iter()
             .chain(definition.any_of.iter())
+            .chain(
+                definition
+                    .conditional
+                    .iter()
+                    .flat_map(|selector| [&selector.then_reference, &selector.else_reference]),
+            )
             .chain(definition.all_of.iter())
         {
             self.validate_selector_cycle(reference, visiting, visited)?;
@@ -560,6 +590,7 @@ impl Schema {
         let kind = if definition.unique_items.is_some()
             || has_sibling_rules
             || !definition.all_of.is_empty()
+            || definition.conditional.is_some()
             || definition.type_name == Some(SchemaType::Collection)
         {
             Some(self.effective_kind(definition, &mut HashSet::new())?)
@@ -646,6 +677,12 @@ impl Schema {
             .reference
             .iter()
             .chain(alternatives.iter())
+            .chain(
+                definition
+                    .conditional
+                    .iter()
+                    .flat_map(|selector| [&selector.then_reference, &selector.else_reference]),
+            )
             .chain(definition.all_of.iter())
             .any(|reference| self.reference_has_collection_item_constraint(reference, seen))
     }
@@ -679,6 +716,22 @@ impl Schema {
             type_name
         } else if let Some(reference) = definition.reference.as_deref() {
             self.reference_kind(reference, seen)?
+        } else if let Some(selector) = &definition.conditional {
+            let then_kind = self.reference_kind(&selector.then_reference, seen)?;
+            let else_kind = self.reference_kind(&selector.else_reference, seen)?;
+            if then_kind != else_kind {
+                return Err(format!(
+                    "{} conditional branches do not have compatible effective types",
+                    definition.name
+                ));
+            }
+            if !matches!(then_kind, SchemaType::Table | SchemaType::Collection) {
+                return Err(format!(
+                    "{} conditional branches must resolve to table or collection",
+                    definition.name
+                ));
+            }
+            then_kind
         } else {
             let alternatives = if !definition.one_of.is_empty() {
                 &definition.one_of
@@ -752,6 +805,12 @@ impl Schema {
             .one_of
             .iter()
             .chain(definition.any_of.iter())
+            .chain(
+                definition
+                    .conditional
+                    .iter()
+                    .flat_map(|selector| [&selector.then_reference, &selector.else_reference]),
+            )
             .chain(definition.all_of.iter())
         {
             self.collect_reference_child_names(reference, seen, names)?;
@@ -940,6 +999,9 @@ impl Schema {
             for alternative in definition.one_of.iter().chain(definition.any_of.iter()) {
                 self.collect_reference_types(alternative, seen, types)?;
             }
+        } else if let Some(selector) = &definition.conditional {
+            self.collect_reference_types(&selector.then_reference, seen, types)?;
+            self.collect_reference_types(&selector.else_reference, seen, types)?;
         } else if let Some(type_name) = definition.type_name {
             types.insert(type_name);
         }
@@ -1199,6 +1261,17 @@ fn parse_definition(
     let has_any_of = property_value(table, "anyof").is_some();
     let one_of = get_string_array_values(name, table, "oneof")?;
     let any_of = get_string_array_values(name, table, "anyof")?;
+    let has_if = context.is_property(table, "if");
+    let has_then = property_value(table, "then").is_some();
+    let has_else = property_value(table, "else").is_some();
+    if (has_if || has_then || has_else) && !(has_if && has_then && has_else) {
+        return Err(format!("{name} must define if, then, and else together"));
+    }
+    let conditional = if has_if {
+        Some(parse_conditional_selector(name, table)?)
+    } else {
+        None
+    };
     let has_all_of = property_value(table, "allof").is_some();
     let all_of = get_string_array_values(name, table, "allof")?;
     let dependent_required = get_dependent_required(name, table, context)?;
@@ -1239,11 +1312,13 @@ fn parse_definition(
             "{name} cannot use collection as a bare type reference"
         ));
     }
-    let type_selectors =
-        usize::from(type_selector.is_some()) + usize::from(has_one_of) + usize::from(has_any_of);
+    let type_selectors = usize::from(type_selector.is_some())
+        + usize::from(has_one_of)
+        + usize::from(has_any_of)
+        + usize::from(conditional.is_some());
     if type_selectors > 1 {
         return Err(format!(
-            "{name} cannot define more than one of type, oneof, and anyof"
+            "{name} cannot define more than one of type, oneof, anyof, and if/then/else"
         ));
     }
     let mut children: BTreeMap<String, Definition> = BTreeMap::new();
@@ -1276,10 +1351,31 @@ fn parse_definition(
             }
         }
     }
-    if type_name.is_none() && reference.is_none() && !has_one_of && !has_any_of {
+    if conditional.is_some() {
+        for key in table.keys() {
+            if !matches!(
+                key.as_str(),
+                "if" | "then"
+                    | "else"
+                    | "description"
+                    | "optional"
+                    | "allof"
+                    | "default"
+                    | "deprecated"
+            ) {
+                return Err(format!("{name} conditional cannot define {key}"));
+            }
+        }
+    }
+    if type_name.is_none()
+        && reference.is_none()
+        && !has_one_of
+        && !has_any_of
+        && conditional.is_none()
+    {
         if children.is_empty() {
             return Err(format!(
-                "{name} must define type, oneof, anyof, or child definitions"
+                "{name} must define type, oneof, anyof, if/then/else, or child definitions"
             ));
         }
         type_name = Some(SchemaType::Table);
@@ -1388,6 +1484,7 @@ fn parse_definition(
         max_length,
         one_of: normalize_references(one_of),
         any_of: normalize_references(any_of),
+        conditional,
         all_of: normalize_references(all_of),
         dependent_required,
         mutually_exclusive,
@@ -1397,6 +1494,64 @@ fn parse_definition(
         deprecated,
         children,
     })
+}
+
+fn parse_conditional_selector(name: &str, table: &Table) -> Result<ConditionalSelector, String> {
+    let condition = table
+        .get("if")
+        .and_then(Value::as_table)
+        .ok_or_else(|| format!("{name}.if must be an inline table"))?;
+    for key in condition.keys() {
+        if !matches!(key.as_str(), "key" | "equals" | "in") {
+            return Err(format!("{name}.if contains unsupported property: {key}"));
+        }
+    }
+    let key = condition
+        .get("key")
+        .and_then(Value::as_str)
+        .ok_or_else(|| format!("{name}.if.key must be a string"))?
+        .to_string();
+    let equals = condition.get("equals");
+    let in_values = condition.get("in");
+    let predicate = match (equals, in_values) {
+        (Some(value), None) => ConditionPredicate::Equals(value.clone()),
+        (None, Some(value)) => {
+            let values = value
+                .as_array()
+                .filter(|values| !values.is_empty())
+                .ok_or_else(|| format!("{name}.if.in must be a non-empty array"))?;
+            ConditionPredicate::In(values.clone())
+        }
+        _ => {
+            return Err(format!(
+                "{name}.if must define exactly one of equals and in"
+            ))
+        }
+    };
+    let then_reference = parse_conditional_branch_reference(name, table, "then")?;
+    let else_reference = parse_conditional_branch_reference(name, table, "else")?;
+    Ok(ConditionalSelector {
+        key,
+        predicate,
+        then_reference,
+        else_reference,
+    })
+}
+
+fn parse_conditional_branch_reference(
+    name: &str,
+    table: &Table,
+    property: &str,
+) -> Result<String, String> {
+    let reference = get_string(name, table, property)?
+        .ok_or_else(|| format!("{name}.{property} must be a named reusable type reference"))?;
+    let named = normalize_reference(reference);
+    if named.is_empty() || SchemaType::parse(&named).is_some() {
+        return Err(format!(
+            "{name}.{property} must be a named reusable type reference"
+        ));
+    }
+    Ok(named)
 }
 
 fn reject_bare_collection_references(
@@ -1764,6 +1919,63 @@ impl<'schema> Validator<'schema> {
         value: &Value,
         mut components: Vec<Definition>,
     ) {
+        if let Some(index) = components
+            .iter()
+            .position(|component| component.conditional.is_some())
+        {
+            let mut conditional = components.remove(index);
+            let selector = conditional
+                .conditional
+                .take()
+                .expect("conditional component was selected");
+            let selected_kind = match self
+                .schema
+                .reference_kind(&selector.then_reference, &mut HashSet::new())
+            {
+                Ok(kind) => kind,
+                Err(error) => {
+                    self.add(path, &error);
+                    return;
+                }
+            };
+            conditional.type_name = Some(selected_kind);
+            components.push(conditional);
+
+            let Value::Table(table) = value else {
+                self.validate_component_set(path, value, components);
+                return;
+            };
+            let condition_matches = table
+                .get(&selector.key)
+                .is_some_and(|actual| match &selector.predicate {
+                    ConditionPredicate::Equals(expected) => values_equal(actual, expected),
+                    ConditionPredicate::In(expected) => expected
+                        .iter()
+                        .any(|candidate| values_equal(actual, candidate)),
+                });
+            let reference = if condition_matches {
+                &selector.then_reference
+            } else {
+                &selector.else_reference
+            };
+            let selected = match self.resolve_reference(reference, &mut HashSet::new()) {
+                Ok(selected) => selected,
+                Err(error) => {
+                    self.add(path, &error);
+                    return;
+                }
+            };
+            match self.collect_components(&selected, &mut HashSet::new()) {
+                Ok(expanded) => components.extend(expanded),
+                Err(error) => {
+                    self.add(path, &error);
+                    return;
+                }
+            }
+            self.validate_component_set(path, value, components);
+            return;
+        }
+
         if let Some(index) = components
             .iter()
             .position(|component| !component.one_of.is_empty() || !component.any_of.is_empty())

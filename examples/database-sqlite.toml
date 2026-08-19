@@ -1,0 +1,7 @@
+[toml-schema]
+location = "database-conditional.tosd"
+version = "1.0.0"
+
+[database]
+engine = "sqlite"
+path = "./data/app.db"
