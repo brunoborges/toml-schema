@@ -13,7 +13,7 @@ command-line interface for validation, schema discovery through
 | Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.27.0 | Library, schema discovery, schema extraction |
 | .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
 | Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
-| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
+| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.97.1 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
 | Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 20.11+ and TypeScript 6 | Library, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.

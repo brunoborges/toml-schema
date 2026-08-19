@@ -1,7 +1,8 @@
 [package]
 name = "toml-schema"
 version = "1.0.0-rc.2"
-edition = "2021"
+edition = "2024"
+rust-version = "1.97.1"
 description = "Reference implementation of TOML Schema for Rust"
 homepage = "https://tomlschema.org"
 repository = "https://github.com/brunoborges/toml-schema"
