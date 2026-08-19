@@ -4,6 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="A field report validating 18 real-world Cargo, pyproject, Hugo, Netlify, Wrangler, and GitLab Runner files with TOML Schema.">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="TOML Schema">
+  <meta property="og:title" content="16 of 18 real-world TOML files validated unchanged">
+  <meta property="og:description" content="A field report across six TOML ecosystems, with pinned sources, exact diagnostics, and a reproducible method.">
+  <meta property="og:url" content="https://toml-schema.org/validation-report/">
+  <meta name="twitter:card" content="summary">
   <link rel="canonical" href="https://toml-schema.org/validation-report/">
   <title>Real-world validation report · TOML Schema</title>
   <script>
@@ -55,7 +61,7 @@
       <div class="evidence-line" aria-label="Report summary">
         <span><strong>18</strong> public files</span>
         <span><strong>6</strong> ecosystems</span>
-        <span><strong>5</strong> schemas at 100%</span>
+        <span><strong>5 of 6</strong> schemas passed every file</span>
         <span><strong>2</strong> precise diagnostics</span>
       </div>
 
@@ -83,76 +89,103 @@
           Each source link is pinned to the revision used where available. “Valid” means
           the downloaded TOML document passed the proposed schema with no modifications.
         </p>
+        <nav class="report-index" aria-label="Jump to ecosystem">
+          <strong>Jump to</strong>
+          <a href="#cargo">Cargo</a>
+          <a href="#pyproject">pyproject</a>
+          <a href="#hugo">Hugo</a>
+          <a href="#netlify">Netlify</a>
+          <a href="#wrangler">Wrangler</a>
+          <a href="#gitlab-runner">GitLab Runner</a>
+        </nav>
         <div class="result-groups">
-          <article class="result-group">
+          <article class="result-group" id="cargo">
             <div class="result-heading">
               <div><h3>Cargo</h3><p>Packages, workspaces, target dependencies, profiles, and metadata.</p></div>
-              <span class="status status-pass">3 / 3 valid</span>
+              <div class="result-actions">
+                <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/cargo.tosd">View schema <span aria-hidden="true">→</span></a>
+              </div>
             </div>
             <ul class="source-list">
-              <li><a href="https://github.com/BurntSushi/ripgrep/blob/8372866810a1f2a647d11d7780984d4402a5c1e9/Cargo.toml">BurntSushi/ripgrep</a><code>Cargo.toml</code></li>
-              <li><a href="https://github.com/sharkdp/bat/blob/1cf12d49bda67f3f26ee0e26d1ab72ccc2e844a7/Cargo.toml">sharkdp/bat</a><code>Cargo.toml</code></li>
-              <li><a href="https://github.com/tokio-rs/tokio/blob/dd1196d36930bf23d5ba32402f5dadef861546fa/Cargo.toml">tokio-rs/tokio</a><code>Cargo.toml</code></li>
+              <li><a href="https://github.com/BurntSushi/ripgrep/blob/8372866810a1f2a647d11d7780984d4402a5c1e9/Cargo.toml">BurntSushi/ripgrep</a><span class="source-meta"><code>Cargo.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/sharkdp/bat/blob/1cf12d49bda67f3f26ee0e26d1ab72ccc2e844a7/Cargo.toml">sharkdp/bat</a><span class="source-meta"><code>Cargo.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/tokio-rs/tokio/blob/dd1196d36930bf23d5ba32402f5dadef861546fa/Cargo.toml">tokio-rs/tokio</a><span class="source-meta"><code>Cargo.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
             </ul>
           </article>
 
-          <article class="result-group">
+          <article class="result-group" id="pyproject">
             <div class="result-heading">
               <div><h3>pyproject</h3><p>PEP 621 metadata, dependency groups, build systems, and open tool namespaces.</p></div>
-              <span class="status status-pass">3 / 3 valid</span>
+              <div class="result-actions">
+                <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/pyproject.tosd">View schema <span aria-hidden="true">→</span></a>
+              </div>
             </div>
             <ul class="source-list">
-              <li><a href="https://github.com/fastapi/fastapi/blob/b35a7c39447d6953c8791172068146baad702590/pyproject.toml">fastapi/fastapi</a><code>pyproject.toml</code></li>
-              <li><a href="https://github.com/encode/httpx/blob/767cf6baa608a56d03f8fe438a39c2013904f0ae/pyproject.toml">encode/httpx</a><code>pyproject.toml</code></li>
-              <li><a href="https://github.com/pydantic/pydantic/blob/f7e30afbd959b3cf6401ebec3ed2a239aa1eaae8/pyproject.toml">pydantic/pydantic</a><code>pyproject.toml</code></li>
+              <li><a href="https://github.com/fastapi/fastapi/blob/b35a7c39447d6953c8791172068146baad702590/pyproject.toml">fastapi/fastapi</a><span class="source-meta"><code>pyproject.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/encode/httpx/blob/767cf6baa608a56d03f8fe438a39c2013904f0ae/pyproject.toml">encode/httpx</a><span class="source-meta"><code>pyproject.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/pydantic/pydantic/blob/f7e30afbd959b3cf6401ebec3ed2a239aa1eaae8/pyproject.toml">pydantic/pydantic</a><span class="source-meta"><code>pyproject.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
             </ul>
           </article>
 
-          <article class="result-group result-group-attention">
+          <article class="result-group result-group-attention" id="hugo">
             <div class="result-heading">
               <div><h3>Hugo</h3><p>Site settings, modules, theme parameters, languages, and pagination.</p></div>
-              <span class="status status-mixed">1 / 3 valid</span>
+              <div class="result-actions">
+                <span class="status status-mixed"><span aria-hidden="true">!</span> 1 / 3 valid</span>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/hugo.tosd">View schema <span aria-hidden="true">→</span></a>
+              </div>
             </div>
             <ul class="source-list">
-              <li><a href="https://github.com/dillonzq/LoveIt/blob/23bc60506c5632547bdc7b56b927ae154a321c27/hugo.toml">dillonzq/LoveIt</a><span class="inline-result">Valid</span></li>
-              <li><a href="https://github.com/neoforged/websites/blob/4d38126b8b02c7aeb668bb26b2c01a25d1521728/hugo.toml">neoforged/websites</a><code>$.Params</code></li>
-              <li><a href="https://github.com/pyrevitlabs/pyrevitlabs/blob/334a730ae531be55987d6fb758236fafdcf61c39/hugo.toml">pyrevitlabs/pyrevitlabs</a><code>3 legacy names</code></li>
+              <li><a href="https://github.com/dillonzq/LoveIt/blob/23bc60506c5632547bdc7b56b927ae154a321c27/hugo.toml">dillonzq/LoveIt</a><span class="source-meta"><code>hugo.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/neoforged/websites/blob/4d38126b8b02c7aeb668bb26b2c01a25d1521728/hugo.toml">neoforged/websites</a><span class="source-meta"><code>hugo.toml</code><span class="file-result file-result-failed"><span aria-hidden="true">!</span> Unexpected <code>$.Params</code></span></span></li>
+              <li><a href="https://github.com/pyrevitlabs/pyrevitlabs/blob/334a730ae531be55987d6fb758236fafdcf61c39/hugo.toml">pyrevitlabs/pyrevitlabs</a><span class="source-meta"><code>hugo.toml</code><span class="file-result file-result-failed"><span aria-hidden="true">!</span> 3 legacy names</span></span></li>
             </ul>
           </article>
 
-          <article class="result-group">
+          <article class="result-group" id="netlify">
             <div class="result-heading">
               <div><h3>Netlify</h3><p>Build contexts, redirects, headers, environment values, and deployment behavior.</p></div>
-              <span class="status status-pass">3 / 3 valid</span>
+              <div class="result-actions">
+                <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/netlify.tosd">View schema <span aria-hidden="true">→</span></a>
+              </div>
             </div>
             <ul class="source-list">
-              <li><a href="https://github.com/rstacruz/cheatsheets/blob/5fc5cef0ca5d16f7959ffe0bad7b440c7ac9fbe7/netlify.toml">rstacruz/cheatsheets</a><code>netlify.toml</code></li>
-              <li><a href="https://github.com/kubernetes-sigs/cluster-api-provider-aws/blob/67de5c25543b2ec9c76897670fc928309473fbe1/netlify.toml">cluster-api-provider-aws</a><code>netlify.toml</code></li>
-              <li><a href="https://github.com/ajitid/fzf-for-js/blob/cf3903255b6bba6143bfbed5a387f3cadfd6938a/netlify.toml">ajitid/fzf-for-js</a><code>netlify.toml</code></li>
+              <li><a href="https://github.com/rstacruz/cheatsheets/blob/5fc5cef0ca5d16f7959ffe0bad7b440c7ac9fbe7/netlify.toml">rstacruz/cheatsheets</a><span class="source-meta"><code>netlify.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/kubernetes-sigs/cluster-api-provider-aws/blob/67de5c25543b2ec9c76897670fc928309473fbe1/netlify.toml">cluster-api-provider-aws</a><span class="source-meta"><code>netlify.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/ajitid/fzf-for-js/blob/cf3903255b6bba6143bfbed5a387f3cadfd6938a/netlify.toml">ajitid/fzf-for-js</a><span class="source-meta"><code>netlify.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
             </ul>
           </article>
 
-          <article class="result-group">
+          <article class="result-group" id="wrangler">
             <div class="result-heading">
               <div><h3>Cloudflare Wrangler</h3><p>Worker entry points, bindings, routes, variables, and compatibility settings.</p></div>
-              <span class="status status-pass">3 / 3 valid</span>
+              <div class="result-actions">
+                <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/wrangler.tosd">View schema <span aria-hidden="true">→</span></a>
+              </div>
             </div>
             <ul class="source-list">
-              <li><a href="https://github.com/justlovemaki/CloudFlare-AI-Insight-Daily/blob/287cde1f1614e90e6c2f5e39ce6621dd9f7b8d83/wrangler.toml">CloudFlare-AI-Insight-Daily</a><code>wrangler.toml</code></li>
-              <li><a href="https://github.com/ling-drag0n/CloudPaste-old/blob/de8ca6a4ebd31cc5e224480b5528b0348e8b75a7/wrangler.toml">ling-drag0n/CloudPaste-old</a><code>wrangler.toml</code></li>
-              <li><a href="https://github.com/philipwalton/blog/blob/cb68580dae3e7c329a5f257a71f25f034f805f41/wrangler.toml">philipwalton/blog</a><code>wrangler.toml</code></li>
+              <li><a href="https://github.com/justlovemaki/CloudFlare-AI-Insight-Daily/blob/287cde1f1614e90e6c2f5e39ce6621dd9f7b8d83/wrangler.toml">CloudFlare-AI-Insight-Daily</a><span class="source-meta"><code>wrangler.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/ling-drag0n/CloudPaste-old/blob/de8ca6a4ebd31cc5e224480b5528b0348e8b75a7/wrangler.toml">ling-drag0n/CloudPaste-old</a><span class="source-meta"><code>wrangler.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/philipwalton/blog/blob/cb68580dae3e7c329a5f257a71f25f034f805f41/wrangler.toml">philipwalton/blog</a><span class="source-meta"><code>wrangler.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
             </ul>
           </article>
 
-          <article class="result-group">
+          <article class="result-group" id="gitlab-runner">
             <div class="result-heading">
               <div><h3>GitLab Runner</h3><p>Global settings, runner arrays, executors, and service configuration.</p></div>
-              <span class="status status-pass">3 / 3 valid</span>
+              <div class="result-actions">
+                <span class="status status-pass"><span aria-hidden="true">✓</span> 3 / 3 valid</span>
+                <a class="schema-link" href="https://github.com/brunoborges/toml-schema/blob/main/examples/gitlab-runner.tosd">View schema <span aria-hidden="true">→</span></a>
+              </div>
             </div>
             <ul class="source-list">
-              <li><a href="https://github.com/gitlabhq/gitlab-runner/blob/92c053a68de5adba40c32546c52bde5373c13b8a/config.toml.example">gitlabhq/gitlab-runner</a><code>config.toml.example</code></li>
-              <li><a href="https://github.com/tomMoulard/make-my-server/blob/4db27e3358b9df240722013b4532ce559a642d2c/gitlab/runner/config.toml">tomMoulard/make-my-server</a><code>config.toml</code></li>
-              <li><a href="https://github.com/cavo789/blog/blob/474cd8660f017cc74294950652375fed9a9d576f/blog/2025/06/15/gitlab-docker-out-of-docker/files/config.toml">cavo789/blog</a><code>config.toml</code></li>
+              <li><a href="https://github.com/gitlabhq/gitlab-runner/blob/92c053a68de5adba40c32546c52bde5373c13b8a/config.toml.example">gitlabhq/gitlab-runner</a><span class="source-meta"><code>config.toml.example</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/tomMoulard/make-my-server/blob/4db27e3358b9df240722013b4532ce559a642d2c/gitlab/runner/config.toml">tomMoulard/make-my-server</a><span class="source-meta"><code>config.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
+              <li><a href="https://github.com/cavo789/blog/blob/474cd8660f017cc74294950652375fed9a9d576f/blog/2025/06/15/gitlab-docker-out-of-docker/files/config.toml">cavo789/blog</a><span class="source-meta"><code>config.toml</code><span class="file-result file-result-valid"><span aria-hidden="true">✓</span> Valid</span></span></li>
             </ul>
           </article>
         </div>
@@ -160,7 +193,7 @@
 
       <section class="report-section diagnosis">
         <div>
-          <h2>The two failures made the case for validation.</h2>
+          <h2>The two Hugo failures made the case for validation.</h2>
           <p>
             They were not parser crashes or vague incompatibilities. The validator returned
             exact paths for keys outside the current Hugo configuration vocabulary.
@@ -190,8 +223,11 @@
           <li><strong>Record every outcome.</strong><span>Count strict validation failures as failures and retain the diagnostic paths.</span></li>
         </ol>
         <div class="command-block">
-          <div class="panel-header"><strong>Reproduce a validation</strong></div>
-          <pre><code>java -jar toml-schema-1.0.0-rc.2.jar \
+          <div class="panel-header">
+            <strong>Reproduce a validation</strong>
+            <button class="copy-button" type="button" data-copy-target="validation-command" aria-live="polite">Copy command</button>
+          </div>
+          <pre><code id="validation-command">java -jar toml-schema-1.0.0-rc.2.jar \
   validate examples/cargo.tosd path/to/Cargo.toml</code></pre>
         </div>
       </section>
@@ -209,6 +245,8 @@
           What the test does show is concrete: one small, TOML-native vocabulary described
           six independently evolved configuration families, accepted every selected file
           in five of them, and produced actionable paths for the remaining differences.
+          That bounded result is the right starting point for trying the language against
+          another real configuration format.
         </p>
       </section>
 
@@ -233,5 +271,23 @@
       </span>
     </footer>
   </div>
+  <script>
+    document.querySelectorAll("[data-copy-target]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const target = document.getElementById(button.dataset.copyTarget);
+        if (!target || !navigator.clipboard) {
+          button.textContent = "Copy unavailable";
+          return;
+        }
+
+        try {
+          await navigator.clipboard.writeText(target.textContent);
+          button.textContent = "Copied";
+        } catch {
+          button.textContent = "Copy failed";
+        }
+      });
+    });
+  </script>
 </body>
 </html>
