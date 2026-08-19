@@ -7,7 +7,7 @@
 [![Rust 1.97.1](https://img.shields.io/badge/Rust-1.97.1-dea584)](REFERENCE_IMPLEMENTATIONS.md#rust)
 [![Java 25](https://img.shields.io/badge/Java-25-007396)](REFERENCE_IMPLEMENTATIONS.md#java)
 [![Go 1.27.0](https://img.shields.io/badge/Go-1.27.0-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
-[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4)](REFERENCE_IMPLEMENTATIONS.md#net)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](REFERENCE_IMPLEMENTATIONS.md#net)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11+-3776AB)](REFERENCE_IMPLEMENTATIONS.md#python)
 [![Node.js 26.7.0](https://img.shields.io/badge/Node.js-26.7.0-5FA04E)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
 [![TypeScript 7](https://img.shields.io/badge/TypeScript-7-3178C6)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)

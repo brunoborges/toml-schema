@@ -1,6 +1,6 @@
 # TOML Schema — .NET reference implementation
 
-.NET 9.0 reference library targeting the current, unreleased
+.NET 10.0 reference library targeting the current, unreleased
 [TOML Schema 1.0.0](../../SPEC.md). It parses TOML with
 [Tomlyn](https://github.com/xoofx/Tomlyn) `2.10.1` (TOML 1.0) and validates the
 parsed data model against a `.tosd` schema, including document-driven schema
@@ -32,7 +32,7 @@ dotnet build reference-implementations/dotnet
 ```
 
 The compiled assembly is written to
-`reference-implementations/dotnet/bin/Debug/net9.0/TomlSchema.dll`.
+`reference-implementations/dotnet/bin/Debug/net10.0/TomlSchema.dll`.
 
 ## Library usage
 

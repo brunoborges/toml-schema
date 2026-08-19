@@ -11,7 +11,7 @@ command-line interface for validation, schema discovery through
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, schema discovery |
 | Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.27.0 | Library, schema discovery, schema extraction |
-| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
+| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 10.0 | Library, schema discovery |
 | Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.97.1 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
 | Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 26.7+ and TypeScript 7 | Library, schema discovery, schema extraction |
@@ -113,7 +113,7 @@ The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`)
 
 ## .NET
 
-The .NET 9.0 reference library uses [Tomlyn](https://github.com/xoofx/Tomlyn)
+The .NET 10.0 reference library uses [Tomlyn](https://github.com/xoofx/Tomlyn)
 to parse TOML and validates the parsed data model against a `.tosd` schema.
 Its library API also supports document-driven schema discovery through
 `[toml-schema].location`.
