@@ -311,11 +311,11 @@ internal class SchemaValidator
         // Item type validation
         if (!string.IsNullOrEmpty(schema.ItemType))
         {
-            var itemSchema = ResolveItemType(schema.ItemType);
+            var itemSchema = ResolveItemType(schema.ItemType)
+                ?? throw new InvalidOperationException($"Undefined item type: {schema.ItemType}");
             for (int i = 0; i < array.Count; i++)
             {
-                if (itemSchema != null)
-                    ValidateType(array[i], itemSchema, $"{path}[{i}]");
+                ValidateType(array[i], itemSchema, $"{path}[{i}]");
             }
         }
     }
@@ -324,6 +324,10 @@ internal class SchemaValidator
     {
         // Collections allow any string keys matching keypattern
         var keyPattern = schema.KeyPattern;
+        var valueSchema = !string.IsNullOrEmpty(schema.ItemType)
+            ? ResolveItemType(schema.ItemType)
+                ?? throw new InvalidOperationException($"Undefined item type: {schema.ItemType}")
+            : null;
 
         foreach (var (key, value) in table)
         {
@@ -344,20 +348,12 @@ internal class SchemaValidator
             }
 
             // Validate value type
-            if (!string.IsNullOrEmpty(schema.ItemType))
-            {
-                var valueSchema = ResolveItemType(schema.ItemType);
-                if (valueSchema != null)
-                    ValidateType(value, valueSchema, keyPath);
-            }
+            if (valueSchema != null)
+                ValidateType(value, valueSchema, keyPath);
         }
     }
 
-    private SchemaDefinition? ResolveItemType(string itemType) =>
-        _schema.ResolveType(itemType) ??
-        (SchemaTypeExtensions.AllTypeNames.Contains(itemType)
-            ? new SchemaDefinition { Type = SchemaTypeExtensions.FromSchemaName(itemType) }
-            : null);
+    private SchemaDefinition? ResolveItemType(string itemType) => _schema.ResolveType(itemType);
 
     private SchemaType GetValueType(object value) => value switch
     {

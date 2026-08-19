@@ -252,7 +252,7 @@ public class SchemaLoader
 
         var equalsValue = hasEquals ? GetValue(ifTable, "equals") : null;
         var inValues = hasIn && ifTable.TryGetValue("in", out var inValue) && inValue is TomlArray inArray
-            ? inArray.ToList()
+            ? inArray.Cast<object>().ToList()
             : null;
 
         var thenType = GetString(table, "then");
