@@ -95,7 +95,7 @@ uniqueitems = true</code></pre>
           <article class="card">
             <span class="badge">Toolable</span>
             <h3>Reference implementations</h3>
-            <p>Java, Go, .NET, and Rust libraries validate examples and self-schema behavior in CI; Rust also exercises the canonical CLI end to end.</p>
+            <p>Java, Go, .NET, Python, Rust, and Node.js/TypeScript libraries validate examples and self-schema behavior in CI; Rust also exercises the canonical CLI end to end.</p>
           </article>
         </div>
       </section>
@@ -381,9 +381,19 @@ retries = 3</code></pre>
             <p>Uses Tomlyn to parse TOML and validates documents against <code>.tosd</code> schemas.</p>
           </article>
           <article class="card">
+            <span class="badge">Python</span>
+            <h3>Library</h3>
+            <p>Uses the standard-library tomllib parser and supports schema validation and schema-location lookup.</p>
+          </article>
+          <article class="card">
             <span class="badge">Rust</span>
             <h3>Library and canonical CLI</h3>
             <p>Uses the Rust <code>toml</code> crate and provides validation, schema discovery, and schema extraction commands.</p>
+          </article>
+          <article class="card">
+            <span class="badge">Node.js</span>
+            <h3>TypeScript 6 library</h3>
+            <p>Uses smol-toml and provides validation, schema discovery, and schema extraction through an ESM API.</p>
           </article>
         </div>
         <div class="actions">

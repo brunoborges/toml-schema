@@ -1,0 +1,50 @@
+{
+  "name": "@tomlschema/toml-schema",
+  "version": "1.0.0-rc.2",
+  "description": "TOML Schema 1.0 reference implementation for Node.js (ESM, TypeScript).",
+  "keywords": [
+    "toml",
+    "toml-schema",
+    "schema",
+    "validation",
+    "tosd"
+  ],
+  "homepage": "https://github.com/brunoborges/toml-schema#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/brunoborges/toml-schema.git",
+    "directory": "reference-implementations/typescript"
+  },
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20.11"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "node --import tsx --test test/*.test.ts",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "smol-toml": "1.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsx": "^4.20.6",
+    "typescript": "6.0.3"
+  }
+}

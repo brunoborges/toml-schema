@@ -134,3 +134,30 @@ jobs:
 
       - name: Validate checked-in example with extracted schema
         run: reference-implementations/rust/target/release/toml-schema validate /tmp/config.generated.tosd config.toml
+
+  typescript:
+    name: TypeScript reference implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: reference-implementations/typescript/package-lock.json
+
+      - name: Install dependencies
+        run: npm --prefix reference-implementations/typescript ci
+
+      - name: Typecheck
+        run: npm --prefix reference-implementations/typescript run typecheck
+
+      - name: Test
+        run: npm --prefix reference-implementations/typescript test
+
+      - name: Build
+        run: npm --prefix reference-implementations/typescript run build

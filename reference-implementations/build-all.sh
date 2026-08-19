@@ -28,4 +28,10 @@ run_step "Building Python reference implementation" \
 run_step "Building Rust reference implementation" \
     cargo build --locked --release --manifest-path "$script_dir/rust/Cargo.toml"
 
+run_step "Installing TypeScript reference implementation dependencies" \
+    npm --prefix "$script_dir/typescript" ci
+
+run_step "Building TypeScript reference implementation" \
+    npm --prefix "$script_dir/typescript" run build
+
 printf '\nAll reference implementations built successfully.\n'
