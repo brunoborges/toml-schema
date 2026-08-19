@@ -435,9 +435,6 @@ footer {
   width: 100%;
 }
 
-.editor-shell {
-  max-width: 1280px;
-}
 .editor-hero {
   align-items: end;
   display: grid;
@@ -1119,23 +1116,24 @@ footer {
   }
 }
 
-.not-found-page {
+.not-found {
   align-items: center;
-  display: flex;
-  justify-content: center;
-  min-height: 100vh;
-  padding: 24px;
-}
-.not-found-page main {
   background: var(--cp-surface);
   border: 1px solid var(--cp-border);
   border-radius: 16px;
   box-shadow: var(--cp-shadow);
-  max-width: 560px;
-  padding: 32px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: min(620px, 70vh);
+  padding: 64px 24px;
   text-align: center;
 }
-.not-found-page a {
+.not-found p {
+  color: var(--cp-text-muted);
+  margin: 16px 0 0;
+}
+.not-found a {
   font-weight: 600;
 }
 

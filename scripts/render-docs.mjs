@@ -100,7 +100,7 @@ for (const pageConfig of pages) {
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="${escapeHtml(pageConfig.description)}">
   <link rel="canonical" href="${pageConfig.canonical}">
   <title>${escapeHtml(pageTitle)} — TOML Schema</title>
@@ -127,9 +127,8 @@ for (const pageConfig of pages) {
         <span class="visually-hidden">TOML Schema</span>
       </a>
       <nav aria-label="Primary navigation">
-        <a href="/#why">Why</a>
+        <a href="/editor/">Editor</a>
         <a href="/validation-report/">Evidence</a>
-        <a href="/#tour">Tour</a>
         <a href="/spec/"${navCurrent("spec")}>Spec</a>
         <a href="/implementations/"${navCurrent("implementations")}>Implementations</a>
         <a href="${repositoryUrl}">GitHub</a>
@@ -145,6 +144,8 @@ ${bodyHtml}
     <footer>
       <span>TOML Schema is licensed under MIT.</span>
       <span>
+        <a href="/">Home</a>
+        <span class="muted"> / </span>
         <a href="/spec/">Spec</a>
         <span class="muted"> / </span>
         <a href="/implementations/">Implementations</a>
