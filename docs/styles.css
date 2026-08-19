@@ -625,10 +625,6 @@ footer {
 }
 
 /* Real-world validation report */
-.report {
-  margin: 0 auto;
-  max-width: 960px;
-}
 .report-hero h1 {
   max-width: 13ch;
 }
