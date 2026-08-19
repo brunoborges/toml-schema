@@ -1158,9 +1158,6 @@ fn parse_definition(
     table: &Table,
     context: SyntaxContext<'_>,
 ) -> Result<Definition, String> {
-    if property_value(table, "arraytype").is_some() {
-        return Err(format!("{name} contains unsupported property: arraytype"));
-    }
     let type_selector = get_string(name, table, "type")?;
     let mut type_name = type_selector.as_deref().and_then(SchemaType::parse);
     let reference = type_selector
@@ -1336,7 +1333,7 @@ fn parse_definition(
     }
     if has_allowed_values && matches!(type_name, Some(SchemaType::Table | SchemaType::Collection)) {
         return Err(format!(
-            "{name} can only define allowedvalues for simple types or arrays"
+            "{name} can only define allowedvalues for scalar, unconstrained, or array types"
         ));
     }
     if (min_length.is_some() || max_length.is_some())

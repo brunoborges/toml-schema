@@ -2,7 +2,7 @@
 
 TOML Schema is a set of TOML-based constructs that define the structure, the names, and the types of configuration data on a TOML file.
 
-The TOML Schema is used to validate the input of a TOML file during parsing to:
+TOML Schema validates the parsed input of a TOML file to:
 
 1. Eliminate or reduce misconfiguration that could potentially damage if only validated during production evaluation,
 1. Be leveraged by editors and other tools to provide and enrich auto-completion and code hints for validation on the fly.
@@ -35,12 +35,11 @@ command.
 - [Elements table - `[elements]`](#elements-table---elements)
 - [Types table - `[types]`](#types-table---types)
   - [Quoted and Special Keys](#quoted-and-special-keys)
-  - [Simple Types - `<simple-type>`](#simple-types---simple-type)
-    - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
+  - [Scalar and Unconstrained Built-in Types](#scalar-and-unconstrained-built-in-types)
+    - [Allowed Values - `allowedvalues`](#allowed-values---allowedvalues)
   - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
   - [Length - `minlength` and `maxlength`](#length---minlength-and-maxlength)
-  - [Conditions on `any`](#conditions-on-any)
-  - [Block Types](#block-types)
+  - [Container Types](#container-types)
     - [Tables](#tables)
     - [Arrays](#arrays)
       - [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays)
@@ -360,7 +359,7 @@ detailed sections below remain authoritative.
 | `description`, `optional`, `default`, `deprecated` | Any definition, including a named reference or alternative selector |
 | `itemtype` | A definition with built-in `type = "array"` or `type = "collection"` |
 | `items` | A definition with built-in `type = "array"`; mutually exclusive with `itemtype`, `allowedvalues`, `min`, `max`, `minlength`, and `maxlength` |
-| `allowedvalues` | A simple built-in type, or the items of a non-tuple `array` |
+| `allowedvalues` | A scalar or unconstrained built-in type, or the items of a non-tuple `array` |
 | `pattern` | A definition with built-in `type = "string"` |
 | `keypattern` | A definition with built-in `type = "collection"` |
 | `min`, `max` | A numeric or temporal built-in type, or an `array` whose `itemtype` resolves to one comparable kind |
@@ -420,11 +419,14 @@ type = "boolean"
 type = "string"
 ```
 
-### Simple Types - `<simple-type>`
+### Scalar and Unconstrained Built-in Types
 
-List of considered simple types:
+The unconstrained built-in type is:
 
 - Any: `any`
+
+The scalar built-in types are:
+
 - String: `string`
 - Integer: `integer`
 - Float: `float`
@@ -434,9 +436,10 @@ List of considered simple types:
 - Local Date: `local-date`
 - Local Time: `local-time`
 
-#### Allowed Values for Simple Types - `allowedvalues`
+#### Allowed Values - `allowedvalues`
 
-`allowedvalues` provides an enumeration for a simple built-in type. On an
+`allowedvalues` provides an enumeration for a scalar or unconstrained built-in
+type. On an
 `array`, it instead enumerates the values permitted for each item, as described
 under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
 It is invalid on a `table` or `collection`.
@@ -448,7 +451,7 @@ equality between integers and floats does not make their TOML kinds
 interchangeable for this schema-load check. A malformed enumeration MUST be
 rejected at schema-load time.
 
-For a non-array simple type, when `allowedvalues` is combined with `pattern`,
+For a non-array definition, when `allowedvalues` is combined with `pattern`,
 `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST
 satisfy every applicable constraint. A schema containing an entry that violates
 one of those constraints is malformed, and schema loaders MUST reject it at
@@ -527,27 +530,16 @@ another built-in type, an alternative selector, or a named type reference.
 Schema loaders MUST reject an incompatible length constraint at schema-load time rather
 than silently ignoring it.
 
-### Conditions on `any`
-
-No `min` or `max` condition may be applied to type `any`. The schema loader
-MUST reject such a schema.
-
-An unconstrained value may declare `type = "any"`, and arrays may use `any` in
-`itemtype` or `items`. A direct `any` entry in `oneof` or `anyof` is malformed
-because it would add an unconstrained branch to an alternative type selector.
-
-### Block Types
+### Container Types
 
 - Array: `array`
-- Table: `table` (*)
-- Collection: `collection` (*)
+- Table: `table`
+- Collection: `collection`
 
-(*) The schema also explicitly defines two types:
-
-1. The implicit TOML type `table` for specifying child elements associated to the parent.
-1. A type for a collection of elements, `collection`.
-
-For simplicity, there is no definition of `inline table` since these are just tables that can be expressed inlined in a TOML document.
+`array` and `table` correspond to parsed TOML value kinds. `collection` is a
+schema-level specialization of `table` for dynamically named entries. TOML
+inline tables parse as table values and therefore do not need a separate
+built-in type.
 
 #### Tables
 
@@ -573,10 +565,6 @@ Arrays can be defined by mixing the following properties:
  - `max`: the maximum value allowed for each comparable array item (e.g. 8080).
  - `allowedvalues`: enumeration of possible values.
  - `uniqueitems`: whether every parsed array item must be unique.
-
-`arraytype` is not a TOML Schema property. Schema loaders MUST reject schema
-definitions that declare it. Use `itemtype` for both built-in and named member
-types.
 
 Example for schema definition:
 
@@ -1348,7 +1336,7 @@ This mirrors JSON Schema's `propertyNames: { pattern: ... }`, applied to TOML ma
 
 ## Validation and Data Model
 
-It is NOT the goal of a TOML Schema to ever modify the data output of a TOML object during parsing.
+TOML Schema validation does not modify the parsed TOML data model.
 
 A validator MUST NOT mutate, replace, or augment the TOML data object produced
 by the underlying parser. An API that returns that object MUST return the same
@@ -1472,9 +1460,10 @@ TOML Schema files MUST use the extension `.tosd`.
 
 ## MIME Type
 
-When transferring TOML Schema files over the internet, the MIME type MUST be:
+TOML Schema documents are valid TOML documents. When transferring them over
+the internet, implementations SHOULD use the registered TOML media type:
 
- - application/tosd
+ - `application/toml`
 
 ## TOML Reference of a TOML Schema
 

@@ -416,18 +416,18 @@ class TomlSchemaTest {
     }
 
     @Test
-    void rejectsRemovedArraytypeAsUnsupported() throws IOException {
-        Path schema = write("removed-arraytype.tosd", """
+    void rejectsUnknownPropertyAsUnsupported() throws IOException {
+        Path schema = write("unknown-property.tosd", """
                 [toml-schema]
                 version = "1.0.0"
 
                 [elements.values]
                 type = "array"
-                arraytype = "string"
+                unknownproperty = "string"
                 """);
 
         SchemaException error = assertThrows(SchemaException.class, () -> TomlSchema.load(schema));
-        assertTrue(error.getMessage().contains("unsupported property: arraytype"), error::getMessage);
+        assertTrue(error.getMessage().contains("unsupported property: unknownproperty"), error::getMessage);
     }
 
     @Test
@@ -1956,7 +1956,6 @@ class TomlSchemaTest {
         assertTrue(schemaText.contains("[elements.title]"));
         assertTrue(schemaText.contains("type = \"string\""));
         assertTrue(schemaText.contains("itemtype = \"integer\""));
-        assertFalse(schemaText.contains("arraytype"));
         assertTrue(schemaText.contains("[elements.owner]"));
         assertTrue(schemaText.contains("[elements.owner.name]"));
         assertFalse(schemaText.contains("[elements.toml-schema]"));
