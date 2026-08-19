@@ -1,5 +1,5 @@
 module tomlschema.org/go
 
-go 1.26.6
+go 1.27.0
 
 require github.com/pelletier/go-toml/v2 v2.3.1
