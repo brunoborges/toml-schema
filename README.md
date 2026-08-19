@@ -25,6 +25,14 @@ A TOML Schema document is itself a valid TOML document. Validators can use it to
   validating representative real-world TOML documents.
 - [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - canonical CLI and reference library usage, status, and conformance expectations.
 
+## Editor tooling
+
+- [TOML Schema Editor](https://tomlschema.org/editor/) - a visual editor canvas
+  for creating and editing `.tosd` schemas in the GitHub Copilot App.
+- [TOML Schema LSP](https://github.com/jcbyte/toml-schema-lsp) - a third-party
+  language server and VS Code extension providing real-time validation with
+  local `.tosd` schemas.
+
 ## Quick example
 
 TOML document:
