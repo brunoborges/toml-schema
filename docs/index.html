@@ -115,7 +115,8 @@ uniqueitems = true</code></pre>
         <p class="section-intro">
           A schema includes versioned metadata and describes the TOML document
           under <code>[elements]</code>. Reusable shapes live under <code>[types]</code>.
-          The examples below are fragments of one schema, not standalone files.
+          Each example pairs a schema fragment with the TOML it describes. The
+          schema fragments form one schema and are not standalone files.
         </p>
         <div class="tour">
           <article class="tour-step">
@@ -124,8 +125,19 @@ uniqueitems = true</code></pre>
               <h3>Declare the schema language version</h3>
               <p>Every schema document must contain <code>[toml-schema]</code> with a full SemVer version.</p>
             </div>
-            <pre><code>[toml-schema]
+            <div class="tour-examples">
+              <div>
+                <span class="tour-code-label">Schema (.tosd)</span>
+                <pre><code>[toml-schema]
 version = "1.0.0"</code></pre>
+              </div>
+              <div>
+                <span class="tour-code-label">TOML</span>
+                <pre class="toml-example"><code>[toml-schema]
+location = "config.tosd"
+version = "1.0.0"</code></pre>
+              </div>
+            </div>
           </article>
           <article class="tour-step">
             <div>
@@ -133,7 +145,10 @@ version = "1.0.0"</code></pre>
               <h3>Describe document fields</h3>
               <p>Each entry under <code>[elements]</code> maps to a TOML key, table, or nested value.</p>
             </div>
-            <pre><code>[elements.title]
+            <div class="tour-examples">
+              <div>
+                <span class="tour-code-label">Schema (.tosd)</span>
+                <pre><code>[elements.title]
 type = "string"
 
 [elements.database]
@@ -141,6 +156,15 @@ type = "table"
 
 [elements.database.enabled]
 type = "boolean"</code></pre>
+              </div>
+              <div>
+                <span class="tour-code-label">TOML</span>
+                <pre class="toml-example"><code>title = "Example"
+
+[database]
+enabled = true</code></pre>
+              </div>
+            </div>
           </article>
           <article class="tour-step">
             <div>
@@ -148,10 +172,20 @@ type = "boolean"</code></pre>
               <h3>Validate list contents</h3>
               <p>Arrays can validate homogeneous item types or reference reusable item schemas.</p>
             </div>
-            <pre><code>[elements.database.ports]
+            <div class="tour-examples">
+              <div>
+                <span class="tour-code-label">Schema (.tosd)</span>
+                <pre><code>[elements.database.ports]
 type = "array"
 itemtype = "integer"
 minlength = 1</code></pre>
+              </div>
+              <div>
+                <span class="tour-code-label">TOML</span>
+                <pre class="toml-example"><code>[database]
+ports = [8000, 8001]</code></pre>
+              </div>
+            </div>
           </article>
           <article class="tour-step">
             <div>
@@ -159,7 +193,10 @@ minlength = 1</code></pre>
               <h3>Reuse table shapes</h3>
               <p>Reusable <code>[types]</code> definitions keep repeated structures in one place.</p>
             </div>
-            <pre><code>[types.server]
+            <div class="tour-examples">
+              <div>
+                <span class="tour-code-label">Schema (.tosd)</span>
+                <pre><code>[types.server]
 type = "table"
 
 [types.server.ip]
@@ -168,6 +205,14 @@ pattern = "^(?:[0-9]{1,3}\\.){3}[0-9]{1,3}$"
 
 [types.server.role]
 type = "string"</code></pre>
+              </div>
+              <div>
+                <span class="tour-code-label">TOML</span>
+                <pre class="toml-example"><code>[servers.primary]
+ip = "10.0.0.1"
+role = "frontend"</code></pre>
+              </div>
+            </div>
           </article>
           <article class="tour-step">
             <div>
@@ -175,10 +220,25 @@ type = "string"</code></pre>
               <h3>Handle dynamic table names</h3>
               <p>A collection validates values stored under user-defined keys, such as named servers or environments.</p>
             </div>
-            <pre><code>[elements.servers]
+            <div class="tour-examples">
+              <div>
+                <span class="tour-code-label">Schema (.tosd)</span>
+                <pre><code>[elements.servers]
 type = "collection"
 itemtype = "types.server"
 minlength = 1</code></pre>
+              </div>
+              <div>
+                <span class="tour-code-label">TOML</span>
+                <pre class="toml-example"><code>[servers.primary]
+ip = "10.0.0.1"
+role = "frontend"
+
+[servers.backup]
+ip = "10.0.0.2"
+role = "backend"</code></pre>
+              </div>
+            </div>
           </article>
           <article class="tour-step">
             <div>
@@ -186,7 +246,10 @@ minlength = 1</code></pre>
               <h3>Add rules where they matter</h3>
               <p>Values can be constrained with allowed values, numeric ranges, string lengths, or patterns.</p>
             </div>
-            <pre><code>[elements.environment]
+            <div class="tour-examples">
+              <div>
+                <span class="tour-code-label">Schema (.tosd)</span>
+                <pre><code>[elements.environment]
 type = "string"
 allowedvalues = ["dev", "stage", "prod"]
 
@@ -194,6 +257,13 @@ allowedvalues = ["dev", "stage", "prod"]
 type = "integer"
 min = 0
 max = 10</code></pre>
+              </div>
+              <div>
+                <span class="tour-code-label">TOML</span>
+                <pre class="toml-example"><code>environment = "prod"
+retries = 3</code></pre>
+              </div>
+            </div>
           </article>
         </div>
       </section>
