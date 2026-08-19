@@ -54,6 +54,22 @@ jobs:
         working-directory: reference-implementations/go
         run: go test ./...
 
+  dotnet:
+    name: .NET reference implementation
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Test
+        run: dotnet test reference-implementations/dotnet/TomlSchema.sln -v normal
+
   rust:
     name: Rust reference implementation
     runs-on: ubuntu-latest

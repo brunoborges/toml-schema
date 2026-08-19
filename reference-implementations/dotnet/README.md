@@ -1,0 +1,68 @@
+# TOML Schema — .NET reference implementation
+
+.NET 9.0 reference library targeting the current, unreleased
+[TOML Schema 1.0.0](../../SPEC.md). It parses TOML with
+[Tomlyn](https://github.com/xoofx/Tomlyn) `2.10.1` (TOML 1.0) and validates the
+parsed data model against a `.tosd` schema.
+
+- Assembly: `TomlSchema`
+- Namespace: `TomlSchema`
+
+All commands below assume you run them from the repository root.
+
+## Build and test
+
+Run the full test suite:
+
+```shell
+dotnet test reference-implementations/dotnet
+```
+
+Run a single test:
+
+```shell
+dotnet test reference-implementations/dotnet -k "ValidatesCheckedInExample"
+```
+
+Build the library:
+
+```shell
+dotnet build reference-implementations/dotnet
+```
+
+The compiled assembly is written to
+`reference-implementations/dotnet/bin/Debug/net9.0/TomlSchema.dll`.
+
+## Library usage
+
+```csharp
+using TomlSchema;
+
+var schema = TomlSchema.TomlSchema.Load("config.tosd");
+var result = schema.Validate("config.toml");
+
+if (!result.IsValid)
+{
+    foreach (var error in result.Errors)
+    {
+        Console.WriteLine($"{error.Path}: {error.Message}");
+    }
+}
+
+foreach (var warning in result.Warnings)
+{
+    Console.WriteLine($"Warning at {warning.Path}: {warning.Message}");
+}
+
+// Get default value for an element
+var defaultValue = schema.DefaultValue("field_name");
+```
+
+`DefaultValue(...)` exposes effective default annotations. Validation never
+inserts defaults or mutates parsed TOML.
+
+## Conformance
+
+The test suite includes `AbnfConformanceTests`, which reads [`toml-schema.abnf`](../../toml-schema.abnf) and asserts that the implementation's supported schema keys and built-in type names match the grammar.
+
+See [`REFERENCE_IMPLEMENTATIONS.md`](../../REFERENCE_IMPLEMENTATIONS.md) for the conformance expectations shared by all reference implementations.

@@ -10,6 +10,7 @@ discovery through `[toml-schema].location`, and starter-schema extraction.
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library |
 | Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, schema discovery, schema extraction |
+| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
@@ -86,6 +87,46 @@ func main() {
 ```
 
 The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`) that reads `toml-schema.abnf` and asserts that the implementation's supported schema keys and built-in type names match the grammar.
+
+## .NET
+
+The .NET 9.0 reference library uses [Tomlyn](https://github.com/xoofx/Tomlyn)
+to parse TOML and validates the parsed data model against a `.tosd` schema.
+
+Run the full .NET test suite:
+
+```shell
+dotnet test reference-implementations/dotnet
+```
+
+Run one test:
+
+```shell
+dotnet test reference-implementations/dotnet -k "ValidatesCheckedInExample"
+```
+
+Build the library:
+
+```shell
+dotnet build reference-implementations/dotnet
+```
+
+Use the library API:
+
+```csharp
+using TomlSchema;
+
+var schema = TomlSchema.TomlSchema.Load("config.tosd");
+var result = schema.Validate("config.toml");
+
+if (!result.IsValid)
+{
+    foreach (var error in result.Errors)
+        Console.WriteLine($"{error.Path}: {error.Message}");
+}
+```
+
+The .NET test suite reads `toml-schema.abnf` as a conformance guard and checks that the implementation's supported schema properties and built-in type names match the grammar.
 
 ## Rust
 
