@@ -3,11 +3,11 @@
 Rust reference implementation targeting the current, unreleased
 [TOML Schema 1.0.0](../../SPEC.md). It parses TOML with the
 [`toml`](https://crates.io/crates/toml) crate (`1`, TOML 1.0), provides the
-canonical `toml-schema` CLI, and can be used as a library.
+canonical `tosd` CLI, and can be used as a library.
 
 - Crate: `toml-schema`
 - Library name: `toml_schema`
-- Binary name: `toml-schema`
+- Binary name: `tosd`
 
 All commands below assume you run them from the repository root.
 
@@ -22,7 +22,7 @@ cargo test --manifest-path reference-implementations/rust/Cargo.toml
 Build the CLI binary (release):
 
 ```shell
-cargo build --manifest-path reference-implementations/rust/Cargo.toml --release
+cargo build --manifest-path reference-implementations/rust/Cargo.toml --release --bin tosd
 ```
 
 ## CLI usage
@@ -30,31 +30,31 @@ cargo build --manifest-path reference-implementations/rust/Cargo.toml --release
 Validate with an explicit schema:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.tosd config.toml
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate config.tosd config.toml
 ```
 
 Validate using `[toml-schema].location` from the TOML document:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.toml
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate config.toml
 ```
 
 Validate the example schema against the TOML Schema self-schema:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd config.tosd
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate toml-schema.tosd config.tosd
 ```
 
 Validate the TOML Schema self-schema against itself:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd toml-schema.tosd
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate toml-schema.tosd toml-schema.tosd
 ```
 
 Extract a starter schema from a sample TOML document:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- extract config.toml config.generated.tosd
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- extract config.toml config.generated.tosd
 ```
 
 ## Library usage

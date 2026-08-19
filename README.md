@@ -73,7 +73,7 @@ type = "table"
 
 Java, Go, .NET, Python, Rust, and Node.js/TypeScript reference libraries live
 under `reference-implementations/`. The Rust implementation provides the
-canonical `toml-schema` CLI. See
+canonical `tosd` CLI. See
 [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation
 status, CLI usage, schema extraction, and conformance expectations.
 

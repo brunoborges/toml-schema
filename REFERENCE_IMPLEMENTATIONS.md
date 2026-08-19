@@ -1,7 +1,7 @@
 # Reference Implementations
 
 Build and use the TOML Schema reference libraries in Java, Go, .NET, Python,
-Rust, and Node.js/TypeScript. Rust also provides the canonical `toml-schema`
+Rust, and Node.js/TypeScript. Rust also provides the canonical `tosd`
 command-line interface for validation, schema discovery through
 `[toml-schema].location`, and starter-schema extraction.
 
@@ -218,7 +218,7 @@ match the grammar.
 
 The Rust reference implementation uses the [`toml`](https://crates.io/crates/toml)
 crate to parse TOML and validates the parsed data model against a `.tosd` schema.
-It provides both a library and the canonical `toml-schema` CLI.
+It provides both a library and the canonical `tosd` CLI.
 
 Run the Rust test suite:
 
@@ -229,7 +229,7 @@ cargo test --manifest-path reference-implementations/rust/Cargo.toml
 Build the CLI binary:
 
 ```shell
-cargo build --manifest-path reference-implementations/rust/Cargo.toml --release
+cargo build --manifest-path reference-implementations/rust/Cargo.toml --release --bin tosd
 ```
 
 For document-driven lookup, the CLI resolves a relative
@@ -241,31 +241,31 @@ files and explicitly rejects unsupported URI schemes.
 Validate with an explicit schema:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.tosd config.toml
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate config.tosd config.toml
 ```
 
 Validate using `[toml-schema].location` from the TOML document:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate config.toml
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate config.toml
 ```
 
 Validate the example schema against the TOML Schema self-schema:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd config.tosd
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate toml-schema.tosd config.tosd
 ```
 
 Validate the TOML Schema self-schema against itself:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- validate toml-schema.tosd toml-schema.tosd
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- validate toml-schema.tosd toml-schema.tosd
 ```
 
 Extract a schema from a sample TOML document:
 
 ```shell
-cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml -- extract config.toml /tmp/config.generated.tosd
+cargo run --quiet --manifest-path reference-implementations/rust/Cargo.toml --bin tosd -- extract config.toml /tmp/config.generated.tosd
 ```
 
 Use the library API:

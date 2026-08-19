@@ -115,25 +115,25 @@ jobs:
 
       - name: Build canonical CLI
         working-directory: reference-implementations/rust
-        run: cargo build --locked --release
+        run: cargo build --locked --release --bin tosd
 
       - name: Validate checked-in example with explicit schema
-        run: reference-implementations/rust/target/release/toml-schema validate config.tosd config.toml
+        run: reference-implementations/rust/target/release/tosd validate config.tosd config.toml
 
       - name: Validate checked-in example with schema reference
-        run: reference-implementations/rust/target/release/toml-schema validate config.toml
+        run: reference-implementations/rust/target/release/tosd validate config.toml
 
       - name: Validate example schema against self-schema
-        run: reference-implementations/rust/target/release/toml-schema validate toml-schema.tosd config.tosd
+        run: reference-implementations/rust/target/release/tosd validate toml-schema.tosd config.tosd
 
       - name: Validate self-schema against itself
-        run: reference-implementations/rust/target/release/toml-schema validate toml-schema.tosd toml-schema.tosd
+        run: reference-implementations/rust/target/release/tosd validate toml-schema.tosd toml-schema.tosd
 
       - name: Extract schema from checked-in example
-        run: reference-implementations/rust/target/release/toml-schema extract config.toml /tmp/config.generated.tosd
+        run: reference-implementations/rust/target/release/tosd extract config.toml /tmp/config.generated.tosd
 
       - name: Validate checked-in example with extracted schema
-        run: reference-implementations/rust/target/release/toml-schema validate /tmp/config.generated.tosd config.toml
+        run: reference-implementations/rust/target/release/tosd validate /tmp/config.generated.tosd config.toml
 
   typescript:
     name: TypeScript reference implementation

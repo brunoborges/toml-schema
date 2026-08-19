@@ -13,7 +13,7 @@ name = "toml_schema"
 path = "src/lib.rs"
 
 [[bin]]
-name = "toml-schema"
+name = "tosd"
 path = "src/main.rs"
 
 [dependencies]
