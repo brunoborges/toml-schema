@@ -34,6 +34,7 @@ command.
   - [Schema Versioning](#schema-versioning)
 - [Elements table - `[elements]`](#elements-table---elements)
 - [Types table - `[types]`](#types-table---types)
+  - [Quoted and Special Keys](#quoted-and-special-keys)
   - [Simple Types - `<simple-type>`](#simple-types---simple-type)
     - [Allowed Values for Simple Types - `allowedvalues`](#allowed-values-for-simple-types---allowedvalues)
   - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
@@ -42,6 +43,8 @@ command.
   - [Block Types](#block-types)
     - [Tables](#tables)
     - [Arrays](#arrays)
+      - [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays)
+      - [Array Item Schemas and Arrays of Tables](#array-item-schemas-and-arrays-of-tables)
       - [Tuple / Positional Array Validation - `items`](#tuple--positional-array-validation---items)
       - [Array Uniqueness - `uniqueitems`](#array-uniqueness---uniqueitems)
     - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
@@ -445,7 +448,14 @@ equality between integers and floats does not make their TOML kinds
 interchangeable for this schema-load check. A malformed enumeration MUST be
 rejected at schema-load time.
 
-For a non-array simple type, when `allowedvalues` is combined with `pattern`, `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST satisfy every applicable constraint. A schema containing an entry that violates one of those constraints is malformed, and schema loaders MUST reject it at schema-load time.
+For a non-array simple type, when `allowedvalues` is combined with `pattern`,
+`min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST
+satisfy every applicable constraint. A schema containing an entry that violates
+one of those constraints is malformed, and schema loaders MUST reject it at
+schema-load time. For offset date-times, this boundary check uses instant
+ordering even though subsequent `allowedvalues` membership uses parsed-value
+equality; equivalent instants with different retained local fields or offsets
+therefore compare equal for a boundary but remain distinct enumeration values.
 
 After a schema with `allowedvalues` has been loaded successfully, a document
 value is valid when it is a member of `allowedvalues` according to
@@ -696,6 +706,8 @@ items = [ "types.coordinate", "types.label" ]
 Semantics:
 
  - `items` is ordered, and each index validates against the corresponding referenced type.
+ - `items` MUST contain at least one type reference. A schema loader MUST reject
+   `items = []`; use `maxlength = 0` to require an empty array.
  - When `items` is present, the array MUST have exactly the same number of items.
  - `items` is mutually exclusive with `itemtype`.
  - `items` is also mutually exclusive with `min` and `max`.
@@ -830,7 +842,16 @@ A `collection` may be represented as subtables of a common table in a TOML docum
 
 A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
 
-When `type` selects a named reusable definition, the reference inherits that definition's validation rules as-is. The referencing definition MAY also declare `optional` and `description`, but it MUST NOT declare any other sibling property or child definition. In particular, validation constraints such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`, `itemtype`, and `items` cannot be added or overridden at the reference site. Schema loaders MUST reject such schemas at schema-load time.
+When `type` selects a named reusable definition, the reference inherits that
+definition's validation rules as-is. This inheritance includes `optional`: the
+referencing slot is optional when either the use site or the referenced
+definition declares `optional = true`. A use-site `optional = false` cannot
+make an optional referenced definition required. The referencing definition
+MAY also declare `optional` and `description`, but it MUST NOT declare any other
+sibling property or child definition. In particular, validation constraints
+such as `pattern`, `keypattern`, `min`, `max`, `minlength`, `maxlength`,
+`allowedvalues`, `itemtype`, and `items` cannot be added or overridden at the
+reference site. Schema loaders MUST reject such schemas at schema-load time.
 
 In version 1.0, a named reference MAY also declare `allof`, `default`, and
 `deprecated`. `allof` adds conjunctive components rather than overriding the
@@ -923,13 +944,23 @@ may therefore describe a schema for which no document value is valid; it does
 not create last-wins behavior.
 
 Every component MUST resolve to an effective TOML kind compatible with the
-local definition. Scalar kinds must be identical. Structured components must
-all be `table` or all be `collection`; a `table` and a `collection` are not
-interchangeable for composition because they have different unknown-key
-semantics. A component whose alternatives resolve to different kinds is
-indeterminate and MUST be rejected. The bare built-ins `any` and `collection`
-MUST NOT appear directly in `allof`; a complete named definition may resolve to
-either where it is otherwise compatible.
+local definition. Scalar and array components must have the same kind as the
+local definition. Structured components must all be `table` or all be
+`collection`; a `table` and a `collection` are not interchangeable for
+composition because they have different unknown-key semantics. A component
+whose alternatives resolve to different kinds is indeterminate and MUST be
+rejected. The bare built-ins `any` and `collection` MUST NOT appear directly in
+`allof`; a complete named definition may resolve to either where it is
+otherwise compatible.
+
+For composed arrays, the document array MUST independently satisfy the local
+array definition and every array component. Homogeneous `itemtype` constraints
+from different definitions all apply to every item. A tuple `items` constraint
+applies its exact length and per-position definitions independently of any
+homogeneous or tuple constraints contributed elsewhere. Array length,
+uniqueness, enumeration, and item range constraints likewise remain
+conjunctive. Conflicting constraints may make the definition unsatisfiable but
+do not use last-wins merging and are not by themselves a schema-load error.
 
 For composed tables and collections, validators MUST form the union of all
 local and component fixed-child names before applying unknown-key rules. The
@@ -1204,6 +1235,13 @@ Validators MUST skip a definition only when it is optional and the corresponding
 value does not exist in the TOML document. In every other case, the validator
 MUST validate the value against the definition.
 
+For a named `type` reference, optionality is inherited: the referencing slot is
+optional if either the use site or any definition in the reference chain
+declares `optional = true`. An explicit `optional = false` cannot cancel an
+inherited `true`. In contrast, `optional` values contributed only through
+`allof` components do not affect presence, as defined under
+[Conjunctive Composition](#conjunctive-composition---allof).
+
 ### Pattern - `pattern`
 
 This property is only valid on a definition whose selected type is the built-in
@@ -1306,6 +1344,12 @@ is defined over parsed TOML values:
 - tables compare by their unordered parsed key sets and recursively equal
   values. Source key order, table syntax, and lexical spelling do not
   participate.
+
+This equality relation is distinct from the ordering used by `min` and `max`.
+In particular, offset date-times that identify the same instant compare equal
+for a range boundary but remain unequal here when their retained local fields
+or offsets differ. Implementations MUST NOT reuse instant ordering as
+`allowedvalues`, `uniqueitems`, or default-comparison equality.
 
 ### Validation Diagnostics
 

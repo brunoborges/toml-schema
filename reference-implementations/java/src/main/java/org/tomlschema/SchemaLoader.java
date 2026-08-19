@@ -134,7 +134,11 @@ final class SchemaLoader {
         }
         String description = getString(table, "description");
         String itemReference = normalizeReference(getString(table, "itemtype"));
+        boolean hasItems = getPropertyValue(table, "items") != null;
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
+        if (hasItems && items.isEmpty()) {
+            throw new SchemaException(name + " items must contain at least one type reference");
+        }
         Boolean optional = getBoolean(table, "optional");
         Pattern pattern = getPattern(name, table, "pattern");
         Pattern keyPattern = getPattern(name, table, "keypattern");

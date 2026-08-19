@@ -364,10 +364,18 @@ class TomlSchemaTest {
                 type = "string"
                 pattern = "^[a-z]+$"
 
+                [types.inheritedOptional]
+                type = "string"
+                optional = true
+
                 [elements.name]
                 type = "types.nameType"
                 description = "Optional display name."
                 optional = true
+
+                [elements.inherited]
+                type = "types.inheritedOptional"
+                optional = false
                 """);
         Path document = write("named-reference-metadata.toml", "# name is optional\n");
 
@@ -2096,6 +2104,36 @@ class TomlSchemaTest {
     }
 
     @Test
+    void composesArrayConstraintsIndependently() throws IOException {
+        Path schema = write("array-allof.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [types.strings]
+                type = "array"
+                itemtype = "string"
+
+                [types.pair]
+                type = "array"
+                items = ["string", "string"]
+
+                [types.unique]
+                type = "array"
+                uniqueitems = true
+
+                [elements.value]
+                type = "array"
+                allof = ["types.strings", "types.pair", "types.unique"]
+                """);
+        TomlSchema loaded = TomlSchema.load(schema);
+
+        assertTrue(loaded.validate(write("array-allof-valid.toml", "value = [\"a\", \"b\"]\n")).isValid());
+        assertFalse(loaded.validate(write("array-allof-kind.toml", "value = [\"a\", 1]\n")).isValid());
+        assertFalse(loaded.validate(write("array-allof-length.toml", "value = [\"a\"]\n")).isValid());
+        assertFalse(loaded.validate(write("array-allof-unique.toml", "value = [\"a\", \"a\"]\n")).isValid());
+    }
+
+    @Test
     void keepsStructuralKeysInEveryUnionBranchClosure() throws IOException {
         Path schema = write("composed-union-closure.tosd", """
                 [toml-schema]
@@ -2571,6 +2609,7 @@ class TomlSchemaTest {
                 "type = \"table\"\nmutuallyexclusive = []",
                 "type = \"table\"\nexactlyone = [[\"a\", \"a\"]]",
                 "type = \"array\"\nuniqueitems = \"yes\"",
+                "type = \"array\"\nitems = []",
                 "type = \"string\"\nallof = [\"integer\"]",
                 "type = \"string\"\ndefault = 1");
         for (int i = 0; i < definitions.size(); i++) {

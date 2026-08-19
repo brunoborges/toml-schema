@@ -306,6 +306,8 @@ type = "string"
 optional = true`,
 		"allof-empty": `type = "string"
 allof = []`,
+		"items-empty": `type = "array"
+items = []`,
 		"allof-kind": `type = "string"
 allof = ["integer"]`,
 		"unique-kind": `type = "string"
@@ -323,6 +325,48 @@ version = "1.0.0"
 `+definition)
 			if _, err := LoadSchema(path); err == nil {
 				t.Fatal("expected malformed definition to fail")
+			}
+		})
+	}
+}
+
+func TestComposesArrayConstraintsIndependently(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "array-allof.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[types.strings]
+type = "array"
+itemtype = "string"
+
+[types.pair]
+type = "array"
+items = ["string", "string"]
+
+[types.unique]
+type = "array"
+uniqueitems = true
+
+[elements.value]
+type = "array"
+allof = ["types.strings", "types.pair", "types.unique"]
+`)
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.Validate(map[string]any{"value": []any{"a", "b"}}); !result.Valid() {
+		t.Fatalf("expected composed array to validate: %#v", result.Errors)
+	}
+	for name, value := range map[string][]any{
+		"kind":   {"a", int64(1)},
+		"length": {"a"},
+		"unique": {"a", "a"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if result := schema.Validate(map[string]any{"value": value}); result.Valid() {
+				t.Fatal("expected composed array constraint to reject value")
 			}
 		})
 	}

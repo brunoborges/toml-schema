@@ -1179,7 +1179,13 @@ fn parse_definition(
     }
     let description = get_string(name, table, "description")?;
     let item_reference = get_string(name, table, "itemtype")?;
+    let has_items = property_value(table, "items").is_some();
     let items = get_string_array_values(name, table, "items")?;
+    if has_items && items.is_empty() {
+        return Err(format!(
+            "{name} items must contain at least one type reference"
+        ));
+    }
     let optional = get_bool(name, table, "optional")?.unwrap_or(false);
     let pattern = get_pattern(name, table)?;
     let key_pattern = get_pattern_key(name, table, "keypattern")?;
