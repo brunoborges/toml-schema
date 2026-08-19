@@ -4,3 +4,5 @@ docs/implementations/
 scripts/node_modules/
 reference-implementations/dotnet/**/bin/
 reference-implementations/dotnet/**/obj/
+reference-implementations/typescript/node_modules/
+reference-implementations/typescript/dist/

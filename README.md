@@ -8,6 +8,7 @@
 [![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4)](REFERENCE_IMPLEMENTATIONS.md#net)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11+-3776AB)](REFERENCE_IMPLEMENTATIONS.md#python)
 [![Rust 1.75](https://img.shields.io/badge/Rust-1.75-dea584)](REFERENCE_IMPLEMENTATIONS.md#rust)
+[![TypeScript 6](https://img.shields.io/badge/TypeScript-6-3178C6)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
 
 TOML Schema is a TOML-based schema language for describing and validating the structure, names, value types, and common semantic relationships of TOML configuration files.
 
@@ -70,8 +71,9 @@ type = "table"
 
 ## Reference implementations
 
-Java, Go, .NET, Python, and Rust reference libraries live under `reference-implementations/`.
-The Rust implementation provides the canonical `toml-schema` CLI. See
+Java, Go, .NET, Python, Rust, and Node.js/TypeScript reference libraries live
+under `reference-implementations/`. The Rust implementation provides the
+canonical `toml-schema` CLI. See
 [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) for implementation
 status, CLI usage, schema extraction, and conformance expectations.
 

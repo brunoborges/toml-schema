@@ -14,7 +14,9 @@ const repositoryDirectories = new Set([
   "reference-implementations/java",
   "reference-implementations/go",
   "reference-implementations/dotnet",
+  "reference-implementations/python",
   "reference-implementations/rust",
+  "reference-implementations/typescript",
 ]);
 const pages = [
   {
@@ -29,7 +31,7 @@ const pages = [
     source: "REFERENCE_IMPLEMENTATIONS.md",
     output: join("implementations", "index.html"),
     description:
-      "Build and use the Java, Go, .NET, and Rust TOML Schema reference libraries and the canonical Rust command-line interface.",
+      "Build and use the Java, Go, .NET, Python, Rust, and Node.js/TypeScript TOML Schema reference libraries and the canonical Rust command-line interface.",
     canonical: "https://toml-schema.org/implementations/",
     activeNav: "implementations",
   },

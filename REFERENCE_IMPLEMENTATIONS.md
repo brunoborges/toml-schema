@@ -1,8 +1,9 @@
 # Reference Implementations
 
-Build and use the TOML Schema reference libraries in Java, Go, .NET, Python, and Rust. Rust also
-provides the canonical `toml-schema` command-line interface for validation, schema
-discovery through `[toml-schema].location`, and starter-schema extraction.
+Build and use the TOML Schema reference libraries in Java, Go, .NET, Python,
+Rust, and Node.js/TypeScript. Rust also provides the canonical `toml-schema`
+command-line interface for validation, schema discovery through
+`[toml-schema].location`, and starter-schema extraction.
 
 ## Status
 
@@ -13,6 +14,7 @@ discovery through `[toml-schema].location`, and starter-schema extraction.
 | .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
 | Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
+| Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 20.11+ and TypeScript 6 | Library, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
 They are reference-quality implementations rather than separately versioned,
@@ -278,6 +280,37 @@ assert!(result.valid());
 
 The Rust test suite includes an ABNF conformance test (`tests/abnf_conformance.rs`) that reads `toml-schema.abnf` and asserts that the implementation's supported schema keys and built-in type names match the grammar.
 
+## Node.js / TypeScript
+
+The Node.js reference library is written in TypeScript 6 and uses
+[`smol-toml`](https://github.com/squirrelchat/smol-toml) to parse TOML. It
+preserves TOML integer, float, and temporal type distinctions and supports
+document-driven schema discovery and starter-schema extraction.
+
+Install dependencies and run its checks:
+
+```shell
+npm --prefix reference-implementations/typescript ci
+npm --prefix reference-implementations/typescript run typecheck
+npm --prefix reference-implementations/typescript test
+npm --prefix reference-implementations/typescript run build
+```
+
+Use the ESM library API:
+
+```typescript
+import { loadSchema, validateDocument } from "@tomlschema/toml-schema";
+
+const schema = await loadSchema("config.tosd");
+const result = await schema.validateFile("config.toml");
+
+const discoveredResult = await validateDocument("config.toml");
+```
+
+The TypeScript test suite reads `toml-schema.abnf` and checks that the
+implementation's supported schema properties and built-in type names match the
+grammar.
+
 ## Conformance expectations
 
 Every reference implementation should:
@@ -301,8 +334,8 @@ language-version compatibility rules from `SPEC.md`, and expose validation and
 schema extraction commands suitable for automation and editor integration.
 
 The GitHub Actions workflow in `.github/workflows/reference-implementations.yml`
-enforces these expectations for Java, Go, .NET, Python, and Rust. Rust additionally exercises
-the canonical CLI end to end.
+enforces these expectations for Java, Go, .NET, Python, Rust, and TypeScript.
+Rust additionally exercises the canonical CLI end to end.
 
 ## TOML version profile
 
@@ -315,8 +348,12 @@ The current reference implementations parse TOML with libraries that target TOML
 - .NET: [Tomlyn](https://github.com/xoofx/Tomlyn) `2.10.1`, which targets TOML 1.0.
 - Python: [`tomllib`](https://docs.python.org/3/library/tomllib.html), which targets TOML 1.0.
 - Rust: [`toml`](https://crates.io/crates/toml) `1`, which targets TOML 1.0.
+- TypeScript: [`smol-toml`](https://github.com/squirrelchat/smol-toml) `1.8.0`,
+  which supports TOML 1.1 while remaining compatible with TOML 1.0 documents.
 
-For that reason, the reference implementations' current effective parser profile is **TOML 1.0**. TOML 1.1 syntax (for example multi-line inline tables, trailing commas in inline tables, omitted seconds in date-times, or the `\e` and `\xHH` string escapes) is not guaranteed to parse in any reference implementation until the underlying TOML parser declares TOML 1.1 conformance.
+The shared baseline parser profile remains **TOML 1.0**. The TypeScript
+implementation also accepts TOML 1.1 syntax through its parser, but TOML 1.1
+syntax is not yet guaranteed across all reference implementations.
 
 Upgrading a reference implementation to a TOML 1.1-conformant parser is tracked separately. When that happens, the expected follow-up changes are:
 
