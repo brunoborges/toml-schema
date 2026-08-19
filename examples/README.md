@@ -10,16 +10,17 @@ reference for writing your own schemas. The examples are not affiliated
 with or endorsed by the upstream projects.
 
 These schemas are representative snapshots rather than canonical schemas
-published by the upstream projects. TOML Schema 1.0 models direct-sibling
-presence rules, but rules that depend on another field's value or an arbitrary
-document path still require application-level validation. See [Expressiveness
-and Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
+published by the upstream projects. TOML Schema 1.0 models direct-sibling value
+conditionals and presence rules, but rules that compare arbitrary document
+paths still require application-level validation. See [Expressiveness and
+Validation Scope](../SPEC.md#expressiveness-and-validation-scope).
 The upstream sources in the table below were reviewed on 2026-08-18.
 
 ## Available examples
 
 | File | Describes | Based on |
 | --- | --- | --- |
+| [`database-conditional.tosd`](database-conditional.tosd) | Conditional SQLite or server database configuration | TOML Schema conditional-selection example |
 | [`cargo.tosd`](cargo.tosd) | Rust Cargo manifests (`Cargo.toml`) | <https://doc.rust-lang.org/cargo/reference/manifest.html> |
 | [`gitlab-runner.tosd`](gitlab-runner.tosd) | GitLab Runner advanced configuration | <https://docs.gitlab.com/runner/configuration/advanced-configuration/> |
 | [`hugo.tosd`](hugo.tosd) | Hugo static site generator configuration | <https://gohugo.io/configuration/> |
@@ -27,11 +28,16 @@ The upstream sources in the table below were reviewed on 2026-08-18.
 | [`pyproject.tosd`](pyproject.tosd) | Python `pyproject.toml` (PEP 621 + dependency groups) | <https://packaging.python.org/en/latest/specifications/pyproject-toml/> |
 | [`wrangler.tosd`](wrangler.tosd) | Cloudflare Workers `wrangler.toml` | <https://developers.cloudflare.com/workers/wrangler/configuration/> |
 
+The conditional database schema has two valid sample documents:
+[`database-sqlite.toml`](database-sqlite.toml) and
+[`database-postgresql.toml`](database-postgresql.toml). Each document uses its
+`[toml-schema].location` metadata to discover the schema.
+
 Together these examples exercise dynamic-key maps, arrays of tables, open
 extension namespaces, constrained scalar values, map values, fixed and dynamic
 children in one collection, alternative representations, reusable
-composition, sibling presence rules, array uniqueness, defaults, and
-deprecation warnings.
+composition, conditional selection, sibling presence rules, array uniqueness,
+defaults, and deprecation warnings.
 
 ## Industry format coverage
 
@@ -54,8 +60,8 @@ while unknown tool names remain open. The generic `pyproject.tosd` example
 intentionally leaves every `[tool.*]` entry open because it does not bundle
 third-party tool schemas.
 
-Version 1.0 does not express value-sensitive conditionals, arbitrary
-cross-path comparisons, field-selected uniqueness, runtime merge behavior, or
+Version 1.0 does not express arbitrary cross-path comparisons,
+field-selected uniqueness, runtime merge behavior, or
 embedded-language validation. Defaults are descriptive and never mutate parsed
 TOML data. These boundaries are detailed in [Expressiveness and Validation
 Scope](../SPEC.md#expressiveness-and-validation-scope).

@@ -994,6 +994,362 @@ type = "types.node"
 }
 
 #[test]
+fn conditional_selectors_choose_and_validate_only_the_selected_branch() {
+    let directory = tempfile_dir("conditional-selection");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.common]
+type = "table"
+
+    [types.common.label]
+    type = "string"
+
+[types.sqlite]
+type = "table"
+
+    [types.sqlite.engine]
+    type = "string"
+    optional = true
+
+    [types.sqlite."engine.kind"]
+    type = "string"
+    optional = true
+
+    [types.sqlite.file]
+    type = "string"
+
+[types.server]
+type = "table"
+
+    [types.server.engine]
+    type = "string"
+    optional = true
+
+    [types.server."engine.kind"]
+    type = "string"
+    optional = true
+
+    [types.server.host]
+    type = "string"
+
+[types.closedSqlite]
+type = "table"
+
+    [types.closedSqlite.file]
+    type = "string"
+
+[types.closedServer]
+type = "table"
+
+    [types.closedServer.host]
+    type = "string"
+
+[elements.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqlite"
+else = "types.server"
+allof = [ "types.common" ]
+optional = true
+
+[elements.replica]
+if = { key = "engine", in = [ "postgresql", "mysql" ] }
+then = "server"
+else = "sqlite"
+optional = true
+
+[elements.literal]
+if = { key = "engine.kind", equals = "sqlite" }
+then = "types.sqlite"
+else = "types.server"
+optional = true
+
+[elements.undeclared]
+if = { key = "engine", equals = "sqlite" }
+then = "types.closedSqlite"
+else = "types.closedServer"
+optional = true
+"#,
+    );
+    let schema = Schema::load(&schema_path).expect("load conditional schema");
+
+    for (name, document) in [
+        (
+            "equals-and-in.toml",
+            r#"
+[database]
+engine = "sqlite"
+file = "app.db"
+label = "primary"
+
+[replica]
+engine = "mysql"
+host = "db.internal"
+
+[literal]
+"engine.kind" = "sqlite"
+file = "literal.db"
+"#,
+        ),
+        (
+            "missing-chooses-else.toml",
+            r#"
+[database]
+host = "db.internal"
+label = "primary"
+"#,
+        ),
+    ] {
+        let path = write_file(&directory, name, document);
+        let result = schema.validate_file(path);
+        assert!(
+            result.valid(),
+            "{name} should validate against its selected branches: {:?}",
+            result.errors
+        );
+    }
+
+    let missing_branch_field = write_file(
+        &directory,
+        "missing-branch-field.toml",
+        r#"
+[database]
+engine = "sqlite"
+label = "primary"
+"#,
+    );
+    let result = schema.validate_file(missing_branch_field);
+    assert!(has_path(&result, "$.database.file"), "{:?}", result.errors);
+    assert!(
+        !has_path(&result, "$.database.host"),
+        "the unselected branch must not emit diagnostics: {:?}",
+        result.errors
+    );
+
+    let unknown_branch_key = write_file(
+        &directory,
+        "unknown-branch-key.toml",
+        r#"
+[database]
+engine = "sqlite"
+file = "app.db"
+host = "must-not-be-accepted"
+label = "primary"
+"#,
+    );
+    let result = schema.validate_file(unknown_branch_key);
+    assert!(has_path(&result, "$.database.host"), "{:?}", result.errors);
+
+    let undeclared_discriminator = write_file(
+        &directory,
+        "undeclared-discriminator.toml",
+        r#"
+[undeclared]
+engine = "sqlite"
+file = "app.db"
+"#,
+    );
+    let result = schema.validate_file(undeclared_discriminator);
+    assert!(
+        has_path(&result, "$.undeclared.engine"),
+        "the discriminator must undergo ordinary selected-branch validation: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn conditional_selectors_accept_empty_keys_and_keyword_named_children() {
+    let directory = tempfile_dir("conditional-empty-key");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.emptyMatch]
+type = "table"
+
+    [types.emptyMatch.""]
+    type = "string"
+
+    [types.emptyMatch.file]
+    type = "string"
+
+[types.emptyFallback]
+type = "table"
+
+    [types.emptyFallback.host]
+    type = "string"
+
+[elements.database]
+if = { key = "", equals = "sqlite" }
+then = "types.emptyMatch"
+else = "types.emptyFallback"
+
+[elements.keywords]
+
+    [elements.keywords.if]
+    type = "string"
+
+    [elements.keywords.then]
+    type = "integer"
+
+    [elements.keywords.else]
+    type = "boolean"
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "document.toml",
+        r#"
+[database]
+"" = "sqlite"
+file = "app.db"
+
+[keywords]
+if = "ordinary child"
+then = 1
+else = true
+"#,
+    );
+
+    let schema = Schema::load(schema_path)
+        .expect("empty discriminator and keyword-named child definitions should load");
+    let result = schema.validate_file(document_path);
+    assert!(
+        result.valid(),
+        "empty discriminator and keyword-named children should validate: {:?}",
+        result.errors
+    );
+}
+
+#[test]
+fn conditional_selectors_reject_malformed_schemas() {
+    let invalid_definitions = [
+        r#"if = { key = "engine", equals = "sqlite" }"#,
+        r#"then = "types.tableBranch"
+else = "types.tableBranch""#,
+        r#"if = { equals = "sqlite" }
+then = "types.tableBranch"
+else = "types.tableBranch""#,
+        r#"if = { key = "engine", equals = "sqlite", in = [ "sqlite" ] }
+then = "types.tableBranch"
+else = "types.tableBranch""#,
+        r#"if = { key = "engine" }
+then = "types.tableBranch"
+else = "types.tableBranch""#,
+        r#"if = { key = "engine", in = [] }
+then = "types.tableBranch"
+else = "types.tableBranch""#,
+        r#"if = { key = "engine", equals = "sqlite", nested = true }
+then = "types.tableBranch"
+else = "types.tableBranch""#,
+        r#"if = { key = "engine", equals = "sqlite" }
+then = "table"
+else = "types.tableBranch""#,
+        r#"if = { key = "engine", equals = "sqlite" }
+then = "types.tableBranch"
+else = "types.missing""#,
+        r#"type = "table"
+if = { key = "engine", equals = "sqlite" }
+then = "types.tableBranch"
+else = "types.tableBranch""#,
+        r#"if = { key = "engine", equals = "sqlite" }
+then = "types.tableBranch"
+else = "types.tableBranch"
+minlength = 1"#,
+        r#"if = { key = "engine", equals = "sqlite" }
+then = "types.tableBranch"
+else = "types.tableBranch"
+
+[elements.value.child]
+type = "string""#,
+    ];
+
+    for (index, definition) in invalid_definitions.iter().enumerate() {
+        let directory = tempfile_dir(&format!("malformed-conditional-{index}"));
+        let schema_path = write_file(
+            &directory,
+            "schema.tosd",
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.tableBranch]
+type = "table"
+
+[elements.value]
+{definition}
+"#
+            ),
+        );
+        Schema::load(schema_path).expect_err("malformed conditional schema must be rejected");
+    }
+}
+
+#[test]
+fn conditional_selectors_enforce_branch_compatibility_and_cycles() {
+    let invalid_type_sections = [
+        r#"
+[types.first]
+type = "string"
+
+[types.second]
+type = "string"
+"#,
+        r#"
+[types.first]
+type = "table"
+
+[types.second]
+type = "collection"
+itemtype = "string"
+"#,
+        r#"
+[types.first]
+if = { key = "kind", equals = "first" }
+then = "types.second"
+else = "types.leaf"
+
+[types.second]
+type = "types.first"
+
+[types.leaf]
+type = "table"
+"#,
+    ];
+
+    for (index, types) in invalid_type_sections.iter().enumerate() {
+        let directory = tempfile_dir(&format!("conditional-graph-{index}"));
+        let schema_path = write_file(
+            &directory,
+            "schema.tosd",
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+{types}
+
+[elements.value]
+if = {{ key = "kind", equals = "first" }}
+then = "types.first"
+else = "types.second"
+"#
+            ),
+        );
+        Schema::load(schema_path)
+            .expect_err("incompatible or cyclic conditional branches must be rejected");
+    }
+}
+
+#[test]
 fn rejects_types_named_after_built_ins() {
     let directory = tempfile_dir("reserved-built-in");
     let schema_path = write_file(

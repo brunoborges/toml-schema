@@ -92,7 +92,7 @@ uniqueitems = true</code></pre>
           <article class="card">
             <span class="badge">Practical</span>
             <h3>Validation-focused</h3>
-            <p>Define required fields, types, collections, unions, composition, sibling rules, uniqueness, defaults, and deprecations.</p>
+            <p>Define required fields, types, conditional branches, collections, unions, composition, sibling rules, uniqueness, defaults, and deprecations.</p>
           </article>
           <article class="card">
             <span class="badge">Toolable</span>
@@ -216,6 +216,54 @@ role = "frontend"</code></pre>
           </article>
           <article class="tour-step">
             <div>
+              <span class="badge">Conditionals</span>
+              <h3>Select a shape from a field value</h3>
+              <p>Choose between reusable table shapes using a direct child value. Each branch can require its own fields and reject fields from the other shape.</p>
+            </div>
+            <div class="tour-examples">
+              <div>
+                <span class="tour-code-label">Schema (.tosd)</span>
+                <pre><code>[types.sqliteDatabase]
+type = "table"
+
+[types.sqliteDatabase.engine]
+type = "string"
+
+[types.sqliteDatabase.path]
+type = "string"
+
+[types.serverDatabase]
+type = "table"
+
+[types.serverDatabase.engine]
+type = "string"
+
+[types.serverDatabase.host]
+type = "string"
+
+[types.serverDatabase.port]
+type = "integer"
+
+[types.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqliteDatabase"
+else = "types.serverDatabase"
+
+[elements.storage]
+type = "types.database"
+optional = true</code></pre>
+              </div>
+              <div>
+                <span class="tour-code-label">TOML</span>
+                <pre class="toml-example"><code>[storage]
+engine = "postgresql"
+host = "db.internal"
+port = 5432</code></pre>
+              </div>
+            </div>
+          </article>
+          <article class="tour-step">
+            <div>
               <span class="badge">Collections</span>
               <h3>Handle dynamic table names</h3>
               <p>A collection validates values stored under user-defined keys, such as named servers or environments.</p>
@@ -276,9 +324,10 @@ retries = 3</code></pre>
         </p>
         <div class="spec-list">
           <div class="spec-item"><strong>Versioned metadata</strong><span><code>[toml-schema]</code> declares SemVer language compatibility.</span></div>
-          <div class="spec-item"><strong>Type references</strong><span>References used by <code>type</code>, <code>itemtype</code>, <code>items</code>, <code>oneof</code>, <code>anyof</code>, and <code>allof</code> select or compose built-in types and reusable <code>[types]</code> definitions.</span></div>
+          <div class="spec-item"><strong>Type references</strong><span>References used by <code>type</code>, <code>itemtype</code>, <code>items</code>, <code>oneof</code>, <code>anyof</code>, <code>allof</code>, <code>then</code>, and <code>else</code> select or compose built-in types and reusable <code>[types]</code> definitions.</span></div>
           <div class="spec-item"><strong>Dynamic entries</strong><span><code>collection</code> validates dynamically named values; <code>keypattern</code> can constrain their keys.</span></div>
           <div class="spec-item"><strong>Alternative types</strong><span><code>oneof</code> requires exactly one matching type; <code>anyof</code> requires at least one.</span></div>
+          <div class="spec-item"><strong>Conditional shapes</strong><span><code>if</code> selects a reusable <code>then</code> or <code>else</code> definition from a direct child's parsed value.</span></div>
           <div class="spec-item"><strong>Semantic rules</strong><span><code>dependentrequired</code>, <code>mutuallyexclusive</code>, and <code>exactlyone</code> constrain direct sibling presence.</span></div>
           <div class="spec-item"><strong>Annotations</strong><span><code>default</code> is non-mutating metadata; <code>deprecated</code> produces warnings without invalidating a document.</span></div>
           <div class="spec-item"><strong>Containers and tuples</strong><span><code>itemtype</code> validates homogeneous array and collection members; <code>items</code> defines positional arrays.</span></div>

@@ -1,0 +1,9 @@
+[toml-schema]
+location = "database-conditional.tosd"
+version = "1.0.0"
+
+[database]
+engine = "postgresql"
+host = "db.internal"
+port = 5432
+username = "app"

@@ -50,6 +50,7 @@ command.
   - [Type Reference](#type-reference)
   - [Conjunctive Composition - `allof`](#conjunctive-composition---allof)
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
+  - [Conditional Selection - `if`, `then`, and `else`](#conditional-selection---if-then-and-else)
   - [Sibling Presence Rules](#sibling-presence-rules)
   - [Description - `description`](#description---description)
   - [Default - `default`](#default---default)
@@ -266,7 +267,7 @@ below.
 The `[types]` table is for use when there is a need for custom, reusable types of structure or properties. A type is referenced in an element or another type with a type reference.
 
 Type references are strings accepted by `type`, `itemtype`, `items`, `oneof`,
-`anyof`, and `allof`. A type reference may be either:
+`anyof`, `allof`, `then`, and `else`. A type reference may be either:
 
 - a built-in type name such as `"string"`, `"boolean"`, or `"integer"`;
 - a named reusable definition from `[types]`, written either as `"types.<typename>"` or `"<typename>"`.
@@ -290,36 +291,48 @@ Two built-in names have context-specific restrictions:
 
 - `collection` is valid for `type` only when the effective definition obtains
   an `itemtype` locally or from a compatible `allof` component. It MUST NOT be
-  used as a bare reference in `itemtype`, `items`, `oneof`, `anyof`, or
-  `allof`, because those locations cannot supply the collection's dynamic-value
+  used as a bare reference in `itemtype`, `items`, `oneof`, `anyof`, `allof`,
+  `then`, or `else`, because those locations cannot supply the collection's dynamic-value
   rule. Schema loaders MUST reject such references at schema-load time.
 - `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
-  directly in `oneof`, `anyof`, or `allof`. Schema loaders MUST reject a direct
-  `any` component at schema-load time.
+  directly in `oneof`, `anyof`, `allof`, `then`, or `else`. Schema loaders MUST
+  reject a direct `any` component at schema-load time.
 
 These restrictions apply to bare built-in references, not to named reusable
 definitions. A named definition that declares a complete collection or selects
 `type = "any"` remains a valid reference.
 
-`type`, `oneof`, and `anyof` are alternative ways to select the type of the current schema node. Every definition MUST declare exactly one of them, except that a definition with nested child definitions MAY omit all three and is then treated as `type = "table"`. Schema loaders MUST reject a definition that declares more than one of these properties, or that declares none of them and has no nested child definitions. `type` accepts either a built-in type name or a named reusable definition from `[types]`. Container member types are selected separately with `itemtype`: it validates each member of an `array` or each dynamically keyed value of a `collection`. `itemtype` requires the same definition to declare the built-in `type = "array"` or `type = "collection"`; it cannot be attached to another built-in or to a named type reference.
+`type`, `oneof`, `anyof`, and the `if`/`then`/`else` triple are alternative
+ways to select the type of the current schema node. Every definition MUST
+declare exactly one selector, except that a definition with nested child
+definitions MAY omit all selectors and is then treated as `type = "table"`.
+Schema loaders MUST reject a definition that combines selectors, contains only
+part of a conditional triple, or declares no selector and has no nested child
+definitions. `type` accepts either a built-in type name or a named reusable
+definition from `[types]`. Container member types are selected separately with
+`itemtype`: it validates each member of an `array` or each dynamically keyed
+value of a `collection`. `itemtype` requires the same definition to declare the
+built-in `type = "array"` or `type = "collection"`; it cannot be attached to
+another built-in or to a named type reference.
 
 Nested child definitions are valid only when the current node selects the
 built-in `table` or `collection` type, or when the node omits a selector and is
 therefore an implicit table. Schema loaders MUST reject child definitions attached to
-a scalar, `array`, named type reference, `oneof`, or `anyof` node rather than
+a scalar, `array`, named type reference, `oneof`, `anyof`, or conditional node rather than
 silently ignoring them.
 
-Every named reference used by `type`, `itemtype`, `items`, `oneof`, `anyof`, or `allof`
+Every named reference used by `type`, `itemtype`, `items`, `oneof`, `anyof`,
+`allof`, `then`, or `else`
 MUST resolve to a definition in `[types]`. Schema loaders MUST reject unresolved
 references at schema-load time, including references in definitions that are
 optional or not exercised by the document being validated.
 
-Type-selection and composition references MUST be acyclic. A cycle composed of named `type`
-aliases, `oneof` alternatives, `anyof` alternatives, or `allof` components cannot resolve to a
-concrete definition and schema loaders MUST reject it at schema-load time. Structural
-recursion through table or collection children, array `itemtype`, or tuple
-`items` remains valid because each recursive step consumes a nested document
-value.
+Type-selection and composition references MUST be acyclic. A cycle composed of
+named `type` aliases, `oneof` alternatives, `anyof` alternatives, conditional
+branches, or `allof` components cannot resolve to a concrete definition and
+schema loaders MUST reject it at schema-load time. Structural recursion through
+table or collection children, array `itemtype`, or tuple `items` remains valid
+because each recursive step consumes a nested document value.
 
 ```toml
 [types]
@@ -331,6 +344,9 @@ itemtype = "<type-reference>"
 items = [ "<type-reference>", ... ]
 oneof = [ "<type-reference>", ... ]
 anyof = [ "<type-reference>", ... ]
+if = { key = "<direct-child-name>", equals = <toml-value> }
+then = "types.<typename>"
+else = "types.<typename>"
 allof = [ "<type-reference>", ... ]
 allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
 pattern = "<string-regex-for-string-validation>"
@@ -353,8 +369,9 @@ detailed sections below remain authoritative.
 
 | Property | Applicable definition |
 | --- | --- |
-| `type` | Selects one built-in or named type; mutually exclusive with `oneof` and `anyof` |
-| `oneof`, `anyof` | Select the current node from one or more alternatives; mutually exclusive with each other and `type` |
+| `type` | Selects one built-in or named type; mutually exclusive with other selectors |
+| `oneof`, `anyof` | Select the current node from one or more alternatives; mutually exclusive with other selectors |
+| `if`, `then`, `else` | Exhaustively select one of two named table-like definitions from a direct child's parsed value |
 | `allof` | Conjunctively applies one or more compatible type references in addition to the local definition |
 | `description`, `optional`, `default`, `deprecated` | Any definition, including a named reference or alternative selector |
 | `itemtype` | A definition with built-in `type = "array"` or `type = "collection"` |
@@ -367,8 +384,9 @@ detailed sections below remain authoritative.
 | `uniqueitems` | A definition with built-in `type = "array"` |
 | `dependentrequired`, `mutuallyexclusive`, `exactlyone` | A definition with effective type `table` or `collection` and fixed child definitions |
 
-A named type reference and an alternative selector may additionally declare
-only `allof`, `description`, `optional`, `default`, and `deprecated`.
+A named type reference, alternative selector, and conditional selector may
+additionally declare only `allof`, `description`, `optional`, `default`, and
+`deprecated`.
 Kind-specific constraints for the referenced or alternative types belong in
 reusable definitions.
 
@@ -381,7 +399,9 @@ Target keys may have the same names as TOML Schema properties, such as `type`,
 definition is a schema property, while a table-header path segment below that
 definition is a target child definition.
 
-A schema definition with nested child definitions and no explicit `type`, `oneof`, or `anyof` is treated as `type = "table"`. This lets schemas describe target keys that would otherwise collide with schema properties.
+A schema definition with nested child definitions and no explicit selector is
+treated as `type = "table"`. This lets schemas describe target keys that would
+otherwise collide with schema properties.
 
 TOML itself forbids one table from containing both a value and a subtable with
 the same key. Therefore, a definition cannot simultaneously use a schema
@@ -547,7 +567,8 @@ A `table` may have a set of properties, or none at all. If a table has a
 definition of properties, the validator MUST require the input to match exactly
 the rules of the table and its children.
 
-If a schema definition has nested child definitions but does not declare `type`, `oneof`, or `anyof`, schema loaders MUST treat it as if it declared `type = "table"`.
+If a schema definition has nested child definitions but does not declare a
+selector, schema loaders MUST treat it as if it declared `type = "table"`.
 
 If a property of type `table` has no defined children, the validator MUST
 accept any TOML table value without validating its contents. This is useful for
@@ -911,8 +932,8 @@ pattern = "^[A-Z]+$" # invalid
 
 `allof` applies a non-empty array of type references to the current node in
 addition to its local definition. It is an applicator, not a type selector:
-the local definition must still declare exactly one of `type`, `oneof`, or
-`anyof`, or have fixed children that make it an implicit table.
+the local definition must still declare one `type`, `oneof`, `anyof`, or
+conditional selector, or have fixed children that make it an implicit table.
 
 ```toml
 [types.packageBase]
@@ -979,7 +1000,7 @@ normally with `type`.
 
 An `allof` component may itself contain `oneof`, `anyof`, or another `allof`
 when its effective kind is unambiguous. A composed definition may be referenced
-from `type`, `itemtype`, `items`, `oneof`, or `anyof`. All composition
+from `type`, `itemtype`, `items`, `oneof`, `anyof`, `then`, or `else`. All composition
 references MUST resolve at schema-load time, and composition/type-selection
 cycles are malformed. Structural recursion that consumes a child or container
 member remains valid.
@@ -997,7 +1018,9 @@ The bare built-in names `any` and `collection` MUST NOT appear directly in
 `oneof` or `anyof`. Use a named reusable definition when an alternative needs a
 fully defined collection or an intentionally unconstrained named branch.
 
-`type`, `oneof`, and `anyof` all select the current node's type and are mutually exclusive. A schema loader MUST reject a definition containing more than one of them.
+`type`, `oneof`, `anyof`, and the conditional triple all select the current
+node's type and are mutually exclusive. A schema loader MUST reject a
+definition containing more than one selector.
 
 The array assigned to `oneof` or `anyof` MUST contain at least one type
 reference. A union definition MAY additionally declare only `description`,
@@ -1080,6 +1103,69 @@ effective default and never cause a schema-load conflict. For a present value,
 an implementation MAY surface the default of each successful branch as a hint,
 deduplicated by [Parsed Value Equality](#parsed-value-equality). A branch that
 fails validation contributes neither defaults nor deprecation warnings.
+
+### Conditional Selection - `if`, `then`, and `else`
+
+The `if`, `then`, and `else` properties form one exhaustive selector for a
+table-like node. The condition inspects one direct child of the current parsed
+table and selects one of two named reusable definitions:
+
+```toml
+[types.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqliteDatabase"
+else = "types.serverDatabase"
+```
+
+`if` MUST be an inline table containing `key` and exactly one of `equals` or
+`in`. It MUST contain no other members.
+
+- `key` MUST be a string naming one direct child of the current node. It is a
+  decoded TOML key, not a dotted document path. An empty or literal dotted key
+  is permitted.
+- `equals` accepts one TOML value. The condition succeeds when the child exists
+  and is equal to that value according to [Parsed Value Equality](#parsed-value-equality).
+- `in` MUST be a non-empty array. The condition succeeds when the child exists
+  and is equal to at least one array entry according to Parsed Value Equality.
+
+If the named child is absent, the condition is false. A validator MUST apply
+only the selected branch: `then` when the condition is true and `else` when it
+is false. The condition itself emits no document-validation diagnostic.
+Validation diagnostics and deprecation annotations come only from the selected
+branch. A branch default does not become the conditional slot's effective
+default; for a present value, an implementation MAY surface the selected
+branch's default as a hint.
+
+`then` and `else` MUST each be a string naming a reusable definition in
+`[types]`; bare built-in references are invalid. Both definitions MUST resolve
+to the same effective kind, and that kind MUST be `table` or `collection`.
+Schema loaders MUST reject unresolved branches, different branch kinds,
+branches that do not resolve to a table-like kind, and cycles through
+conditional branches.
+
+The conditional triple is mutually exclusive with `type`, `oneof`, and
+`anyof`. A conditional definition MAY additionally declare only `allof`,
+`description`, `optional`, `default`, and `deprecated`; it MUST NOT contain
+kind-specific validation properties or nested child definitions. An `allof`
+component MUST be compatible with the common branch kind and is applied
+conjunctively with whichever branch is selected.
+
+Optionality belongs to the conditional definition. An `optional` annotation
+inside a branch does not make the conditional slot optional, because no branch
+is selected when the slot is absent. A default on the conditional definition
+MUST validate against the branch selected by that default at schema-load time.
+
+Example with a multi-value condition:
+
+```toml
+[types.database]
+if = { key = "engine", in = [ "postgresql", "mysql" ] }
+then = "types.serverDatabase"
+else = "types.embeddedDatabase"
+```
+
+Additional alternatives can be expressed by referencing another conditional
+definition from `then` or `else`.
 
 ### Sibling Presence Rules
 
@@ -1427,6 +1513,8 @@ patterns used by major configuration formats, including:
   array's `itemtype`;
 - scalar-or-table and other alternative representations with `oneof` or
   `anyof`;
+- table shapes selected from a direct child's value with `if`, `then`, and
+  `else`;
 - single-table-or-array-of-table representations through named container
   alternatives;
 - fixed-length heterogeneous arrays with `items`; and
@@ -1437,13 +1525,12 @@ against formats including [Cargo manifests](https://doc.rust-lang.org/cargo/refe
 Python [`pyproject.toml`](https://packaging.python.org/en/latest/specifications/pyproject-toml/),
 Hugo, Netlify, GitLab Runner, and Cloudflare Wrangler.
 
-Version 1.0 includes direct-sibling presence dependencies, at-most-one and
-exactly-one groups, conjunctive reusable composition, whole-item array
-uniqueness, defaults, and deprecation annotations. These features remain
-deliberately bounded. Version 1.0 does not define keywords for:
+Version 1.0 includes direct-sibling value conditionals, direct-sibling presence
+dependencies, at-most-one and exactly-one groups, conjunctive reusable
+composition, whole-item array uniqueness, defaults, and deprecation
+annotations. These features remain deliberately bounded. Version 1.0 does not
+define keywords for:
 
-- requiring, forbidding, or changing a key's schema based on another key's
-  value;
 - following arbitrary document paths or comparing values at different paths;
 - making a field absent precisely when its name appears in another array;
 - selecting array uniqueness by one field rather than the complete item value;
@@ -1451,13 +1538,12 @@ deliberately bounded. Version 1.0 does not define keywords for:
 - overriding a constraint or modeling an application's runtime inheritance and
   merge precedence.
 
-For example, a schema can require Cargo `branch`, `tag`, or `rev` to accompany
-`git`, and can make those selectors mutually exclusive. It still cannot make a
-constraint depend on the contents of a sibling value. A `pyproject.toml` schema
-can require `project.dynamic` entries to be unique, but cannot require a field
-to be absent precisely when its name appears in that array. Those
-value-sensitive application policies require an additional semantic-validation
-pass.
+For example, a schema can choose a database configuration shape from a sibling
+`engine` value. It still cannot compare values in different tables or follow an
+arbitrary path from one location to another. A `pyproject.toml` schema can
+require `project.dynamic` entries to be unique, but cannot require a field to
+be absent precisely when its name appears in that array. Those cross-path
+application policies require an additional semantic-validation pass.
 
 Some configuration sections intentionally combine known fields with arbitrary
 future or extension-owned fields. A `collection` with fixed child definitions

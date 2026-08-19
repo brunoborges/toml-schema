@@ -1,0 +1,40 @@
+# Demonstrates selecting a table shape from a direct child's value.
+
+[toml-schema]
+version = "1.0.0"
+
+[types.sqliteDatabase]
+type = "table"
+
+    [types.sqliteDatabase.engine]
+    type = "string"
+    allowedvalues = [ "sqlite" ]
+
+    [types.sqliteDatabase.path]
+    type = "string"
+
+[types.serverDatabase]
+type = "table"
+
+    [types.serverDatabase.engine]
+    type = "string"
+    allowedvalues = [ "postgresql", "mysql" ]
+
+    [types.serverDatabase.host]
+    type = "string"
+
+    [types.serverDatabase.port]
+    type = "integer"
+    min = 1
+    max = 65535
+
+    [types.serverDatabase.username]
+    type = "string"
+
+[types.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqliteDatabase"
+else = "types.serverDatabase"
+
+[elements.database]
+type = "types.database"
