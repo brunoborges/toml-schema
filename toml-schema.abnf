@@ -41,9 +41,11 @@ direct-child-definition = schema-definition
 ; escaped-children-table namespace.
 escaped-children-table = schema-children-table 1*escaped-child-definition
 escaped-child-definition = schema-definition
-; Each escaped child name MUST be "children" or a schema-key. Non-conflicting
-; child names MUST use direct-child-definition instead. At most one
-; escaped-children-table is allowed per definition.
+; Each escaped child name MUST be "children" or a schema-key; any other name
+; MUST use direct-child-definition instead. The restriction is categorical: the
+; surrounding definition need not itself declare that schema-key, so a
+; property-named child has both spellings available until TOML forbids the
+; direct one. At most one escaped-children-table is allowed per definition.
 
 ; Canonical definition-key inventory, also consumed by implementation
 ; conformance guards.
