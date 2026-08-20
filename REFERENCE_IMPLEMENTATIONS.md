@@ -10,11 +10,11 @@ command-line interface for validation, schema discovery through
 | Language | Location | Requires | Interfaces |
 | --- | --- | --- | --- |
 | Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, schema discovery |
-| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.26.6 | Library, schema discovery, schema extraction |
-| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 9.0 | Library, schema discovery |
+| Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.27.0 | Library, schema discovery, schema extraction |
+| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 10.0 | Library, schema discovery |
 | Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
-| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.75 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
-| Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 20.11+ and TypeScript 6 | Library, schema discovery, schema extraction |
+| Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.97.1 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
+| Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 26.7+ and TypeScript 7 | Library, schema discovery, schema extraction |
 
 The implementations use TOML 1.0 parsers and share the same conformance expectations.
 They are reference-quality implementations rather than separately versioned,
@@ -113,7 +113,7 @@ The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`)
 
 ## .NET
 
-The .NET 9.0 reference library uses [Tomlyn](https://github.com/xoofx/Tomlyn)
+The .NET 10.0 reference library uses [Tomlyn](https://github.com/xoofx/Tomlyn)
 to parse TOML and validates the parsed data model against a `.tosd` schema.
 Its library API also supports document-driven schema discovery through
 `[toml-schema].location`.
@@ -302,7 +302,7 @@ The Rust test suite includes an ABNF conformance test (`tests/abnf_conformance.r
 
 ## Node.js / TypeScript
 
-The Node.js reference library is written in TypeScript 6 and uses
+The Node.js reference library is written in TypeScript 7 and uses
 [`smol-toml`](https://github.com/squirrelchat/smol-toml) to parse TOML. It
 preserves TOML integer, float, and temporal type distinctions and supports
 document-driven schema discovery and starter-schema extraction.

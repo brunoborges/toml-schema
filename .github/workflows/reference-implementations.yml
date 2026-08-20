@@ -65,7 +65,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
-          dotnet-version: "9.0.x"
+          dotnet-version: "10.0.x"
 
       - name: Test
         run: dotnet test reference-implementations/dotnet/TomlSchema.sln -v normal
@@ -81,7 +81,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.11"
+          python-version: "3.14"
 
       - name: Install library
         run: python -m pip install reference-implementations/python
@@ -146,7 +146,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "20"
+          node-version: "26.7.0"
           cache: npm
           cache-dependency-path: reference-implementations/typescript/package-lock.json
 

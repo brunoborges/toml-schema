@@ -16,10 +16,8 @@ is independent from the TOML Schema **language** version it implements
 
 ## Requirements
 
-- Node.js >= 20.11 (native `node --test`, `node:fs/promises`, ESM)
-- TypeScript 6.x (the package pins the **exact** version `6.0.3`; TypeScript 7
-  is intentionally out of range until this implementation is verified against
-  it)
+- Node.js >= 26.7 (native `node --test`, `node:fs/promises`, ESM)
+- TypeScript 7.x (the package pins the **exact** version `7.0.2`)
 
 ## Install
 

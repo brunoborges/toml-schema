@@ -31,7 +31,7 @@
     "README.md"
   ],
   "engines": {
-    "node": ">=20.11"
+    "node": ">=26.7"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -43,8 +43,8 @@
     "smol-toml": "1.8.0"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "tsx": "^4.20.6",
-    "typescript": "6.0.3"
+    "@types/node": "26.2.0",
+    "tsx": "4.23.12",
+    "typescript": "7.0.2"
   }
 }

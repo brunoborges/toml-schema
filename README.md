@@ -4,12 +4,13 @@
 [![TOML 1.0](https://img.shields.io/badge/TOML-1.0-9c4121)](https://toml.io/en/v1.0.0)
 
 [![Reference implementations](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml/badge.svg)](https://github.com/brunoborges/toml-schema/actions/workflows/reference-implementations.yml)
-[![Rust 1.75](https://img.shields.io/badge/Rust-1.75-dea584)](REFERENCE_IMPLEMENTATIONS.md#rust)
+[![Rust 1.97.1](https://img.shields.io/badge/Rust-1.97.1-dea584)](REFERENCE_IMPLEMENTATIONS.md#rust)
 [![Java 25](https://img.shields.io/badge/Java-25-007396)](REFERENCE_IMPLEMENTATIONS.md#java)
-[![Go 1.26.6](https://img.shields.io/badge/Go-1.26.6-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
-[![.NET 9](https://img.shields.io/badge/.NET-9.0-512BD4)](REFERENCE_IMPLEMENTATIONS.md#net)
+[![Go 1.27.0](https://img.shields.io/badge/Go-1.27.0-00ADD8)](REFERENCE_IMPLEMENTATIONS.md#go)
+[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](REFERENCE_IMPLEMENTATIONS.md#net)
 [![Python 3.11](https://img.shields.io/badge/Python-3.11+-3776AB)](REFERENCE_IMPLEMENTATIONS.md#python)
-[![TypeScript 6](https://img.shields.io/badge/TypeScript-6-3178C6)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
+[![Node.js 26.7.0](https://img.shields.io/badge/Node.js-26.7.0-5FA04E)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
+[![TypeScript 7](https://img.shields.io/badge/TypeScript-7-3178C6)](REFERENCE_IMPLEMENTATIONS.md#nodejs--typescript)
 
 TOML Schema is a TOML-based schema language for describing and validating the structure, names, value types, and common semantic relationships of TOML configuration files.
 
