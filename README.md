@@ -20,8 +20,8 @@ The documentation site is published canonically at
 [tomlschema.org](https://tomlschema.org/). The legacy
 [toml-schema.org](https://toml-schema.org/) domain is mirrored by the
 [`brunoborges/tomlschema.org`](https://github.com/brunoborges/tomlschema.org)
-GitHub Pages repository until permanent redirects are configured. The source
-repository remains `brunoborges/toml-schema`.
+GitHub Pages repository, which rebuilds daily from this repository's `main`
+branch. The source repository remains `brunoborges/toml-schema`.
 
 ## Documentation
 

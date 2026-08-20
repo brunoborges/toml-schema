@@ -3,8 +3,8 @@
 Tooling for the canonical [tomlschema.org](https://tomlschema.org/) static site
 published from `docs/`. The
 [`brunoborges/tomlschema.org`](https://github.com/brunoborges/tomlschema.org)
-repository also builds this repository's `main` branch and temporarily mirrors
-the site at the legacy [toml-schema.org](https://toml-schema.org/) domain.
+repository also rebuilds this repository's `main` branch daily and mirrors the
+site at the legacy [toml-schema.org](https://toml-schema.org/) domain.
 
 ## `render-docs.mjs`
 
