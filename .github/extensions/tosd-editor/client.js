@@ -35,6 +35,7 @@ const NUMERIC_TEMPORAL = [
     "local-date",
     "local-time",
 ];
+const STRING_FORMATS = ["", "email", "uuid", "uri", "hostname", "ipv4", "ipv6"];
 const state = {
     path: null,
     model: null,
@@ -60,6 +61,13 @@ function resolvedKinds(ref, seen = new Set()) {
     const props = definition.props || {};
     if (props.type) return resolvedKinds(props.type, nextSeen);
     const alternatives = props.oneof?.length ? props.oneof : props.anyof;
+    if (props.if) {
+        const kinds = new Set();
+        for (const branch of [props.then, props.else]) {
+            for (const kind of resolvedKinds(branch, nextSeen)) kinds.add(kind);
+        }
+        return kinds;
+    }
     if (!alternatives?.length && definition.children?.length) return new Set(["table"]);
     const kinds = new Set();
     for (const alternative of alternatives || []) {
@@ -89,7 +97,8 @@ function el(tag, attrs = {}, ...kids) {
 }
 
 // --- Networking ---------------------------------------------------------
-async function load() {
+async function load({ preserveUndo = false } = {}) {
+    const previous = preserveUndo && state.model ? snapshot() : null;
     const res = await fetch("state");
     const data = await res.json();
     state.path = data.path;
@@ -97,6 +106,10 @@ async function load() {
     state.dirty = false;
     state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
     resetHistory();
+    if (previous) {
+        history.undo.push(previous);
+        updateHistoryButtons();
+    }
     renderAll();
     schedulePreview();
 }
@@ -112,7 +125,7 @@ async function refreshPreview() {
         const res = await fetch("preview", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(state.model),
+            body: JSON.stringify({ path: state.path, model: state.model }),
         });
         const data = await res.json();
         state.lastIssues = data.issues || [];
@@ -120,7 +133,10 @@ async function refreshPreview() {
         renderIssues();
         updateValidityPill();
     } catch (e) {
+        state.lastIssues = [{ level: "error", path: "preview", message: "Preview unavailable: " + e.message }];
         $("#preview").textContent = "// preview error: " + e.message;
+        renderIssues();
+        updateValidityPill("unavailable");
     }
 }
 
@@ -131,7 +147,7 @@ async function save() {
         const res = await fetch("save", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(state.model),
+            body: JSON.stringify({ path: state.path, model: state.model }),
         });
         const data = await res.json();
         if (data.ok) {
@@ -173,7 +189,7 @@ function snapshot() {
     collect(state.model.types);
     collect(state.model.elements);
     return JSON.stringify(
-        { version: state.model.version, meta: state.model.meta, types: state.model.types, elements: state.model.elements },
+        { path: state.path, version: state.model.version, meta: state.model.meta, types: state.model.types, elements: state.model.elements },
         function replacer(k, v) {
             return schemaNodes.has(this) && transientKeys.has(k) ? undefined : v;
         },
@@ -249,6 +265,7 @@ function resolveSelection(ref) {
 function applySnapshot(str) {
     const ref = selectionRef();
     const d = JSON.parse(str);
+    state.path = d.path ?? state.path;
     state.model.version = d.version;
     state.model.meta = d.meta;
     state.model.types = d.types;
@@ -276,6 +293,25 @@ function redo() {
     updateHistoryButtons();
 }
 
+function replaceModel(model, { path = state.path, saved = false, view = "elements" } = {}) {
+    commitHistory();
+    const previous = snapshot();
+    state.path = path;
+    state.model = model;
+    state.view = view;
+    state.selected = (state.model[view]?.[0] || state.model.elements[0] || state.model.types[0]) ?? null;
+    resetHistory(saved);
+    history.undo.push(previous);
+    state.dirty = !saved;
+    renderAll();
+    schedulePreview();
+    updateHistoryButtons();
+}
+
+function confirmReplacement(action) {
+    return !state.dirty || confirm(`Discard unsaved changes and ${action}? You can undo this replacement afterward.`);
+}
+
 function updateHistoryButtons() {
     const u = $("#undo");
     const r = $("#redo");
@@ -291,11 +327,14 @@ function updateStatus(cls, text) {
     $("#save").disabled = !state.dirty;
 }
 
-function updateValidityPill() {
+function updateValidityPill(mode) {
     const errs = state.lastIssues.filter((i) => i.level === "error").length;
     const warns = state.lastIssues.filter((i) => i.level === "warning").length;
     const pill = $("#validity");
-    if (errs > 0) {
+    if (mode === "unavailable") {
+        pill.className = "pill err";
+        pill.textContent = "preview unavailable";
+    } else if (errs > 0) {
         pill.className = "pill err";
         pill.textContent = `${errs} error${errs > 1 ? "s" : ""}`;
     } else if (warns > 0) {
@@ -326,6 +365,7 @@ function typeBadge(node) {
     if (p.type) return BUILTIN_TYPES.includes(p.type) ? p.type : "→ " + p.type.replace(/^types\./, "");
     if (p.oneof) return "oneof";
     if (p.anyof) return "anyof";
+    if (p.if) return "if/then/else";
     if (node.children && node.children.length) return "table";
     return "?";
 }
@@ -334,6 +374,8 @@ function nodeFlags(node) {
     const p = node.props || {};
     const flags = [];
     if ((p.allof || []).length) flags.push({ text: `allof×${p.allof.length}`, title: "Conjunctive type components" });
+    if (p.format) flags.push({ text: p.format, title: `String format: ${p.format}` });
+    if (p.if) flags.push({ text: `if ${p.if.key || "?"}`, title: "Conditional type selection" });
     if (p.uniqueitems === true) flags.push({ text: "unique", title: "Array items must be unique" });
     if (p.default != null && String(p.default).trim() !== "") flags.push({ text: "default", title: "Has a default annotation" });
     if (p.deprecated === true) flags.push({ text: "deprecated", title: "Deprecated annotation", tone: "warn" });
@@ -341,6 +383,12 @@ function nodeFlags(node) {
     if ((p.mutuallyexclusive || []).length) flags.push({ text: `xor×${p.mutuallyexclusive.length}`, title: "Mutually exclusive groups" });
     if ((p.exactlyone || []).length) flags.push({ text: `one×${p.exactlyone.length}`, title: "Exactly-one groups" });
     return flags;
+}
+
+function canNodeHaveChildren(node) {
+    const p = node.props || {};
+    const implicit = !p.type && !p.oneof && !p.anyof && !p.if;
+    return implicit || p.type === "table" || p.type === "collection";
 }
 
 function typeCategory(node) {
@@ -353,7 +401,7 @@ function typeCategory(node) {
     if (t === "table" || t === "collection") return "table";
     if (t === "array") return "array";
     if (t && !BUILTIN_TYPES.includes(t)) return "ref";
-    if (p.oneof || p.anyof) return "choice";
+    if (p.oneof || p.anyof || p.if) return "choice";
     if (node.children && node.children.length) return "table";
     return "any";
 }
@@ -388,6 +436,7 @@ function compositor(node) {
     if (p.type === "array" || p.type === "collection") return { glyph: "\u21bb", cls: "repeat", title: "Repeating items" };
     if (p.oneof) return { glyph: "\u25c8", cls: "choice", title: "One of \u2014 exactly one alternative" };
     if (p.anyof) return { glyph: "\u25c6", cls: "choice", title: "Any of \u2014 at least one alternative" };
+    if (p.if) return { glyph: "?", cls: "choice", title: "Conditional \u2014 select a branch from a child value" };
     if (p.allof) return { glyph: "\u2227", cls: "choice", title: "All of \u2014 every component applies" };
     return { glyph: "\u2630", cls: "sequence", title: "All child fields (sequence)" };
 }
@@ -402,6 +451,7 @@ function unresolvedRefs(node) {
     for (const r of p.oneof || []) refs.push(r);
     for (const r of p.anyof || []) refs.push(r);
     for (const r of p.allof || []) refs.push(r);
+    if (p.if) refs.push(p.then, p.else);
     return refs.filter((r) => r && !isKnownRef(r));
 }
 
@@ -420,6 +470,7 @@ function renderDiagram() {
         const on = b.dataset.view === view;
         b.classList.toggle("active", on);
         b.setAttribute("aria-selected", on ? "true" : "false");
+        b.setAttribute("tabindex", on ? "0" : "-1");
     });
 
     const roots = state.model[view] || [];
@@ -588,6 +639,17 @@ function diagramBox(node, depth = 1) {
             onclick: (e) => { e.stopPropagation(); jumpToType(jumpReference); },
         }));
     }
+    if (p.if) {
+        for (const [label, reference] of [["T", p.then], ["E", p.else]]) {
+            if (!reference) continue;
+            typeLine.append(el("button", {
+                class: "dg-jump",
+                title: `Jump to ${label === "T" ? "then" : "else"} branch ${reference}`,
+                text: "\u2197" + label,
+                onclick: (e) => { e.stopPropagation(); jumpToType(reference); },
+            }));
+        }
+    }
     box.append(typeLine);
 
     const flags = nodeFlags(node);
@@ -612,7 +674,9 @@ function diagramBox(node, depth = 1) {
     }
 
     const acts = el("div", { class: "dg-actions" });
-    acts.append(el("button", { class: "icon", title: "Add child field", "aria-label": "Add child field to " + node.name, text: "+", onclick: (e) => { e.stopPropagation(); addChild(node); } }));
+    if (canNodeHaveChildren(node)) {
+        acts.append(el("button", { class: "icon", title: "Add child field", "aria-label": "Add child field to " + node.name, text: "+", onclick: (e) => { e.stopPropagation(); addChild(node); } }));
+    }
     acts.append(el("button", { class: "icon", title: "Move up", "aria-label": "Move " + node.name + " up", text: "\u2191", onclick: (e) => { e.stopPropagation(); moveNode(node, -1); } }));
     acts.append(el("button", { class: "icon", title: "Move down", "aria-label": "Move " + node.name + " down", text: "\u2193", onclick: (e) => { e.stopPropagation(); moveNode(node, 1); } }));
     acts.append(el("button", { class: "icon danger", title: "Delete " + node.name, "aria-label": "Delete " + node.name, text: "\u2715", onclick: (e) => { e.stopPropagation(); deleteNode(node); } }));
@@ -810,8 +874,13 @@ function renderEditor() {
     }
 
     const p = (node.props = node.props || {});
-    const implicitTable = !p.type && !p.oneof && !p.anyof && (node.children || []).length > 0;
+    const implicitTable = !p.type && !p.oneof && !p.anyof && !p.if && (node.children || []).length > 0;
     const effectiveLocalType = p.type || (implicitTable ? "table" : "");
+    const definitionMode = p.if ? "conditional"
+        : p.oneof ? "oneof"
+            : p.anyof ? "anyof"
+                : implicitTable ? "implicit"
+                    : "type";
 
     // Header: name + actions
     const nameId = uid("name");
@@ -834,7 +903,7 @@ function renderEditor() {
     box.append(header);
 
     const actions = el("div", { class: "field inline" });
-    actions.append(el("button", { text: "+ Add child", onclick: () => addChild(node) }));
+    if (canNodeHaveChildren(node)) actions.append(el("button", { text: "+ Add child", onclick: () => addChild(node) }));
     actions.append(el("button", { class: "danger", text: "Delete", onclick: () => deleteNode(node) }));
     box.append(actions);
 
@@ -852,11 +921,31 @@ function renderEditor() {
     box.append(textField("description", "Description", p.description || "", (v) => setProp(p, "description", v),
         false, "Human-readable documentation for this schema definition."));
 
-    // Current-node type selector
-    box.append(
-        refField("type", "Type", p.type || "", (v) => setProp(p, "type", v),
-            "A built-in type or reusable type reference. Mutually exclusive with oneof/anyof."),
-    );
+    box.append(selectField("Definition mode", definitionMode, ["type", "oneof", "anyof", "conditional", "implicit"],
+        (mode) => setDefinitionMode(node, mode),
+        "Choose one type, an alternative set, a conditional branch, or an implicit table from child fields.",
+        {
+            type: "Single type",
+            oneof: "Exactly one alternative",
+            anyof: "At least one alternative",
+            conditional: "Conditional table shape",
+            implicit: "Implicit table (from children)",
+        }));
+
+    if (definitionMode === "type") {
+        box.append(
+            refField("type", "Type", p.type || "", (v) => setProp(p, "type", v),
+                "A built-in type or reusable type reference."),
+        );
+    } else if (definitionMode === "oneof") {
+        box.append(listField("oneof", "Alternatives", p.oneof || [], (arr) => setListProp(p, "oneof", arr), true,
+            "Exactly one referenced definition must accept the value."));
+    } else if (definitionMode === "anyof") {
+        box.append(listField("anyof", "Alternatives", p.anyof || [], (arr) => setListProp(p, "anyof", arr), true,
+            "At least one referenced definition must accept the value."));
+    } else if (definitionMode === "conditional") {
+        box.append(conditionalField(p));
+    }
 
     box.append(listField("allof", "allof (must also satisfy)", p.allof || [], (arr) => setListProp(p, "allof", arr), true,
         "Additional compatible type references."));
@@ -877,14 +966,11 @@ function renderEditor() {
             "Validate each dynamically keyed collection value against this type."));
     }
 
-    // Current-node alternatives
-    if (!t || p.oneof || p.anyof) {
-        box.append(listField("oneof", "oneof (exactly one)", p.oneof || [], (arr) => setListProp(p, "oneof", arr), true));
-        box.append(listField("anyof", "anyof (at least one)", p.anyof || [], (arr) => setListProp(p, "anyof", arr), true));
-    }
-
     // String pattern and allowed values for scalar types.
     if (t === "string") {
+        box.append(selectField("Format", p.format || "", STRING_FORMATS, (v) => setProp(p, "format", v),
+            "Optional standardized validation for common string forms.",
+            { "": "No format" }));
         box.append(textField("pattern", "Pattern (regex)", p.pattern || "", (v) => setProp(p, "pattern", v), true,
             "Portable RE2-profile regular expression."));
     }
@@ -919,15 +1005,16 @@ function renderEditor() {
     }
 
     if (["table", "collection"].includes(effectiveLocalType)) {
+        const childNames = (node.children || []).map((child) => child.name);
         box.append(dependentRequiredField("dependentrequired", "dependentrequired", p.dependentrequired || {},
             (value) => setMapProp(p, "dependentrequired", value),
-            "When a trigger child is present, every listed child must also be present."));
+            "When a trigger child is present, every selected child must also be present.", childNames));
         box.append(groupListField("mutuallyexclusive", "mutuallyexclusive", p.mutuallyexclusive || [],
             (groups) => setGroupProp(p, "mutuallyexclusive", groups),
-            "At most one child in each group may be present."));
+            "At most one selected child in each group may be present.", childNames));
         box.append(groupListField("exactlyone", "exactlyone", p.exactlyone || [],
             (groups) => setGroupProp(p, "exactlyone", groups),
-            "Exactly one child in each group must be present."));
+            "Exactly one selected child in each group must be present.", childNames));
     }
 
     box.append(tokenField("default", "Default (raw TOML value)", p.default || "", (v) => setProp(p, "default", v),
@@ -937,43 +1024,61 @@ function renderEditor() {
     // optional (always available)
     box.append(checkboxField("optional", "Optional (may be omitted in the document)", p.optional === true, (v) => setBoolProp(p, "optional", v, true)));
 
-    // Show-all advanced toggle
-    const toggle = el("button", {
-        class: "toggle-all",
-        text: state.showAll ? "Hide advanced properties" : "Show all properties",
-        onclick: () => {
-            state.showAll = !state.showAll;
-            renderEditor();
-        },
-    });
-    box.append(toggle);
-    if (state.showAll) box.append(advancedAll(p));
-
     if (effectiveLocalType === "table") {
         box.append(el("div", { class: "field hint", text: "Table fields are managed as children in the tree. A table with no children is treated as open-ended." }));
     }
 }
 
-function advancedAll(p) {
-    const wrap = el("div");
-    wrap.append(el("div", { class: "section-title", text: "All properties" }));
-    const allProps = ["type", "description", "itemtype", "pattern", "keypattern", "min", "max", "default"];
-    for (const key of allProps) {
-        wrap.append((key === "default")
-            ? tokenField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v))
-            : textField(key, key, p[key] != null ? String(p[key]) : "", (v) => setProp(p, key, v), true));
+function setDefinitionMode(node, mode) {
+    const p = node.props || (node.props = {});
+    for (const key of ["type", "oneof", "anyof", "if", "then", "else"]) delete p[key];
+    if (mode === "type") p.type = "string";
+    else if (mode === "oneof") p.oneof = ["string"];
+    else if (mode === "anyof") p.anyof = ["string"];
+    else if (mode === "conditional") {
+        p.if = { key: "", equals: '""' };
+        p.then = "";
+        p.else = "";
     }
-    for (const key of ["minlength", "maxlength"]) {
-        wrap.append(numField(key, key, p[key], (v) => setNumProp(p, key, v)));
+    markDirty();
+    renderEditor();
+    renderTree();
+}
+
+function conditionalField(p) {
+    const wrap = el("fieldset", { class: "condition-builder", "data-prop": "if" });
+    wrap.append(el("legend", { text: "Conditional table shape" }));
+    wrap.append(textField("if.key", "Discriminator child", p.if?.key || "", (value) => {
+        p.if = { ...(p.if || { equals: '""' }), key: value };
+        markDirty();
+        renderTree();
+    }, true, "A direct child key of the current table."));
+    const mode = Object.prototype.hasOwnProperty.call(p.if || {}, "in") ? "in" : "equals";
+    wrap.append(selectField("Condition", mode, ["equals", "in"], (value) => {
+        p.if = value === "in"
+            ? { key: p.if?.key || "", in: ['""'] }
+            : { key: p.if?.key || "", equals: '""' };
+        markDirty();
+        renderEditor();
+    }, "Choose whether the child equals one value or belongs to a set.", {
+        equals: "Equals",
+        in: "Is one of",
+    }));
+    if (mode === "equals") {
+        wrap.append(tokenField("if.equals", "Comparison value", p.if?.equals || "", (value) => {
+            p.if = { key: p.if?.key || "", equals: value };
+            markDirty();
+        }, "A TOML value token, such as \"sqlite\" or 3."));
+    } else {
+        wrap.append(listField("if.in", "Comparison values", p.if?.in || [], (values) => {
+            p.if = { key: p.if?.key || "", in: values };
+            markDirty();
+        }, false, "A non-empty set of TOML value tokens."));
     }
-    for (const key of ["items", "oneof", "anyof", "allof", "allowedvalues"]) {
-        wrap.append(listField(key, key, p[key] || [], (arr) => setListProp(p, key, arr), key !== "allowedvalues"));
-    }
-    wrap.append(dependentRequiredField("dependentrequired", "dependentrequired", p.dependentrequired || {}, (value) => setMapProp(p, "dependentrequired", value)));
-    wrap.append(groupListField("mutuallyexclusive", "mutuallyexclusive", p.mutuallyexclusive || [], (groups) => setGroupProp(p, "mutuallyexclusive", groups)));
-    wrap.append(groupListField("exactlyone", "exactlyone", p.exactlyone || [], (groups) => setGroupProp(p, "exactlyone", groups)));
-    wrap.append(checkboxField("uniqueitems", "uniqueitems", p.uniqueitems === true, (v) => setBoolProp(p, "uniqueitems", v)));
-    wrap.append(checkboxField("deprecated", "deprecated", p.deprecated === true, (v) => setBoolProp(p, "deprecated", v)));
+    wrap.append(refField("then", "Then branch", p.then || "", (value) => setProp(p, "then", value),
+        "Named reusable table or collection definition used when the condition matches."));
+    wrap.append(refField("else", "Else branch", p.else || "", (value) => setProp(p, "else", value),
+        "Named reusable table or collection definition used when the condition does not match."));
     return wrap;
 }
 
@@ -1051,7 +1156,7 @@ function markRefValidity(input, msgEl) {
 
 function textField(name, label, value, onchange, mono = false, hint) {
     const id = uid("in");
-    const f = el("div", { class: "field" });
+    const f = el("div", { class: "field", "data-prop": name });
     f.append(labelEl(label, hint, id));
     f.append(el("input", {
         type: "text",
@@ -1066,7 +1171,7 @@ function textField(name, label, value, onchange, mono = false, hint) {
 
 function tokenField(name, label, value, onchange, hint) {
     const id = uid("tok");
-    const f = el("div", { class: "field" });
+    const f = el("div", { class: "field", "data-prop": name });
     f.append(labelEl(label, hint, id));
     f.append(el("textarea", {
         id,
@@ -1080,7 +1185,7 @@ function tokenField(name, label, value, onchange, hint) {
 
 function numField(name, label, value, onchange) {
     const id = uid("num");
-    const f = el("div", { class: "field" });
+    const f = el("div", { class: "field", "data-prop": name });
     f.append(labelEl(label, null, id));
     f.append(el("input", {
         type: "number",
@@ -1092,13 +1197,13 @@ function numField(name, label, value, onchange) {
     return f;
 }
 
-function selectField(label, value, options, onchange, hint) {
+function selectField(label, value, options, onchange, hint, labels = {}) {
     const id = uid("sel");
-    const f = el("div", { class: "field" });
+    const f = el("div", { class: "field", "data-prop": label.toLowerCase().replace(/\s+/g, "-") });
     f.append(labelEl(label, hint, id));
     const sel = el("select", { id, onchange: (e) => onchange(e.target.value) });
     for (const opt of options) {
-        const o = el("option", { value: opt, text: opt === "" ? "(none)" : opt });
+        const o = el("option", { value: opt, text: labels[opt] || (opt === "" ? "(none)" : opt) });
         if (opt === value) o.selected = true;
         sel.append(o);
     }
@@ -1108,7 +1213,7 @@ function selectField(label, value, options, onchange, hint) {
 
 function checkboxField(name, label, checked, onchange) {
     const id = uid("chk");
-    const f = el("div", { class: "field inline" });
+    const f = el("div", { class: "field inline", "data-prop": name });
     const cb = el("input", { type: "checkbox", id, onchange: (e) => onchange(e.target.checked) });
     cb.checked = checked;
     f.append(cb);
@@ -1119,7 +1224,7 @@ function checkboxField(name, label, checked, onchange) {
 function refField(name, label, value, onchange, hint) {
     const id = uid("ref");
     const errId = uid("err");
-    const f = el("div", { class: "field" });
+    const f = el("div", { class: "field", "data-prop": name });
     f.append(labelEl(label, hint, id));
     const msg = el("div", { class: "field-err", id: errId, role: "alert" });
     const input = el("input", {
@@ -1139,7 +1244,7 @@ function refField(name, label, value, onchange, hint) {
 }
 
 function listField(name, label, values, onchange, isRef, hint) {
-    const f = el("div", { class: "field" });
+    const f = el("div", { class: "field", "data-prop": name });
     const groupId = uid("list");
     f.append(labelEl(label, hint, null, groupId));
     const arr = [...values];
@@ -1193,8 +1298,8 @@ function listField(name, label, values, onchange, isRef, hint) {
     return f;
 }
 
-function groupListField(name, label, groups, onchange, hint) {
-    const f = el("div", { class: "field" });
+function groupListField(name, label, groups, onchange, hint, childNames = []) {
+    const f = el("div", { class: "field", "data-prop": name });
     const groupId = uid("groups");
     f.append(labelEl(label, hint, null, groupId));
     const arr = groups.map((group) => [...group]);
@@ -1202,17 +1307,11 @@ function groupListField(name, label, groups, onchange, hint) {
     const rerender = () => {
         container.textContent = "";
         arr.forEach((group, idx) => {
-            const row = el("div", { class: "list-row" });
-            row.append(el("input", {
-                type: "text",
-                class: "mono",
-                value: group.join(", "),
-                placeholder: "child-a, child-b",
-                "aria-label": `${label} group ${idx + 1}`,
-                oninput: (e) => {
-                    arr[idx] = csvNames(e.target.value);
-                    onchange(arr.map((item) => [...item]));
-                },
+            const row = el("div", { class: "list-row relationship-row" });
+            row.append(childMultiSelect(childNames, group, `${label} group ${idx + 1}`, (values) => {
+                arr[idx] = values;
+                onchange(arr.map((item) => [...item]));
+                summary.textContent = relationshipSummary(label, values);
             }));
             row.append(el("button", {
                 class: "icon danger",
@@ -1226,6 +1325,8 @@ function groupListField(name, label, groups, onchange, hint) {
                 },
             }));
             container.append(row);
+            const summary = el("div", { class: "relationship-summary", text: relationshipSummary(label, group) });
+            container.append(summary);
         });
     };
     rerender();
@@ -1243,8 +1344,8 @@ function groupListField(name, label, groups, onchange, hint) {
     return f;
 }
 
-function dependentRequiredField(name, label, mapping, onchange, hint) {
-    const f = el("div", { class: "field" });
+function dependentRequiredField(name, label, mapping, onchange, hint, childNames = []) {
+    const f = el("div", { class: "field", "data-prop": name });
     const groupId = uid("deps");
     f.append(labelEl(label, hint, null, groupId));
     const entries = Object.entries(mapping || {}).map(([trigger, values]) => [trigger, [...values]]);
@@ -1253,28 +1354,26 @@ function dependentRequiredField(name, label, mapping, onchange, hint) {
     const rerender = () => {
         container.textContent = "";
         entries.forEach((entry, idx) => {
-            const row = el("div", { class: "list-row list-row-2" });
-            row.append(el("input", {
-                type: "text",
-                class: "mono",
-                value: entry[0],
-                placeholder: "trigger child",
+            const row = el("div", { class: "list-row list-row-2 relationship-row" });
+            const trigger = el("select", {
                 "aria-label": `${label} trigger ${idx + 1}`,
-                oninput: (e) => {
+                onchange: (e) => {
                     entries[idx][0] = e.target.value;
                     emit();
+                    summary.textContent = dependencySummary(entries[idx]);
                 },
-            }));
-            row.append(el("input", {
-                type: "text",
-                class: "mono",
-                value: entry[1].join(", "),
-                placeholder: "required-a, required-b",
-                "aria-label": `${label} required children ${idx + 1}`,
-                oninput: (e) => {
-                    entries[idx][1] = csvNames(e.target.value);
-                    emit();
-                },
+            });
+            const triggerOptions = [...new Set(["", ...childNames, entry[0]].filter((value, index) => value !== "" || index === 0))];
+            for (const child of triggerOptions) {
+                const option = el("option", { value: child, text: child || "Select trigger child" });
+                option.selected = child === entry[0];
+                trigger.append(option);
+            }
+            row.append(trigger);
+            row.append(childMultiSelect(childNames, entry[1], `${label} required children ${idx + 1}`, (values) => {
+                entries[idx][1] = values;
+                emit();
+                summary.textContent = dependencySummary(entries[idx]);
             }));
             row.append(el("button", {
                 class: "icon danger",
@@ -1288,6 +1387,8 @@ function dependentRequiredField(name, label, mapping, onchange, hint) {
                 },
             }));
             container.append(row);
+            const summary = el("div", { class: "relationship-summary", text: dependencySummary(entry) });
+            container.append(summary);
         });
     };
     rerender();
@@ -1305,11 +1406,30 @@ function dependentRequiredField(name, label, mapping, onchange, hint) {
     return f;
 }
 
-function csvNames(value) {
-    return String(value)
-        .split(",")
-        .map((part) => part.trim())
-        .filter(Boolean);
+function childMultiSelect(childNames, selected, label, onchange) {
+    const select = el("select", { multiple: "", size: "3", "aria-label": label });
+    const options = [...new Set([...childNames, ...selected])];
+    for (const child of options) {
+        const option = el("option", { value: child, text: child });
+        option.selected = selected.includes(child);
+        select.append(option);
+    }
+    select.addEventListener("change", () => {
+        onchange([...select.selectedOptions].map((option) => option.value));
+    });
+    return select;
+}
+
+function relationshipSummary(label, values) {
+    if (!values.length) return "Select at least two child fields.";
+    return label === "exactlyone"
+        ? `Require exactly one of ${values.join(", ")}.`
+        : `Allow at most one of ${values.join(", ")}.`;
+}
+
+function dependencySummary([trigger, required]) {
+    if (!trigger || !required.length) return "Select a trigger and one or more required child fields.";
+    return `When ${trigger} is present, require ${required.join(", ")}.`;
 }
 
 function labelEl(text, hint, forId, id) {
@@ -1407,12 +1527,39 @@ function renderIssues() {
     const box = $("#issues");
     box.textContent = "";
     for (const issue of state.lastIssues) {
-        const row = el("div", { class: "issue " + issue.level, role: "listitem" });
+        const row = el("button", {
+            class: "issue " + issue.level,
+            role: "listitem",
+            title: "Go to this issue",
+            onclick: () => focusIssue(issue),
+        });
         row.append(el("span", { class: "lvl", text: issue.level === "error" ? "ERROR" : "WARN" }));
         row.append(el("span", { text: issue.message }));
         row.append(el("span", { class: "where mono", text: issue.path }));
         box.append(row);
     }
+}
+
+function focusIssue(issue) {
+    const parts = String(issue.path || "").split(".");
+    const view = parts[0];
+    if (!["elements", "types"].includes(view)) return;
+    let path = parts.slice(1);
+    let selected = null;
+    while (path.length && !selected) {
+        selected = resolveSelection({ view, path });
+        if (!selected) path = path.slice(0, -1);
+    }
+    if (!selected) return;
+    state.view = view;
+    state.selected = selected;
+    renderDiagram();
+    renderEditor();
+    const property = /`([^`]+)`/.exec(issue.message)?.[1]?.split(".")[0];
+    const target = property
+        ? document.querySelector(`#editor [data-prop="${CSS.escape(property)}"] input, #editor [data-prop="${CSS.escape(property)}"] select, #editor [data-prop="${CSS.escape(property)}"] textarea`)
+        : document.querySelector("#editor input, #editor select, #editor textarea");
+    target?.focus();
 }
 
 // --- Boot ---------------------------------------------------------------
@@ -1464,8 +1611,8 @@ function boot() {
       <div class="diagram-pane">
         <div class="diagram-bar">
           <div class="view-tabs" role="tablist" aria-label="Schema view">
-            <button class="vtab active" data-view="elements" role="tab" aria-selected="true">Elements</button>
-            <button class="vtab" data-view="types" role="tab" aria-selected="false">Types</button>
+            <button class="vtab active" data-view="elements" role="tab" aria-selected="true" aria-controls="diagram" tabindex="0">Elements</button>
+            <button class="vtab" data-view="types" role="tab" aria-selected="false" aria-controls="diagram" tabindex="-1">Types</button>
           </div>
           <button id="dg-add" class="icon" title="Add a top-level entry to this view">+ Add</button>
           <button id="dg-meta" class="icon" title="Edit [toml-schema] metadata">&#9881; Metadata</button>
@@ -1498,7 +1645,9 @@ function boot() {
     <datalist id="type-refs"></datalist>`;
 
     $("#save").addEventListener("click", save);
-    $("#revert").addEventListener("click", load);
+    $("#revert").addEventListener("click", () => {
+        if (confirmReplacement("reload the file from disk")) load({ preserveUndo: true });
+    });
     $("#new").addEventListener("click", newSchema);
     $("#open").addEventListener("click", openSchema);
     $("#generate").addEventListener("click", openGenerateModal);
@@ -1508,8 +1657,10 @@ function boot() {
     $("#add-type").addEventListener("click", () => { state.view = "types"; addNode(state.model.types, ["types"]); });
     $("#add-element").addEventListener("click", () => { state.view = "elements"; addNode(state.model.elements, ["elements"]); });
 
-    document.querySelectorAll(".vtab").forEach((b) =>
-        b.addEventListener("click", () => { state.view = b.dataset.view; renderDiagram(); }));
+    document.querySelectorAll(".vtab").forEach((b) => {
+        b.addEventListener("click", () => { state.view = b.dataset.view; renderDiagram(); });
+        b.addEventListener("keydown", onViewTabKeydown);
+    });
     $("#dg-add").addEventListener("click", () => addNode(state.model[state.view], [state.view]));
     $("#dg-meta").addEventListener("click", () => { state.selected = "__meta__"; renderEditor(); renderDiagram(); });
     $("#zoom-in").addEventListener("click", () => setZoom((state.zoom || 1) + 0.1));
@@ -1528,6 +1679,18 @@ function boot() {
     setupPanning();
 
     load();
+}
+
+function onViewTabKeydown(event) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    event.preventDefault();
+    const tabs = [...document.querySelectorAll(".vtab")];
+    const current = tabs.indexOf(event.currentTarget);
+    const next = event.key === "Home" ? 0
+        : event.key === "End" ? tabs.length - 1
+            : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[next].click();
+    tabs[next].focus();
 }
 
 function onGlobalKeydown(e) {
@@ -1706,12 +1869,11 @@ function closeModal(overlay) {
 
 // --- New (empty) schema -------------------------------------------------
 function newSchema() {
-    if (state.dirty && !confirm("Discard unsaved changes and start a new schema?")) return;
-    state.model = { version: "1.0.0", meta: null, types: [], elements: [] };
+    if (!confirmReplacement("start a new schema")) return;
+    replaceModel({ version: "1.0.0", meta: null, types: [], elements: [] }, { saved: false });
     state.selected = "__meta__";
-    resetHistory(false);
-    markDirty();
-    renderAll();
+    renderEditor();
+    renderDiagram();
 }
 
 // --- Generate-with-Copilot modal ---------------------------------------
@@ -1734,11 +1896,27 @@ function openGenerateModal() {
 
     const errBox = el("div", { class: "modal-err", role: "alert" });
     dialog.append(errBox);
+    const draftPreview = el("pre", { class: "modal-draft mono", hidden: "", tabindex: "0", "aria-label": "Generated schema preview" });
+    dialog.append(draftPreview);
 
     const actions = el("div", { class: "modal-actions" });
     const cancelBtn = el("button", { text: "Cancel", onclick: () => closeModal(overlay) });
     const genBtn = el("button", { class: "primary", text: "Generate" });
+    let generated = null;
+    ta.addEventListener("input", () => {
+        if (!generated) return;
+        generated = null;
+        draftPreview.hidden = true;
+        genBtn.textContent = "Generate";
+        errBox.textContent = "";
+    });
     genBtn.addEventListener("click", async () => {
+        if (generated) {
+            if (!confirmReplacement("apply the generated schema")) return;
+            replaceModel(generated.model, { saved: false });
+            closeModal(overlay);
+            return;
+        }
         const description = ta.value.trim();
         if (!description) { errBox.className = "modal-err"; errBox.textContent = "Describe the configuration first."; ta.focus(); return; }
         genBtn.disabled = true;
@@ -1759,13 +1937,14 @@ function openGenerateModal() {
                 ta.disabled = false;
                 return;
             }
-            state.model = data.model;
-            state.view = "elements";
-            state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
-            resetHistory(false);
-            markDirty();
-            renderAll();
-            closeModal(overlay);
+            generated = data;
+            draftPreview.textContent = data.tosd || "";
+            draftPreview.hidden = false;
+            errBox.className = "modal-err";
+            errBox.textContent = "Review the generated schema, then apply it when ready.";
+            genBtn.textContent = "Apply schema";
+            genBtn.disabled = false;
+            ta.disabled = false;
         } catch (e) {
             if (modalRequestCancelled(e, overlay)) return;
             errBox.className = "modal-err";
@@ -1800,6 +1979,7 @@ function openSchema() {
     const doOpen = async (input, openBtn) => {
         const p = input.value.trim();
         if (!p) { errBox.className = "modal-err"; errBox.textContent = "Enter a file path."; input.focus(); return; }
+        if (!confirmReplacement("open another schema")) return;
         errBox.className = "modal-err working";
         errBox.textContent = "Opening\u2026";
         if (openBtn) openBtn.disabled = true;
@@ -1811,13 +1991,7 @@ function openSchema() {
             });
             if (!data) return;
             if (data.error) { errBox.className = "modal-err"; errBox.textContent = data.error; if (openBtn) openBtn.disabled = false; return; }
-            state.path = data.path;
-            state.model = data.model;
-            state.dirty = false;
-            state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
-            resetHistory();
-            renderAll();
-            schedulePreview();
+            replaceModel(data.model, { path: data.path, saved: true });
             closeModal(overlay);
         } catch (e) {
             if (modalRequestCancelled(e, overlay)) return;
@@ -1871,6 +2045,7 @@ function openInferModal() {
             if (!data) return;
             if (data.error) { errBox.className = "modal-err"; errBox.textContent = data.error; return; }
             ta.value = data.content;
+            clearInferredDraft();
             errBox.className = "modal-err";
             errBox.textContent = "";
         } catch (e) {
@@ -1887,11 +2062,28 @@ function openInferModal() {
 
     const errBox = el("div", { class: "modal-err", role: "alert" });
     dialog.append(errBox);
+    const draftPreview = el("pre", { class: "modal-draft mono", hidden: "", tabindex: "0", "aria-label": "Inferred schema preview" });
+    dialog.append(draftPreview);
 
     const actions = el("div", { class: "modal-actions" });
     actions.append(el("button", { text: "Cancel", onclick: () => closeModal(overlay) }));
     const inferBtn = el("button", { class: "primary", text: "Infer schema" });
+    let inferred = null;
+    const clearInferredDraft = () => {
+        if (!inferred) return;
+        inferred = null;
+        draftPreview.hidden = true;
+        inferBtn.textContent = "Infer schema";
+        errBox.textContent = "";
+    };
+    ta.addEventListener("input", clearInferredDraft);
     inferBtn.addEventListener("click", async () => {
+        if (inferred) {
+            if (!confirmReplacement("apply the inferred schema")) return;
+            replaceModel(inferred.model, { saved: false });
+            closeModal(overlay);
+            return;
+        }
         const toml = ta.value;
         if (!toml.trim()) { errBox.className = "modal-err"; errBox.textContent = "Provide some TOML to infer from."; ta.focus(); return; }
         inferBtn.disabled = true;
@@ -1905,12 +2097,13 @@ function openInferModal() {
             });
             if (!data) return;
             if (data.error) { errBox.className = "modal-err"; errBox.textContent = data.error; inferBtn.disabled = false; return; }
-            state.model = data.model;
-            state.selected = (state.model.elements[0] || state.model.types[0]) ?? null;
-            resetHistory(false);
-            markDirty();
-            renderAll();
-            closeModal(overlay);
+            inferred = data;
+            draftPreview.textContent = data.tosd || "";
+            draftPreview.hidden = false;
+            errBox.className = "modal-err";
+            errBox.textContent = "Review the inferred schema, then apply it when ready.";
+            inferBtn.textContent = "Apply schema";
+            inferBtn.disabled = false;
         } catch (e) {
             if (modalRequestCancelled(e, overlay)) return;
             errBox.className = "modal-err";
