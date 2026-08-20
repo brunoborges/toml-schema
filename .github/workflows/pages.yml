@@ -79,3 +79,13 @@ jobs:
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5
+
+      - name: Record publication targets
+        run: |
+          {
+            echo "### Documentation publication"
+            echo
+            echo "- Canonical: https://toml-schema.org/"
+            echo "- Alias: https://tomlschema.org/"
+            echo "- Alias publisher: https://github.com/brunoborges/tomlschema.org"
+          } >> "$GITHUB_STEP_SUMMARY"
