@@ -51,6 +51,11 @@ command.
     - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
   - [Type Reference](#type-reference)
   - [Conjunctive Composition - `allof`](#conjunctive-composition---allof)
+    - [The Effective Definition](#the-effective-definition)
+    - [Merging by TOML Kind](#merging-by-toml-kind)
+    - [Determinate Fixed-Child Set](#determinate-fixed-child-set)
+    - [Effective Closure Set](#effective-closure-set)
+    - [Composition Examples](#composition-examples)
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
   - [Conditional Selection - `if`, `then`, and `else`](#conditional-selection---if-then-and-else)
   - [Sibling Presence Rules](#sibling-presence-rules)
@@ -390,13 +395,50 @@ detailed sections below remain authoritative.
 | `min`, `max` | A numeric or temporal built-in type, or an `array` whose `itemtype` resolves to one comparable kind |
 | `minlength`, `maxlength` | A definition with built-in `type = "string"`, `type = "array"`, or `type = "collection"` |
 | `uniqueitems` | A definition with built-in `type = "array"` |
-| `dependentrequired`, `mutuallyexclusive`, `exactlyone` | A definition with effective type `table` or `collection` and fixed child definitions |
+| `dependentrequired`, `mutuallyexclusive`, `exactlyone` | A definition with effective type `table` or `collection` and a non-empty [determinate fixed-child set](#determinate-fixed-child-set) |
 
 A named type reference, alternative selector, and conditional selector may
 additionally declare only `allof`, `description`, `optional`, `default`, and
 `deprecated`.
 Kind-specific constraints for the referenced or alternative types belong in
 reusable definitions.
+
+The properties named in the matrix above are the complete set of schema
+definition properties defined by this version of the language. In full, they
+are `type`, `description`, `format`, `itemtype`, `items`, `oneof`, `anyof`,
+`if`, `then`, `else`, `allof`, `allowedvalues`, `pattern`, `keypattern`,
+`optional`, `min`, `max`, `minlength`, `maxlength`, `uniqueitems`,
+`dependentrequired`, `mutuallyexclusive`, `exactlyone`, `default`, and
+`deprecated`. The set is closed: a key/value pair written directly inside a
+schema definition whose name is not one of those properties is malformed, and
+schema loaders MUST reject it at schema-load time rather than ignoring it. A
+misspelled property such as `patttern` is therefore an error and never a
+silently inert annotation. Applying a recognized property to a definition that
+the matrix above and the detailed sections do not permit it on is likewise a
+schema-load error. Custom, tool-specific, or experimental keys have no place in
+a schema definition; they belong in the `[toml-schema.meta]` table described
+under [Supported Properties](#supported-properties).
+
+The set is closed per language version rather than permanently fixed. A future
+MINOR version of TOML Schema MAY add properties to it. Because an
+implementation MUST reject a schema document whose minor version is greater
+than the version it supports, as required by
+[Schema Versioning](#schema-versioning), a loader never encounters a property
+introduced after the version it implements in a document it accepts. Within the
+versions an implementation does accept, the recognized set is exactly the set
+defined by this specification, so an unrecognized property name is always an
+error and never a forward-compatible extension point.
+
+This closure constrains schema vocabulary only, never the key names a validated
+TOML document may contain. As described under
+[Quoted and Special Keys](#quoted-and-special-keys), a key/value pair directly
+inside a schema definition is a schema property, while a table-header path
+segment below that definition is a child definition. A target document key named
+`pattern`, `min`, or `deprecated` is described by a child definition of that
+name, written through the reserved `children` namespace when the same definition
+also uses the property and TOML cannot represent both spellings. Rejecting an
+unrecognized property name therefore never restricts the application data a
+schema can describe.
 
 ### Quoted and Special Keys
 
@@ -545,19 +587,38 @@ interchangeable for this schema-load check. A malformed enumeration MUST be
 rejected at schema-load time.
 
 For a non-array definition, when `allowedvalues` is combined with `pattern`, `format`,
-`min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST
-satisfy every applicable constraint. A schema containing an entry that violates
-one of those constraints is malformed, and schema loaders MUST reject it at
-schema-load time. For offset date-times, this boundary check uses instant
+`min`, `max`, `minlength`, or `maxlength` on the same definition, every entry in
+`allowedvalues` MUST satisfy every applicable constraint. A schema containing an
+entry that violates one of those constraints is malformed, and schema loaders
+MUST reject it at schema-load time. This is a consistency check on the
+enumeration itself; it describes nothing about how a document value is
+validated. For offset date-times, this boundary check uses instant
 ordering even though subsequent `allowedvalues` membership uses parsed-value
 equality; equivalent instants with different retained local fields or offsets
 therefore compare equal for a boundary but remain distinct enumeration values.
 
-After a schema with `allowedvalues` has been loaded successfully, a document
-value is valid when it is a member of `allowedvalues` according to
-[Parsed Value Equality](#parsed-value-equality). Validators do not need to
-re-evaluate the other constraints for that document value because every
-enumerated value has already been checked against them while loading the schema.
+After a schema with `allowedvalues` has been loaded successfully, each document
+value governed by that definition — each item value, for an `array` definition —
+is evaluated in the following order:
+
+1. The value's parsed TOML kind MUST be the kind the definition selects for it,
+   through `type` or, for array items, through `itemtype`. A kind mismatch is a
+   validation error regardless of `allowedvalues`, and membership in the
+   enumeration never satisfies the type check. For example, a definition with
+   `type = "integer"` and `allowedvalues = [ 80, 443 ]` rejects the document
+   value `80.0` even though [Parsed Value Equality](#parsed-value-equality)
+   makes `80.0` equal to `80`. The unconstrained `any` selects no kind and
+   imposes no such restriction.
+2. Every other assertion that applies to the value is evaluated, including the
+   assertions declared on the definition itself and those contributed by `allof`
+   components. Validators MUST NOT skip an assertion on the grounds that the
+   enumeration was already checked while loading the schema: that schema-load
+   check covers only the definition's own constraints listed above, and a
+   composed constraint does not participate in it.
+3. The value MUST be a member of `allowedvalues` according to
+   [Parsed Value Equality](#parsed-value-equality).
+
+The value is valid for that definition only when all three steps succeed.
 
 Example:
 ```toml
@@ -651,7 +712,7 @@ boundaries and `allowedvalues` is defined under
 
 A `min` or `max` boundary MUST be a TOML value that is comparable with the schema type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
 
-`nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries.
+`nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries, but they are not valid boundaries on a definition whose comparable kind is `integer`; an infinite boundary has no integer counterpart and constrains no integer value, so schema loaders MUST reject it there at schema-load time.
 
 Date/time boundaries compare only against values of the same TOML temporal type. For example, an `offset-date-time` boundary applies to `offset-date-time` values, not to `local-date-time` values.
 
@@ -668,6 +729,15 @@ fields and offsets differ. Local date-times, local dates, and local times are
 ordered lexicographically by their parsed fields, from the largest component to
 the smallest, including fractional seconds. No timezone or daylight-saving
 conversion is applied to a local temporal value.
+
+When both `min` and `max` are present, `min` MUST be less than or equal to `max`
+under the same ordering this section defines for validation: mathematical
+ordering for numeric boundaries, instant ordering for `offset-date-time`
+boundaries, and parsed-field ordering for `local-date-time`, `local-date`, and
+`local-time` boundaries. A schema violating that rule is malformed and schema
+loaders MUST reject it at schema-load time. The comparison is always defined
+because the unordered boundary values excluded above are not valid boundaries in
+the first place.
 
 ### Length - `minlength` and `maxlength`
 
@@ -708,9 +778,13 @@ identically.
 If a schema definition has nested child definitions but does not declare a
 selector, schema loaders MUST treat it as if it declared `type = "table"`.
 
-The **fixed children** of a table are the union of its own nested child
-definitions and those contributed by every `allof` component, as defined under
-[Conjunctive Composition](#conjunctive-composition---allof).
+The **fixed children** of a table, for the purpose of the rules below, are its
+own nested child definitions together with the children contributed by every
+`allof` component and by the union alternative or conditional branch selected
+for the document value being validated. That set is the table's
+[effective closure set](#effective-closure-set). Sibling presence rules resolve
+their operands against a narrower, schema-load-time set instead; see
+[Determinate Fixed-Child Set](#determinate-fixed-child-set).
 
 A table with at least one fixed child is **closed**. Validators MUST apply all
 of the following rules to it:
@@ -727,8 +801,9 @@ keys. It is the same rule the root applies under
 A table with no fixed children is **open**. Validators MUST accept any TOML
 table value without validating its contents, including its keys. This is useful
 for representing custom data payloads. Openness is a property of the effective
-definition, so a table is open only when neither the local definition nor any
-`allof` component contributes a fixed child.
+closure set, so a table is open only when neither the local definition, nor any
+`allof` component, nor the selected alternative or branch contributes a fixed
+child.
 
 An open table is not the same as an empty root `[elements]` table. An open table
 accepts any keys; an empty `[elements]` table accepts no application data at
@@ -887,6 +962,10 @@ Semantics:
  - `items` is also mutually exclusive with `minlength` and `maxlength`.
  - `items` is mutually exclusive with `allowedvalues`; constraints for a tuple
    position belong in the reusable definition referenced at that position.
+ - `items` MAY name the same type reference more than once. Each entry denotes a
+   position rather than an alternative, so a tuple whose positions share a type,
+   such as `items = [ "types.coordinate", "types.coordinate" ]`, is valid and
+   repetition is meaningful.
 
 ##### Array Uniqueness - `uniqueitems`
 
@@ -921,7 +1000,10 @@ contributed by a compatible `allof` component. Each dynamic child must be given
 a unique key in the TOML document. `itemtype` may reference a built-in type or a
 named reusable definition. A schema loader MUST reject an effective collection
 when neither its local definition nor any referenced or composed definition
-contributes an `itemtype`.
+contributes an `itemtype`. This is a schema-load check, so it reads only the
+contributions that are determinate at schema-load time; which components make
+one is defined under
+[Determinate Fixed-Child Set](#determinate-fixed-child-set).
 
 The built-in `collection` cannot itself be used as `itemtype` or as an entry in
 `items`, `oneof`, `anyof`, or `allof`: those bare references provide no place to declare
@@ -931,9 +1013,11 @@ its own `itemtype` and reference that named definition instead.
 When collection values may have alternative types, define those alternatives in a reusable `[types]` definition with `oneof` or `anyof`, then reference that definition with `itemtype`. This keeps `oneof` and `anyof` consistently scoped to the current node rather than changing their meaning on a container.
 
 Unlike a `table`, a `collection` is never closed. Validators MUST classify every
-key of the document table as either a fixed child or a dynamic entry. A key that
-names a fixed child definition is validated by that definition. Every other key
-is a dynamic entry: its name MUST satisfy every applicable `keypattern` and its
+key of the document table as either a fixed child or a dynamic entry, using the
+collection's [effective closure set](#effective-closure-set) to decide which. A
+key that names a fixed child definition is validated by that definition. Every
+other key is a dynamic entry: its name MUST satisfy every applicable
+`keypattern` and its
 value MUST validate against every applicable `itemtype`. A collection therefore
 never produces an unknown-key error; an undeclared key that is not acceptable is
 reported as a `keypattern` or `itemtype` failure instead. Fixed children that
@@ -1120,12 +1204,40 @@ allof = [ "types.packageBase" ]
     type = "string"
 ```
 
-The document value MUST validate against the local definition and every
-referenced component. Composition is conjunctive and non-overriding. If two
-components constrain the same value, both constraints apply. A contradiction
-may therefore describe a schema for which no document value is valid; it does
-not create last-wins behavior.
+#### The Effective Definition
 
+`allof` does not validate the document value separately against the local
+definition and against each component in isolation. It first composes an
+**effective definition** by merging the local definition with every referenced
+component, and the document value is then validated against that single
+effective definition. Merging follows two different rules, and the difference
+between them is normative:
+
+ - **Assertions merge conjunctively.** Every assertion declared by the local
+   definition or by any component applies to the value, and no assertion
+   overrides another. If two participants constrain the same value, both
+   constraints apply. A contradiction may therefore describe an effective
+   definition for which no document value is valid; it does not create
+   last-wins behavior.
+ - **Structure merges by union.** The fixed-child names contributed by the
+   local definition and by every component are unioned into one set *before*
+   any unknown-key, requiredness, or sibling rule is applied, and openness or
+   closure is decided from that merged set rather than participant by
+   participant. Two such sets are defined below, computed at two different
+   times and read by different rules: see
+   [Determinate Fixed-Child Set](#determinate-fixed-child-set) and
+   [Effective Closure Set](#effective-closure-set).
+
+The two rules MUST NOT be conflated, because they give opposite answers for the
+primary use of `allof`. Take a closed table `A` with the single fixed child
+`x`, a closed table `B` with the single fixed child `y`, and a definition that
+composes both. The document table `{ x = 1, y = 2 }` is valid: the effective
+closure set is `{ x, y }`, so neither key is unknown. Checking that same
+table separately against `A` and against `B` would instead make `y` unknown to
+`A` and `x` unknown to `B`, rejecting every document and making mixin
+composition useless. Only the effective-definition reading is conforming.
+
+A composition is well formed only when its participants agree on kind.
 Every component MUST resolve to an effective TOML kind compatible with the
 local definition. When the local selector is `oneof` or `anyof`, all of its
 alternatives MUST resolve to the same effective kind before `allof` can be
@@ -1139,34 +1251,361 @@ MUST be rejected. The bare built-ins `any` and `collection` MUST NOT appear
 directly in `allof`; a complete named definition may resolve to either where it
 is otherwise compatible.
 
-For composed arrays, the document array MUST independently satisfy the local
-array definition and every array component. Homogeneous `itemtype` constraints
-from different definitions all apply to every item. A tuple `items` constraint
-applies its exact length and per-position definitions independently of any
-homogeneous or tuple constraints contributed elsewhere. Array length,
-uniqueness, enumeration, and item range constraints likewise remain
-conjunctive. Conflicting constraints may make the definition unsatisfiable but
-do not use last-wins merging and are not by themselves a schema-load error.
+`allof` MUST NOT list the same component twice. Duplication is judged on
+resolved identity, after the optional `types.` prefix has been removed, exactly
+as it is for union alternatives under
+[Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof).
+`allof = [ "types.a", "a" ]` therefore names one component twice and is
+malformed; schema loaders MUST reject it at schema-load time. A repeated
+component could never change the effective definition, because both merge rules
+above are idempotent.
 
-For composed tables and collections, validators MUST form the union of all
-local and component fixed-child names before applying unknown-key rules. The
-value of an overlapping fixed child MUST validate against every contributing
-child definition. If any contributing child definition requires that child,
-the child remains required.
+#### Merging by TOML Kind
 
-A composed table is open only when neither the local definition nor any
-component defines fixed children. Otherwise its union of fixed children is
-closed. For a composed collection, the union of fixed children retains
-precedence over dynamic entries. Every remaining dynamic entry MUST satisfy
-every contributing `itemtype`, and its key MUST satisfy every contributing
-`keypattern`. A collection's required dynamic-entry constraint may therefore be
-supplied entirely by one or more `allof` components; it need not repeat a local
-`itemtype`.
+The following rules define the effective definition for each TOML kind a
+composition may produce. Throughout, *participant* means the local definition
+or any `allof` component.
+
+For a composed scalar, the effective definition carries every `format`,
+`pattern`, `allowedvalues`, `min`, `max`, `minlength`, and `maxlength`
+declared by any participant, and the document value MUST satisfy all of them.
+Two `allowedvalues` enumerations therefore behave as an intersection, and two
+boundaries narrow to the greatest `min` and the least `max`. The schema-load
+consistency check described under
+[Allowed Values - `allowedvalues`](#allowed-values---allowedvalues) inspects one
+definition at a time and never inspects composed constraints, so a composed
+constraint is always evaluated at document-validation time.
+
+For a composed array, the effective definition carries every array assertion
+declared by any participant. Homogeneous `itemtype` constraints from different
+participants all apply to every item. A tuple `items` constraint contributes its
+exact arity and its per-position definitions, and it applies alongside, rather
+than instead of, any homogeneous or tuple constraint contributed elsewhere: each
+item MUST satisfy its positional definition and every contributed `itemtype`.
+Length bounds narrow to the greatest `minlength` and the least `maxlength`,
+`uniqueitems = true` from any participant applies to the whole array and cannot
+be cancelled by `uniqueitems = false` elsewhere, and item enumeration and item
+range constraints likewise remain conjunctive. Two participants declaring
+different arities, or a tuple arity outside a contributed length bound, make the
+effective definition unsatisfiable. Such conflicts do not use last-wins merging
+and are not by themselves a schema-load error.
+
+For a composed table, validators MUST form the
+[effective closure set](#effective-closure-set) before applying
+unknown-key rules. The value of a fixed child named by more than one
+participant MUST validate against every contributing child definition, and the
+child is required when any contributing child definition requires it. A
+composed table is open only when the effective closure set is empty.
+Otherwise it is closed against exactly that set.
+
+For a composed collection, the effective closure set retains precedence
+over dynamic entries in the same way a locally declared fixed child does. Every
+remaining dynamic entry MUST satisfy every contributed `itemtype`, and its key
+MUST satisfy every contributed `keypattern`. A collection's required
+dynamic-entry constraint may therefore be supplied entirely by one or more
+`allof` components; it need not repeat a local `itemtype`.
 
 `optional` on the local definition determines whether the composed node may be
 absent. An `optional` value inside an `allof` component does not make the
 composed node optional; it only has meaning when that component is referenced
 normally with `type`.
+
+#### Determinate Fixed-Child Set
+
+The **determinate fixed-child set** of a definition is computed at schema-load
+time, without reference to any document. It names exactly the children the
+definition is known to have whatever value is later validated against it. It is
+the union of:
+
+ - the names of the definition's own nested child definitions, including those
+   written through the reserved `children` namespace;
+ - the determinate fixed-child set of the definition named by `type`, when the
+   selector is a reference to a reusable definition, followed through a chain of
+   such references; and
+ - the determinate fixed-child set of every `allof` component.
+
+The computation is therefore recursive: a component that itself composes with
+`allof` contributes everything its own composition contributes determinately.
+
+A `oneof` or `anyof` selector and an `if`/`then`/`else` selector contribute
+**nothing** to this set, and contribute no `itemtype` and no `keypattern`
+either. Their alternatives and branches may declare different children, and
+which one applies is not knowable until a document value exists, so no
+schema-load rule may depend on that choice. The restriction is a property of the
+selector, not of the whole definition: a union or conditional definition that
+also declares `allof` still contributes whatever those components contribute
+determinately.
+
+Entries written through the reserved `children` namespace are ordinary fixed
+children. As described under
+[Quoted and Special Keys](#quoted-and-special-keys), `children` is a syntactic
+escape for target keys whose names collide with schema property names, not a
+different kind of child; both spellings denote the same target key and validate
+identically. Such entries therefore belong to both sets defined here, take part
+in requiredness and unknown-key handling like any other fixed child, and are
+valid sibling-rule operands. The operand is the target key name, which is the
+path segment following `children`, never the literal string `children`.
+
+The determinate set is the set every schema-load rule reads, and it is the only
+one such a rule may read, because no document exists at schema-load time. Two
+rules read it:
+
+ - Sibling-rule operand resolution and `exactlyone` applicability, as required
+   under [Sibling Presence Rules](#sibling-presence-rules).
+ - The collection `itemtype` requirement, as required under
+   [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+
+Validators MUST NOT use the determinate set to reject unknown document keys.
+Load-time determinacy and validation-time closure are different questions: a
+child no schema-load rule may assume exists is still an ordinary child of a
+document node whose alternative or branch declares it. Unknown-key rejection
+reads the effective closure set defined next.
+
+#### Effective Closure Set
+
+The **effective closure set** of a document node is computed at validation time,
+for that one node. It is the determinate fixed-child set of the node's
+definition plus the fixed children declared by whichever union alternative or
+conditional branch was selected for that node:
+
+ - When the node's definition, or any `allof` component of it, uses `oneof` or
+   `anyof`, the alternative being evaluated contributes its own effective
+   closure set for that node. `oneof` and `anyof` try each alternative as a
+   candidate, so every candidate is judged against the set that candidate itself
+   contributes.
+ - When the node's definition, or any `allof` component of it, uses the
+   conditional triple, the branch the condition selected contributes its own
+   effective closure set for that node. The branch that was not selected
+   contributes nothing.
+
+Validators MUST judge unknown keys against the effective closure set, and MUST
+apply requiredness and the value validation of each present child against the
+same set. A key contributed by the alternative or branch that actually matched
+is a known key and MUST NOT be reported as an unexpected key, and a child that
+alternative or branch requires MUST be present. Judging unknown keys against the
+determinate set instead is incorrect: it rejects the composition patterns this
+language exists to express, because a composed conditional or variant table
+would reject every key its matched shape declares.
+
+Dynamic-entry rules are not contributed this way. An alternative or branch that
+is itself a collection applies its own `itemtype` and `keypattern` while it
+validates the node, and the node's effective closure set keeps its precedence
+over dynamic entries under every participant, exactly as
+[Merging by TOML Kind](#merging-by-toml-kind) describes for a composed
+collection.
+
+When no alternative matches, a key that belongs to the effective closure set of
+no candidate could not have been accepted by any of them. An implementation MAY
+report such a key as an unexpected key on the node in addition to, or instead
+of, the union's arity failure, as permitted under
+[Validation Diagnostics](#validation-diagnostics).
+
+Openness is likewise decided from the effective closure set. A table is open for
+a document node only when that node's effective closure set is empty, and is
+closed against exactly that set otherwise. It follows that a union alternative
+that is itself an open table does not re-open a node that another participant
+has closed: the open alternative contributes no name, so the node's effective
+closure set under that alternative is just the determinate set, and a key
+outside it makes the alternative fail rather than being accepted as arbitrary
+data. When no other participant contributes a fixed child — a standalone `oneof`
+over an open table and a closed table, for instance — the effective closure set
+under the open alternative is empty, and that alternative accepts any table
+exactly as it would if it were referenced directly.
+
+Worked example. `types.database` selects a table shape from an `engine`
+discriminator and contributes `id` through its own `allof`, and
+`elements.composed` composes the whole conditional definition:
+
+```toml
+[types.common]
+type = "table"
+
+    [types.common.id]
+    type = "integer"
+
+[types.sqliteDatabase]
+type = "table"
+
+    [types.sqliteDatabase.engine]
+    type = "string"
+
+    [types.sqliteDatabase.file]
+    type = "string"
+
+[types.serverDatabase]
+type = "table"
+
+    [types.serverDatabase.engine]
+    type = "string"
+
+    [types.serverDatabase.host]
+    type = "string"
+
+[types.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqliteDatabase"
+else = "types.serverDatabase"
+allof = [ "types.common" ]
+
+[elements.composed]
+type = "table"
+allof = [ "types.database" ]
+```
+
+The determinate fixed-child set of `elements.composed` is `{ id }`. The local
+definition declares no child, and the `types.database` component contributes
+only what its own `allof` contributes, because its conditional selector
+contributes nothing. A sibling rule written on `elements.composed` could
+therefore name `id` and no other child.
+
+| Document value | Effective closure set | Result |
+| --- | --- | --- |
+| `{ id = 2, engine = "postgresql", host = "db.internal" }` | `{ id, engine, host }` | valid |
+| `{ id = 2, engine = "sqlite", file = "db.sqlite" }` | `{ id, engine, file }` | valid |
+| `{ id = 2, engine = "postgresql", host = "db.internal", bogus = true }` | `{ id, engine, host }` | invalid: `bogus` is an unknown key |
+| `{ id = 2, engine = "sqlite", host = "db.internal" }` | `{ id, engine, file }` | invalid: `file` is required and `host` is an unknown key |
+
+`host` is a known key in the first row because the condition selected
+`types.serverDatabase`, and an unknown key in the last row because the same
+document key selected `types.sqliteDatabase` instead. Nothing about `host` is
+determinate, and nothing about it needs to be; only schema-load rules need
+determinacy.
+
+The same reading applies to a variant table composed from a base and a union:
+
+```toml
+[types.base]
+type = "table"
+
+    [types.base.id]
+    type = "integer"
+
+[types.named]
+type = "table"
+
+    [types.named.name]
+    type = "string"
+
+[types.labelled]
+type = "table"
+
+    [types.labelled.label]
+    type = "string"
+
+[types.identity]
+oneof = [ "types.named", "types.labelled" ]
+
+[elements.item]
+type = "table"
+allof = [ "types.base", "types.identity" ]
+```
+
+| Document value | Result |
+| --- | --- |
+| `{ id = 1, name = "a" }` | valid: `types.named` matched and contributes `name` |
+| `{ id = 1, label = "a" }` | valid: `types.labelled` matched and contributes `label` |
+| `{ id = 1, name = "a", label = "b" }` | invalid: both alternatives fail on the other's key, so `oneof` matches none |
+| `{ id = 1, other = true }` | invalid: no alternative contributes `other`, so no alternative matches |
+| `{ name = "a" }` | invalid: `id` is required |
+
+The determinate fixed-child set here is `{ id }`, so `id` is the only name an
+`exactlyone`, `mutuallyexclusive`, or `dependentrequired` rule on
+`elements.item` could use, while `name` and `label` are ordinary known keys of
+whichever document node their alternative matched.
+
+#### Composition Examples
+
+Two components with disjoint fixed children. Both fixed-child sets are
+`{ x, y }`, both children are required, and the composed table is closed
+against exactly those two names:
+
+```toml
+[types.hasX]
+type = "table"
+
+    [types.hasX.x]
+    type = "integer"
+
+[types.hasY]
+type = "table"
+
+    [types.hasY.y]
+    type = "integer"
+
+[types.point]
+type = "table"
+allof = [ "types.hasX", "types.hasY" ]
+```
+
+| Document value | Result |
+| --- | --- |
+| `{ x = 1, y = 2 }` | valid |
+| `{ x = 1 }` | invalid: `y` is required |
+| `{ x = 1, y = 2, z = 3 }` | invalid: `z` is an unknown key |
+
+Two components that overlap on one child. The effective definition has a single
+`name` child whose value must satisfy both contributing definitions, and `name`
+is required because one contributor requires it:
+
+```toml
+[types.namedThing]
+type = "table"
+
+    [types.namedThing.name]
+    type = "string"
+    minlength = 3
+
+[types.slugNamed]
+type = "table"
+
+    [types.slugNamed.name]
+    type = "string"
+    pattern = "^[a-z]+$"
+    optional = true
+
+[types.entity]
+type = "table"
+allof = [ "types.namedThing", "types.slugNamed" ]
+```
+
+| Document value | Result |
+| --- | --- |
+| `{ name = "alpha" }` | valid: satisfies `minlength` and `pattern` |
+| `{ name = "Alpha" }` | invalid: fails the contributed `pattern` |
+| `{ name = "ab" }` | invalid: fails the contributed `minlength` |
+| `{ }` | invalid: `name` is required by `types.namedThing` |
+
+A collection whose fixed child and whose dynamic-entry rules come from
+different participants. `schemaVersion` is contributed locally, while
+`itemtype` and `keypattern` are contributed by the component and apply only to
+the remaining dynamic entries:
+
+```toml
+[types.featureFlags]
+type = "collection"
+itemtype = "boolean"
+keypattern = "^[a-z][a-z0-9-]*$"
+
+[types.versionedFlags]
+type = "collection"
+allof = [ "types.featureFlags" ]
+
+    [types.versionedFlags.schemaVersion]
+    type = "integer"
+```
+
+| Document value | Result |
+| --- | --- |
+| `{ schemaVersion = 2, dark-mode = true }` | valid |
+| `{ schemaVersion = 2 }` | valid: a collection needs no dynamic entries |
+| `{ dark-mode = true }` | invalid: `schemaVersion` is required |
+| `{ schemaVersion = 2, darkMode = true }` | invalid: `darkMode` fails the contributed `keypattern` |
+| `{ schemaVersion = 2, dark-mode = 1 }` | invalid: `1` fails the contributed `itemtype` |
+
+The fixed child escapes both dynamic-entry rules: `schemaVersion` is an
+`integer` rather than a `boolean`, and its name does not match the
+`keypattern`, yet it is valid because fixed children take precedence over
+dynamic entries.
 
 An `allof` component may itself contain `oneof`, `anyof`, or another `allof`
 when its effective kind is unambiguous. A composed definition may be referenced
@@ -1199,6 +1638,15 @@ validation property or any nested child definition. Schema loaders MUST reject
 empty unions and other union siblings at schema-load time. Constraints required
 by an alternative belong in a named reusable definition referenced by the
 union.
+
+The alternatives of a `oneof` or `anyof` array MUST be distinct. A repeated
+alternative adds no branch and, for `oneof`, cannot be the exactly-one match.
+Duplication is judged on resolved identity, after the optional `types.` prefix
+has been removed, so `oneof = [ "types.stringId", "stringId" ]` names the same
+definition twice and is malformed. Schema loaders MUST reject a duplicate
+alternative at schema-load time. This differs from
+[`items`](#tuple--positional-array-validation---items), where an entry denotes a
+tuple position rather than an alternative and repetition is meaningful.
 
 ```toml
 [types.stringId]
@@ -1260,6 +1708,16 @@ itemtype = "types.cascadeEntry"
 oneof = [ "types.cascadeEntry", "types.cascadeEntries" ]
 ```
 
+A union contributes nothing to the
+[determinate fixed-child set](#determinate-fixed-child-set) of the node it
+selects, because no alternative is chosen until a document value exists. It does
+contribute at validation time: when an alternative is evaluated against a
+document node, that alternative's fixed children join the node's
+[effective closure set](#effective-closure-set) for that evaluation, so a key
+the alternative declares is a known key of the node and MUST NOT be reported as
+unexpected. This is what lets a union be composed into a table with `allof`
+without the alternatives' own children becoming unknown keys.
+
 When alternatives contain annotations, only successful branches contribute
 them, and only for a value that is present. Deprecation warnings follow the
 successful-branch rule: `oneof` reports the warning of its single successful
@@ -1307,6 +1765,13 @@ Validation diagnostics and deprecation annotations come only from the selected
 branch. A branch default does not become the conditional slot's effective
 default; for a present value, an implementation MAY surface the selected
 branch's default as a hint.
+
+Like a union, the conditional triple contributes nothing to the
+[determinate fixed-child set](#determinate-fixed-child-set) of the node it
+selects. The selected branch's fixed children join the node's
+[effective closure set](#effective-closure-set) at validation time, so the keys
+the matched branch declares are known keys of that node, while keys declared
+only by the branch that was not selected are not.
 
 `then` and `else` MUST each be a string naming a reusable definition in
 `[types]`; bare built-in references are invalid. Both definitions MUST resolve
@@ -1362,6 +1827,22 @@ described under [Quoted and Special Keys](#quoted-and-special-keys).
 [types.dependency]
 type = "table"
 dependentrequired = { branch = [ "git" ], tag = [ "git" ], rev = [ "git" ] }
+
+    [types.dependency.git]
+    type = "string"
+    optional = true
+
+    [types.dependency.branch]
+    type = "string"
+    optional = true
+
+    [types.dependency.tag]
+    type = "string"
+    optional = true
+
+    [types.dependency.rev]
+    type = "string"
+    optional = true
 ```
 
 Dependencies are directional. If `a` requires `b`, the presence of `b` does not
@@ -1375,7 +1856,29 @@ at least two unique child-name strings. At most one member of each group may be
 present.
 
 ```toml
+[types.source]
+type = "table"
 mutuallyexclusive = [ [ "git", "path" ], [ "branch", "tag", "rev" ] ]
+
+    [types.source.git]
+    type = "string"
+    optional = true
+
+    [types.source.path]
+    type = "string"
+    optional = true
+
+    [types.source.branch]
+    type = "string"
+    optional = true
+
+    [types.source.tag]
+    type = "string"
+    optional = true
+
+    [types.source.rev]
+    type = "string"
+    optional = true
 ```
 
 Zero or one present member satisfies a group.
@@ -1389,16 +1892,36 @@ of every group MUST be present.
 [types.readmeTable]
 type = "table"
 exactlyone = [ [ "file", "text" ] ]
+
+    [types.readmeTable.file]
+    type = "string"
+    optional = true
+
+    [types.readmeTable.text]
+    type = "string"
+    optional = true
 ```
 
 This allows every group member to remain individually `optional = true` while
 the group still requires one choice.
 
 Every name in these three properties MUST identify a direct fixed child in the
-effective definition after `allof` composition. A quoted string containing a
-dot identifies a literal dotted child key. Dynamic collection keys are not
-fixed children and cannot be operands, while a collection's explicitly defined
-children participate normally.
+[determinate fixed-child set](#determinate-fixed-child-set) of the definition
+after `allof` composition. Operands are resolved when the schema is loaded, so
+they MUST NOT be resolved against the validation-time
+[effective closure set](#effective-closure-set); only the presence check itself
+happens while a document is validated. A quoted string containing a
+dot identifies a literal dotted child key, and a child written through the
+`children` namespace is named by its target key rather than by the literal
+string `children`. Dynamic collection keys are not fixed children and cannot be
+operands, while a collection's explicitly defined children participate normally.
+
+Because a `oneof` or `anyof` selector and a conditional selector contribute
+nothing to the determinate set, an operand that only such an alternative or
+branch could supply names no fixed child and MUST be rejected at schema-load
+time. Declare those operands as local fixed children instead — `optional = true`
+ones when the document may omit them — or move the rule into the alternatives or
+branches that define the children.
 
 Schema loaders MUST reject a rule with the wrong TOML value type, an empty
 mapping or group list, a group with fewer than two members, a duplicate name
@@ -1760,8 +2283,9 @@ that way and remain schema-load semantics:
  - conditional branch kinds;
  - collection `itemtype` inherited through composition;
  - defaults against effective types;
+ - duplicate `oneof`, `anyof`, and `allof` entries after type-reference resolution;
  - allowed values against resolved constraints; and
- - sibling-rule operands against the effective fixed-child set.
+ - sibling-rule operands against the determinate fixed-child set.
 
 Schema loading also depends on the source-form information required under
 [Validation and Data Model](#validation-and-data-model). That information is what

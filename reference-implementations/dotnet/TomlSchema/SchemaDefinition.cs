@@ -5,6 +5,8 @@ namespace TomlSchema;
 /// </summary>
 public record SchemaDefinition
 {
+    internal string? Name { get; init; }
+
     /// <summary>The type of this definition (e.g., "string", "table")</summary>
     public SchemaType? Type { get; init; }
 
@@ -35,11 +37,11 @@ public record SchemaDefinition
     /// <summary>Whether this element is optional</summary>
     public bool Optional { get; init; }
 
-    /// <summary>Minimum value (for numbers or array/string length)</summary>
-    public double? Min { get; init; }
+    /// <summary>Inclusive minimum value for a comparable scalar or array item</summary>
+    public object? Min { get; init; }
 
-    /// <summary>Maximum value (for numbers or array/string length)</summary>
-    public double? Max { get; init; }
+    /// <summary>Inclusive maximum value for a comparable scalar or array item</summary>
+    public object? Max { get; init; }
 
     /// <summary>Minimum string length (Unicode scalars)</summary>
     public long? MinLength { get; init; }

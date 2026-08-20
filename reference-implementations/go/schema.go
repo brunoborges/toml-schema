@@ -284,7 +284,7 @@ func (s *Schema) validateDefinitionSemantics(definition Definition) error {
 		if !resolved || (kind != TypeTable && kind != TypeCollection) {
 			return fmt.Errorf("%s sibling rules require an effective table or collection", definition.name)
 		}
-		fixed, err := s.effectiveFixedChildren(definition, map[string]bool{})
+		fixed, err := s.determinateFixedChildren(definition, map[string]bool{})
 		if err != nil {
 			return fmt.Errorf("%s: %w", definition.name, err)
 		}
@@ -422,7 +422,7 @@ func (s *Schema) effectiveKind(definition Definition, visiting map[string]bool) 
 	return kind, true, nil
 }
 
-func (s *Schema) effectiveFixedChildren(definition Definition, visiting map[string]bool) (map[string]bool, error) {
+func (s *Schema) determinateFixedChildren(definition Definition, visiting map[string]bool) (map[string]bool, error) {
 	fixed := map[string]bool{}
 	for name := range definition.children {
 		fixed[name] = true
@@ -431,25 +431,8 @@ func (s *Schema) effectiveFixedChildren(definition Definition, visiting map[stri
 	if definition.reference != "" {
 		references = append(references, definition.reference)
 	}
-	references = append(references, definition.oneOf...)
-	references = append(references, definition.anyOf...)
-	if definition.condition != nil {
-		references = append(references, definition.thenReference, definition.elseReference)
-	}
 	for _, reference := range references {
-		if _, builtIn := parseSchemaType(reference); builtIn {
-			continue
-		}
-		if visiting[reference] {
-			return nil, fmt.Errorf("cyclic composition reference: %s", reference)
-		}
-		target, ok := s.types[reference]
-		if !ok {
-			return nil, fmt.Errorf("unknown type reference: %s", reference)
-		}
-		visiting[reference] = true
-		targetFixed, err := s.effectiveFixedChildren(target, visiting)
-		delete(visiting, reference)
+		targetFixed, err := s.determinateReferenceFixedChildren(reference, visiting)
 		if err != nil {
 			return nil, err
 		}
@@ -460,24 +443,45 @@ func (s *Schema) effectiveFixedChildren(definition Definition, visiting map[stri
 	return fixed, nil
 }
 
+func (s *Schema) determinateReferenceFixedChildren(reference string, visiting map[string]bool) (map[string]bool, error) {
+	if _, builtIn := parseSchemaType(reference); builtIn {
+		return map[string]bool{}, nil
+	}
+	if visiting[reference] {
+		return nil, fmt.Errorf("cyclic composition reference: %s", reference)
+	}
+	target, ok := s.types[reference]
+	if !ok {
+		return nil, fmt.Errorf("unknown type reference: %s", reference)
+	}
+	visiting[reference] = true
+	fixed, err := s.determinateFixedChildren(target, visiting)
+	delete(visiting, reference)
+	return fixed, err
+}
+
 // hasCollectionItemConstraint reports whether a dynamic-entry constraint is
-// supplied by this definition, by the definition it references, by a union
-// alternative, or by an allof component.
+// supplied locally or by a structurally contributing type/allof component.
 func (s *Schema) hasCollectionItemConstraint(definition Definition, visiting map[string]bool) (bool, error) {
+	if len(definition.oneOf) > 0 || len(definition.anyOf) > 0 || definition.condition != nil {
+		return true, nil
+	}
 	if definition.itemReference != "" {
 		return true, nil
 	}
-	references := []string{}
 	if definition.reference != "" {
-		references = append(references, definition.reference)
+		target, ok := s.types[definition.reference]
+		if !ok {
+			return false, fmt.Errorf("unknown type reference: %s", definition.reference)
+		}
+		visiting[definition.reference] = true
+		found, err := s.hasCollectionItemConstraint(target, visiting)
+		delete(visiting, definition.reference)
+		if err != nil || found {
+			return found, err
+		}
 	}
-	references = append(references, definition.oneOf...)
-	references = append(references, definition.anyOf...)
-	if definition.condition != nil {
-		references = append(references, definition.thenReference, definition.elseReference)
-	}
-	references = append(references, definition.allOf...)
-	for _, reference := range references {
+	for _, reference := range definition.allOf {
 		if _, builtIn := parseSchemaType(reference); builtIn {
 			continue
 		}
@@ -487,6 +491,9 @@ func (s *Schema) hasCollectionItemConstraint(definition Definition, visiting map
 		target, ok := s.types[reference]
 		if !ok {
 			return false, fmt.Errorf("unknown type reference: %s", reference)
+		}
+		if len(target.oneOf) > 0 || len(target.anyOf) > 0 || target.condition != nil {
+			continue
 		}
 		visiting[reference] = true
 		found, err := s.hasCollectionItemConstraint(target, visiting)
@@ -1188,6 +1195,7 @@ func rejectBareCollectionReference(name, property, reference string) error {
 }
 
 func validateAlternativeReferences(name, property string, references []string) error {
+	seen := map[string]string{}
 	for _, reference := range references {
 		normalized := normalizeReference(reference)
 		if err := rejectBareCollectionReference(name, property, normalized); err != nil {
@@ -1196,6 +1204,12 @@ func validateAlternativeReferences(name, property string, references []string) e
 		if normalized == string(TypeAny) {
 			return fmt.Errorf("%s cannot use any directly in %s", name, property)
 		}
+		if first, exists := seen[normalized]; exists {
+			return fmt.Errorf(
+				"%s %s contains duplicate type references %q and %q; both resolve to %s",
+				name, property, first, reference, normalized)
+		}
+		seen[normalized] = reference
 	}
 	return nil
 }
@@ -1232,6 +1246,29 @@ func validateRangeConstraints(name string, typeName SchemaType, min, max any) er
 		if err := validateBoundaryMatchesType(name, "max", max, typeName); err != nil {
 			return err
 		}
+		if err := validateOrderedRange(name, min, max, typeName); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateOrderedRange(name string, min, max any, comparableKind SchemaType) error {
+	if comparableKind == TypeInteger {
+		for key, boundary := range map[string]any{"min": min, "max": max} {
+			if value, ok := boundary.(float64); ok && math.IsInf(value, 0) {
+				return fmt.Errorf("%s cannot use infinity as %s when comparable kind is integer", name, key)
+			}
+		}
+	}
+	if min != nil && max != nil {
+		ordering, err := compare(min, max)
+		if err != nil {
+			return err
+		}
+		if ordering > 0 {
+			return fmt.Errorf("%s min must not be greater than max", name)
+		}
 	}
 	return nil
 }
@@ -1251,6 +1288,9 @@ func (s *Schema) validateArrayRanges() error {
 				return err
 			}
 			if err := validateBoundaryMatchesType(definition.name, "max", definition.max, itemType); err != nil {
+				return err
+			}
+			if err := validateOrderedRange(definition.name, definition.min, definition.max, itemType); err != nil {
 				return err
 			}
 		}
@@ -1802,7 +1842,7 @@ func (v *validator) validateComposedParts(
 	unions := make([]Definition, 0, len(parts.unions))
 	unionKeys := make([]map[string]bool, 0, len(parts.unions))
 	for _, union := range parts.unions {
-		alternativeKeys, err := v.schema.effectiveFixedChildren(union, map[string]bool{})
+		alternativeKeys, err := v.effectiveClosureKeys(union, value, map[string]bool{})
 		if err != nil {
 			v.add(path, err.Error())
 			continue
@@ -1819,7 +1859,7 @@ func (v *validator) validateComposedParts(
 	conditionals := make([]Definition, 0, len(parts.conditionals))
 	conditionalKeys := make([]map[string]bool, 0, len(parts.conditionals))
 	for _, conditional := range parts.conditionals {
-		branchKeys, err := v.schema.effectiveFixedChildren(conditional, map[string]bool{})
+		branchKeys, err := v.effectiveClosureKeys(conditional, value, map[string]bool{})
 		if err != nil {
 			v.add(path, err.Error())
 			continue
@@ -1948,6 +1988,68 @@ func (v *validator) validateComposedParts(
 			v.warn(path, "deprecated", "value is deprecated")
 		}
 	}
+}
+
+// effectiveClosureKeys is validation-time state. Unlike the schema-load-time
+// determinate set, it includes the selected conditional branch and the
+// candidate closures that a union evaluates independently.
+func (v *validator) effectiveClosureKeys(
+	definition Definition,
+	value any,
+	visiting map[string]bool,
+) (map[string]bool, error) {
+	keys := map[string]bool{}
+	for name := range definition.children {
+		keys[name] = true
+	}
+	mergeReference := func(reference string) error {
+		if _, builtIn := parseSchemaType(reference); builtIn {
+			return nil
+		}
+		if visiting[reference] {
+			return fmt.Errorf("cyclic composition reference: %s", reference)
+		}
+		visiting[reference] = true
+		target, err := v.resolveReference(reference, map[string]bool{})
+		if err == nil {
+			var nested map[string]bool
+			nested, err = v.effectiveClosureKeys(target, value, visiting)
+			for name := range nested {
+				keys[name] = true
+			}
+		}
+		delete(visiting, reference)
+		return err
+	}
+	if definition.reference != "" {
+		if err := mergeReference(definition.reference); err != nil {
+			return nil, err
+		}
+	}
+	for _, reference := range definition.allOf {
+		if err := mergeReference(reference); err != nil {
+			return nil, err
+		}
+	}
+	alternatives := definition.oneOf
+	if len(alternatives) == 0 {
+		alternatives = definition.anyOf
+	}
+	for _, reference := range alternatives {
+		if err := mergeReference(reference); err != nil {
+			return nil, err
+		}
+	}
+	if definition.condition != nil {
+		reference := definition.elseReference
+		if table, ok := value.(map[string]any); ok && conditionMatches(table, definition.condition) {
+			reference = definition.thenReference
+		}
+		if err := mergeReference(reference); err != nil {
+			return nil, err
+		}
+	}
+	return keys, nil
 }
 
 // validateComposedUnion selects an alternative of a union contributor against

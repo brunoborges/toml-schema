@@ -49,6 +49,72 @@ fn capture(args: &[&str]) -> (u8, String, String) {
 }
 
 #[test]
+fn validates_range_boundaries_at_schema_load_time() {
+    let directory = tempfile_dir("range-boundary-load-validation");
+    let schema = |name: &str, definition: &str| {
+        write_file(
+            &directory,
+            name,
+            &format!(
+                "[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\n{definition}\n"
+            ),
+        )
+    };
+
+    let valid = schema(
+        "valid.tosd",
+        "type = \"float\"\nmin = -inf\nmax = inf",
+    );
+    assert!(Schema::load(valid).is_ok());
+    assert!(Schema::load(schema(
+        "ordered.tosd",
+        "type = \"integer\"\nmin = 1\nmax = 10",
+    ))
+    .is_ok());
+
+    for (name, definition) in [
+        ("numeric", "type = \"integer\"\nmin = 10\nmax = 1"),
+        (
+            "mixed-precision",
+            "type = \"integer\"\nmin = 9007199254740993\nmax = 9007199254740992.0",
+        ),
+        (
+            "offset",
+            "type = \"offset-date-time\"\nmin = 2024-01-02T00:00:00Z\nmax = 2024-01-01T23:00:00Z",
+        ),
+        (
+            "local-date-time",
+            "type = \"local-date-time\"\nmin = 2024-01-02T00:00:00\nmax = 2024-01-01T23:00:00",
+        ),
+        (
+            "local-date",
+            "type = \"local-date\"\nmin = 2024-01-02\nmax = 2024-01-01",
+        ),
+        (
+            "local-time",
+            "type = \"local-time\"\nmin = 12:00:01\nmax = 12:00:00",
+        ),
+        (
+            "array",
+            "type = \"array\"\nitemtype = \"integer\"\nmin = 10\nmax = 1",
+        ),
+    ] {
+        let error = Schema::load(schema(&format!("{name}.tosd"), definition))
+            .expect_err("reversed range must fail during schema loading");
+        assert!(error.contains("min must not be greater than max"), "{error}");
+    }
+
+    for (name, boundary) in [("infinite-min", "min = -inf"), ("infinite-max", "max = inf")] {
+        let error = Schema::load(schema(
+            &format!("{name}.tosd"),
+            &format!("type = \"integer\"\n{boundary}"),
+        ))
+        .expect_err("integer infinity boundary must fail during schema loading");
+        assert!(error.contains("when comparable kind is integer"), "{error}");
+    }
+}
+
+#[test]
 fn canonical_binary_is_named_tosd() {
     let help = Command::new(env!("CARGO_BIN_EXE_tosd"))
         .arg("--help")
@@ -498,6 +564,52 @@ type = "string"
         "expected self-schema to accept conditional example: {:?}",
         result.errors
     );
+}
+
+#[test]
+fn self_schema_allows_repeated_tuple_items_but_rejects_duplicate_composition_entries() {
+    let self_schema =
+        Schema::load(fixture("toml-schema.tosd")).expect("load toml-schema.tosd");
+    let directory = tempfile_dir("self-schema-type-reference-lists");
+    let tuple_schema = write_file(
+        &directory,
+        "repeated-tuple-items.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.point]
+type = "array"
+items = [ "float", "float", "float" ]
+"#,
+    );
+    let result = self_schema.validate_file(&tuple_schema);
+    assert!(
+        result.valid(),
+        "expected self-schema to allow repeated tuple items, got {:#?}",
+        result.errors
+    );
+
+    for property in ["oneof", "anyof", "allof"] {
+        let schema_path = write_file(
+            &directory,
+            &format!("duplicate-{property}.tosd"),
+            &format!(
+                r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{property} = [ "string", "string" ]
+"#
+            ),
+        );
+        let result = self_schema.validate_file(&schema_path);
+        assert!(
+            !result.valid(),
+            "expected self-schema to reject duplicate {property} entries"
+        );
+    }
 }
 
 #[test]
@@ -1239,6 +1351,242 @@ type = "types.node"
 "#,
     );
     Schema::load(&schema_path).expect("structural recursion should load");
+}
+
+#[test]
+fn sibling_rules_use_only_determinate_effective_fixed_children() {
+    let directory = tempfile_dir("strict-effective-fixed-children");
+    let rejected = write_file(
+        &directory,
+        "union-operands.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.left]
+type = "table"
+
+    [types.left.first]
+    type = "string"
+    optional = true
+
+[types.right]
+type = "table"
+
+    [types.right.second]
+    type = "string"
+    optional = true
+
+[types.choice]
+oneof = [ "types.left", "types.right" ]
+
+[elements.value]
+type = "table"
+allof = [ "types.choice" ]
+exactlyone = [ [ "first", "second" ] ]
+"#,
+    );
+    let error = Schema::load(&rejected).expect_err("union-only operands must be rejected");
+    assert!(
+        error.contains("unknown fixed child"),
+        "unexpected load error: {error}"
+    );
+
+    let accepted = write_file(
+        &directory,
+        "type-selected-operands.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.base]
+type = "table"
+
+    [types.base.first]
+    type = "string"
+    optional = true
+
+    [types.base.second]
+    type = "string"
+    optional = true
+
+[types.indirect]
+type = "types.base"
+
+[elements.value]
+type = "table"
+allof = [ "types.indirect" ]
+exactlyone = [ [ "first", "second" ] ]
+"#,
+    );
+    Schema::load(&accepted).expect("type-selected fixed children must remain available");
+
+    let closure_schema = write_file(
+        &directory,
+        "union-closure.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[types.base]
+type = "table"
+
+    [types.base.id]
+    type = "integer"
+
+[types.named]
+type = "table"
+
+    [types.named.name]
+    type = "string"
+
+[types.labelled]
+type = "table"
+
+    [types.labelled.label]
+    type = "string"
+
+[types.choice]
+oneof = [ "types.named", "types.labelled" ]
+
+[elements.value]
+type = "table"
+allof = [ "types.base", "types.choice" ]
+
+    [elements.value.enabled]
+    type = "boolean"
+    optional = true
+"#,
+    );
+    let closure = Schema::load(&closure_schema).expect("load union closure schema");
+    for (name, body) in [
+        ("named.toml", "[value]\nid = 1\nname = \"example\"\n"),
+        ("labelled.toml", "[value]\nid = 1\nlabel = \"example\"\n"),
+        (
+            "enabled.toml",
+            "[value]\nid = 1\nname = \"example\"\nenabled = true\n",
+        ),
+    ] {
+        let result = closure.validate_file(write_file(&directory, name, body));
+        assert!(result.valid(), "{name}: {:?}", result.errors);
+    }
+    for (name, body) in [
+        (
+            "both.toml",
+            "[value]\nid = 1\nname = \"example\"\nlabel = \"example\"\n",
+        ),
+        ("neither.toml", "[value]\nid = 1\n"),
+    ] {
+        let result = closure.validate_file(write_file(&directory, name, body));
+        assert!(
+            result
+                .errors
+                .iter()
+                .any(|error| error.path == "$.value" && error.message.contains("found 0")),
+            "{name}: {:?}",
+            result.errors
+        );
+    }
+    let unexpected = closure.validate_file(write_file(
+        &directory,
+        "bogus.toml",
+        "[value]\nid = 1\nname = \"example\"\nbogus = true\n",
+    ));
+    assert!(has_path(&unexpected, "$.value.bogus"));
+    let missing = closure.validate_file(write_file(
+        &directory,
+        "missing.toml",
+        "[value]\nname = \"example\"\n",
+    ));
+    assert!(has_path(&missing, "$.value.id"));
+
+    let open_schema = write_file(
+        &directory,
+        "open-union.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+[types.base]
+type = "table"
+[types.base.name]
+type = "string"
+[types.open]
+type = "table"
+[types.closed]
+type = "table"
+[types.closed.known]
+type = "string"
+[types.choice]
+oneof = [ "types.open", "types.closed" ]
+[elements.value]
+type = "table"
+allof = [ "types.base", "types.choice" ]
+"#,
+    );
+    let open = Schema::load(open_schema).expect("load open-alternative schema");
+    let known = open.validate_file(write_file(
+        &directory,
+        "known.toml",
+        "[value]\nname = \"example\"\nknown = \"yes\"\n",
+    ));
+    assert!(known.valid(), "{:?}", known.errors);
+    let arbitrary = open.validate_file(write_file(
+        &directory,
+        "arbitrary.toml",
+        "[value]\nname = \"example\"\narbitrary = true\n",
+    ));
+    assert!(arbitrary.errors.iter().any(|error| {
+        error.path == "$.value" && error.message.contains("found 0")
+    }));
+
+    let conditional_schema = write_file(
+        &directory,
+        "conditional-closure.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+[types.common]
+type = "table"
+[types.common.id]
+type = "integer"
+[types.sqlite]
+type = "table"
+[types.sqlite.engine]
+type = "string"
+[types.sqlite.file]
+type = "string"
+[types.server]
+type = "table"
+[types.server.engine]
+type = "string"
+[types.server.host]
+type = "string"
+[types.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqlite"
+else = "types.server"
+allof = [ "types.common" ]
+[elements.composed]
+type = "table"
+allof = [ "types.database" ]
+"#,
+    );
+    let conditional = Schema::load(conditional_schema).expect("load conditional schema");
+    let selected = conditional.validate_file(write_file(
+        &directory,
+        "conditional.toml",
+        "[composed]\nid = 2\nengine = \"postgresql\"\nhost = \"db.internal\"\n",
+    ));
+    assert!(selected.valid(), "{:?}", selected.errors);
+
+    let self_schema =
+        Schema::load(fixture("toml-schema.tosd")).expect("strict rules must load the self-schema");
+    let result = self_schema.validate_file(fixture("toml-schema.tosd"));
+    assert!(
+        result.valid(),
+        "strict rules must preserve self-validation: {:#?}",
+        result.errors
+    );
 }
 
 #[test]

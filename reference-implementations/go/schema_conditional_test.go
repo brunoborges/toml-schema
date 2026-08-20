@@ -215,7 +215,7 @@ allof = ["types.database"]
 		"composed": map[string]any{"id": int64(2), "engine": "postgresql", "host": "db.internal"},
 	}
 	if result := schema.Validate(valid); !result.Valid() {
-		t.Fatalf("expected allof composition to preserve conditional selection: %#v", result.Errors)
+		t.Fatalf("selected conditional branch must contribute to effective closure: %#v", result.Errors)
 	}
 	invalid := schema.Validate(map[string]any{
 		"database": map[string]any{"engine": "sqlite", "file": "db.sqlite"},

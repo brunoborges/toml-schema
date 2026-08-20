@@ -123,6 +123,8 @@ public class SchemaLoader
             }
         }
 
+        ValidateRangeSemantics(types, elements);
+        ValidateSiblingRuleSemantics(types, elements);
         return new TomlSchema(version, types, elements);
     }
 
@@ -234,6 +236,10 @@ public class SchemaLoader
             ? allOfArray.Cast<string>().ToList()
             : null;
 
+        ValidateDistinctReferences(location, "oneof", oneOf);
+        ValidateDistinctReferences(location, "anyof", anyOf);
+        ValidateDistinctReferences(location, "allof", allOf);
+
         var condition = ParseCondition(location, table);
 
         var allowedValues = table.TryGetValue("allowedvalues", out var avValue) && avValue is TomlArray avArray
@@ -271,9 +277,17 @@ public class SchemaLoader
         var exactlyOne = table.TryGetValue("exactlyone", out var eoValue) && eoValue is TomlArray eoArray
             ? ParseNameGroups(eoArray)
             : null;
+        var min = GetRangeValue(table, "min");
+        var max = GetRangeValue(table, "max");
+        var minLength = GetInt(table, "minlength");
+        var maxLength = GetInt(table, "maxlength");
+        if (minLength.HasValue && maxLength.HasValue && minLength > maxLength)
+            throw new InvalidOperationException(
+                $"{location} minlength must not be greater than maxlength");
 
         return new SchemaDefinition
         {
+            Name = location,
             Type = type,
             Reference = reference,
             Description = GetString(table, "description"),
@@ -284,10 +298,10 @@ public class SchemaLoader
             Format = format,
             KeyPattern = GetString(table, "keypattern"),
             Optional = GetBool(table, "optional") ?? false,
-            Min = GetNumber(table, "min"),
-            Max = GetNumber(table, "max"),
-            MinLength = GetInt(table, "minlength"),
-            MaxLength = GetInt(table, "maxlength"),
+            Min = min,
+            Max = max,
+            MinLength = minLength,
+            MaxLength = maxLength,
             UniqueItems = GetBool(table, "uniqueitems"),
             OneOf = oneOf,
             AnyOf = anyOf,
@@ -382,16 +396,11 @@ public class SchemaLoader
     private long? GetInt(TomlTable table, string key) =>
         table.TryGetValue(key, out var value) && value is long l ? l : null;
 
-    private double? GetNumber(TomlTable table, string key)
-    {
-        if (!table.TryGetValue(key, out var value))
-            return null;
-
-        return value is long l ? (double)l : value is double d ? d : null;
-    }
-
     private object? GetValue(TomlTable table, string key) =>
         table.TryGetValue(key, out var value) ? value : null;
+
+    private object? GetRangeValue(TomlTable table, string key) =>
+        table.TryGetValue(key, out var value) && value is not TomlTable ? value : null;
 
     private List<string>? GetStringArray(TomlTable table, string key)
     {
@@ -400,4 +409,224 @@ public class SchemaLoader
 
         return arr.Cast<string>().ToList();
     }
+
+    private static void ValidateDistinctReferences(
+        string location,
+        string property,
+        IReadOnlyList<string>? references)
+    {
+        if (references == null)
+            return;
+
+        var seen = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var reference in references)
+        {
+            var resolved = reference.StartsWith("types.", StringComparison.Ordinal)
+                ? reference["types.".Length..]
+                : reference;
+            if (seen.TryGetValue(resolved, out var first))
+                throw new InvalidOperationException(
+                    $"{location} {property} contains duplicate type references \"{first}\" and \"{reference}\"; both resolve to {resolved}");
+            seen[resolved] = reference;
+        }
+    }
+
+    private static void ValidateSiblingRuleSemantics(
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        IReadOnlyDictionary<string, SchemaDefinition> elements)
+    {
+        foreach (var definition in types.Values.Concat(elements.Values))
+            ValidateSiblingRuleDefinition(definition, types);
+    }
+
+    private static void ValidateRangeSemantics(
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        IReadOnlyDictionary<string, SchemaDefinition> elements)
+    {
+        foreach (var definition in types.Values.Concat(elements.Values))
+            ValidateRangeDefinition(definition, types);
+    }
+
+    private static void ValidateRangeDefinition(
+        SchemaDefinition definition,
+        IReadOnlyDictionary<string, SchemaDefinition> types)
+    {
+        if (definition.Min != null || definition.Max != null)
+        {
+            var comparableKind = definition.Type == SchemaType.Array
+                ? ResolveItemKind(definition.ItemType, types)
+                : definition.Type;
+            if (comparableKind is not (SchemaType.Integer or SchemaType.Float
+                or SchemaType.OffsetDateTime or SchemaType.LocalDateTime
+                or SchemaType.LocalDate or SchemaType.LocalTime))
+                throw new InvalidOperationException(
+                    $"{definition.Name} can only define min or max for integer, float, date/time, or compatible array types");
+            ValidateBoundary(definition.Name!, definition.Min, "min", comparableKind.Value);
+            ValidateBoundary(definition.Name!, definition.Max, "max", comparableKind.Value);
+            if (definition.Min != null && definition.Max != null
+                && ValueSemantics.Compare(definition.Min, definition.Max) > 0)
+                throw new InvalidOperationException(
+                    $"{definition.Name} min must not be greater than max");
+        }
+        foreach (var child in definition.Children.Values)
+            ValidateRangeDefinition(child, types);
+    }
+
+    private static SchemaType? ResolveItemKind(
+        string? reference,
+        IReadOnlyDictionary<string, SchemaDefinition> types)
+    {
+        if (string.IsNullOrEmpty(reference))
+            return null;
+        if (SchemaTypeExtensions.AllTypeNames.Contains(reference))
+            return SchemaTypeExtensions.FromSchemaName(reference);
+        var normalized = NormalizeReference(reference);
+        return types.TryGetValue(normalized, out var target)
+            ? EffectiveKind(target, types, new HashSet<string>())
+            : null;
+    }
+
+    private static void ValidateBoundary(
+        string name,
+        object? boundary,
+        string key,
+        SchemaType comparableKind)
+    {
+        if (boundary == null)
+            return;
+        if (boundary is double value && double.IsNaN(value))
+            throw new InvalidOperationException($"{name} cannot use NaN as {key}");
+        if (comparableKind == SchemaType.Integer
+            && boundary is double infinity && double.IsInfinity(infinity))
+            throw new InvalidOperationException(
+                $"{name} cannot use infinity as {key} when comparable kind is integer");
+        if (!ValueSemantics.MatchesComparableKind(boundary, comparableKind))
+            throw new InvalidOperationException(
+                $"{name} {key} must be comparable with {comparableKind.ToString().ToLowerInvariant()}");
+    }
+
+    private static void ValidateSiblingRuleDefinition(
+        SchemaDefinition definition,
+        IReadOnlyDictionary<string, SchemaDefinition> types)
+    {
+        var hasRules = definition.DependentRequired?.Count > 0
+            || definition.MutuallyExclusive?.Count > 0
+            || definition.ExactlyOne?.Count > 0;
+        if (hasRules)
+        {
+            var kind = EffectiveKind(definition, types, new HashSet<string>());
+            if (kind is not SchemaType.Table and not SchemaType.Collection)
+                throw new InvalidOperationException("sibling rules require an effective table or collection");
+
+            var fixedChildren = DeterminateFixedChildren(definition, types, new HashSet<string>());
+            foreach (var operand in definition.DependentRequired ?? [])
+                ValidateSiblingOperand("dependentrequired", operand, fixedChildren);
+            foreach (var (property, groups) in new[]
+            {
+                ("mutuallyexclusive", definition.MutuallyExclusive ?? []),
+                ("exactlyone", definition.ExactlyOne ?? [])
+            })
+            {
+                foreach (var operand in groups.SelectMany(group => group))
+                    ValidateSiblingOperand(property, operand, fixedChildren);
+            }
+        }
+        foreach (var child in definition.Children.Values)
+            ValidateSiblingRuleDefinition(child, types);
+    }
+
+    private static void ValidateSiblingOperand(
+        string property,
+        string operand,
+        IReadOnlySet<string> fixedChildren)
+    {
+        if (!fixedChildren.Contains(operand))
+            throw new InvalidOperationException(
+                $"{property} contains unknown fixed child \"{operand}\"");
+    }
+
+    private static HashSet<string> DeterminateFixedChildren(
+        SchemaDefinition definition,
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        HashSet<string> visiting)
+    {
+        var children = new HashSet<string>(definition.Children.Keys);
+        if (definition.Reference != null)
+            children.UnionWith(DeterminateReferenceFixedChildren(definition.Reference, types, visiting));
+        foreach (var component in definition.AllOf ?? [])
+            children.UnionWith(DeterminateReferenceFixedChildren(component, types, visiting));
+        return children;
+    }
+
+    private static HashSet<string> DeterminateReferenceFixedChildren(
+        string reference,
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        HashSet<string> visiting)
+    {
+        if (SchemaTypeExtensions.AllTypeNames.Contains(reference))
+            return [];
+        var normalized = NormalizeReference(reference);
+        if (!visiting.Add(normalized))
+            throw new InvalidOperationException($"cyclic type reference: {normalized}");
+        try
+        {
+            var target = types.TryGetValue(normalized, out var definition)
+                ? definition
+                : throw new InvalidOperationException($"unknown type reference: {reference}");
+            return DeterminateFixedChildren(target, types, visiting);
+        }
+        finally
+        {
+            visiting.Remove(normalized);
+        }
+    }
+
+    private static SchemaType? EffectiveKind(
+        SchemaDefinition definition,
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        HashSet<string> visiting)
+    {
+        if (definition.Type != null)
+            return definition.Type;
+        if (definition.Reference != null)
+        {
+            var normalized = NormalizeReference(definition.Reference);
+            if (!visiting.Add(normalized))
+                throw new InvalidOperationException($"cyclic type reference: {normalized}");
+            try
+            {
+                return types.TryGetValue(normalized, out var target)
+                    ? EffectiveKind(target, types, visiting)
+                    : throw new InvalidOperationException($"unknown type reference: {definition.Reference}");
+            }
+            finally
+            {
+                visiting.Remove(normalized);
+            }
+        }
+        var references = definition.OneOf?.Count > 0
+            ? definition.OneOf
+            : definition.AnyOf?.Count > 0
+                ? definition.AnyOf
+                : definition.Condition == null
+                    ? null
+                    : [definition.Condition.ThenType!, definition.Condition.ElseType!];
+        if (references == null)
+            return null;
+        var kinds = references.Select(reference =>
+        {
+            if (SchemaTypeExtensions.AllTypeNames.Contains(reference))
+                return SchemaTypeExtensions.FromSchemaName(reference);
+            var normalized = NormalizeReference(reference);
+            return types.TryGetValue(normalized, out var target)
+                ? EffectiveKind(target, types, new HashSet<string>(visiting))
+                : throw new InvalidOperationException($"unknown type reference: {reference}");
+        }).Distinct().ToList();
+        return kinds.Count == 1 ? kinds[0] : null;
+    }
+
+    private static string NormalizeReference(string reference) =>
+        reference.StartsWith("types.", StringComparison.Ordinal)
+            ? reference["types.".Length..]
+            : reference;
 }

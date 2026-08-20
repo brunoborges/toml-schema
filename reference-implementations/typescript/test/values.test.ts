@@ -122,4 +122,45 @@ max = 9007199254740992.0
 `,
     );
   });
+
+  test("validates range boundaries during schema loading", () => {
+    const load = (name: string, definition: string) =>
+      loadSchemaFromSource(
+        `${name}.tosd`,
+        `[toml-schema]\nversion = "1.0.0"\n[elements.value]\n${definition}\n`,
+      );
+
+    assert.doesNotThrow(() => load("valid", 'type = "float"\nmin = -inf\nmax = inf'));
+    assert.doesNotThrow(() => load("ordered", 'type = "integer"\nmin = 1\nmax = 10'));
+    const reversed = new Map([
+      ["numeric", 'type = "integer"\nmin = 10\nmax = 1'],
+      [
+        "mixed-precision",
+        'type = "integer"\nmin = 9007199254740993\nmax = 9007199254740992.0',
+      ],
+      [
+        "offset",
+        'type = "offset-date-time"\nmin = 2024-01-02T00:00:00Z\nmax = 2024-01-01T23:00:00Z',
+      ],
+      [
+        "local-date-time",
+        'type = "local-date-time"\nmin = 2024-01-02T00:00:00\nmax = 2024-01-01T23:00:00',
+      ],
+      ["local-date", 'type = "local-date"\nmin = 2024-01-02\nmax = 2024-01-01'],
+      ["local-time", 'type = "local-time"\nmin = 12:00:01\nmax = 12:00:00'],
+      ["array", 'type = "array"\nitemtype = "integer"\nmin = 10\nmax = 1'],
+    ]);
+    for (const [name, definition] of reversed) {
+      assert.throws(() => load(name, definition), /min must not be greater than max/);
+    }
+    for (const [name, boundary] of [
+      ["infinite-min", "min = -inf"],
+      ["infinite-max", "max = inf"],
+    ]) {
+      assert.throws(
+        () => load(name as string, `type = "integer"\n${boundary}`),
+        /when comparable kind is integer/,
+      );
+    }
+  });
 });

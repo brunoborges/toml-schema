@@ -11,6 +11,11 @@ minlength = 1
 type = "array"
 itemtype = "types.typeReference"
 minlength = 1
+
+[types.uniqueTypeReferences]
+type = "array"
+itemtype = "types.typeReference"
+minlength = 1
 uniqueitems = true
 
 [types.nonEmptyValues]
@@ -124,7 +129,7 @@ itemtype = "types.never"
     optional = true
 
     [types.stringDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.comparableDefinition]
@@ -164,7 +169,7 @@ itemtype = "types.never"
     optional = true
 
     [types.comparableDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.simpleScalarDefinition]
@@ -196,7 +201,7 @@ itemtype = "types.never"
     optional = true
 
     [types.simpleScalarDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.arrayDefinition]
@@ -252,7 +257,7 @@ itemtype = "types.never"
     optional = true
 
     [types.arrayDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.tupleDefinition]
@@ -287,7 +292,7 @@ itemtype = "types.never"
     optional = true
 
     [types.tupleDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.tableDefinition]
@@ -315,7 +320,7 @@ itemtype = "types.schemaDef"
     optional = true
 
     [types.tableDefinition.children.allof]
-    oneof = [ "types.typeReferences", "types.schemaDef" ]
+    oneof = [ "types.uniqueTypeReferences", "types.schemaDef" ]
     optional = true
 
     [types.tableDefinition.children.dependentrequired]
@@ -375,7 +380,7 @@ itemtype = "types.schemaDef"
     optional = true
 
     [types.collectionDefinition.children.allof]
-    oneof = [ "types.typeReferences", "types.schemaDef" ]
+    oneof = [ "types.uniqueTypeReferences", "types.schemaDef" ]
     optional = true
 
     [types.collectionDefinition.children.dependentrequired]
@@ -418,7 +423,7 @@ itemtype = "types.never"
     optional = true
 
     [types.namedReferenceDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.unionDefinition]
@@ -427,11 +432,11 @@ itemtype = "types.never"
 exactlyone = [ [ "oneof", "anyof" ] ]
 
     [types.unionDefinition.oneof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
     [types.unionDefinition.anyof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
     [types.unionDefinition.description]
@@ -451,7 +456,7 @@ exactlyone = [ [ "oneof", "anyof" ] ]
     optional = true
 
     [types.unionDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.conditionalDefinition]
@@ -484,7 +489,7 @@ itemtype = "types.never"
     optional = true
 
     [types.conditionalDefinition.allof]
-    type = "types.typeReferences"
+    type = "types.uniqueTypeReferences"
     optional = true
 
 [types.implicitTableDefinition]
@@ -524,7 +529,7 @@ itemtype = "types.schemaDef"
     optional = true
 
     [types.implicitTableDefinition.children.allof]
-    oneof = [ "types.typeReferences", "types.schemaDef" ]
+    oneof = [ "types.uniqueTypeReferences", "types.schemaDef" ]
     optional = true
 
     [types.implicitTableDefinition.children.dependentrequired]
@@ -564,11 +569,34 @@ itemtype = "types.schemaDef"
 keypattern = '^(type|description|format|itemtype|items|oneof|anyof|if|then|else|allof|allowedvalues|pattern|keypattern|optional|min|max|minlength|maxlength|uniqueitems|dependentrequired|mutuallyexclusive|exactlyone|default|deprecated|children)$'
 minlength = 1
 
+# A `children` table that is an ordinary target child rather than the escape
+# namespace: it is a schema definition in its own right, so it declares exactly
+# one selector. The four selector names are declared locally so that they belong
+# to this definition's determinate fixed-child set and can serve as `exactlyone`
+# operands; the composed `types.schemaDef` is a union, and a union selector
+# contributes nothing determinate. The local `itemtype` is required for the same
+# reason.
 [types.literalChildren]
 type = "collection"
-itemtype = "types.schemaDef"
+itemtype = "any"
 allof = [ "types.schemaDef" ]
 exactlyone = [ [ "type", "oneof", "anyof", "if" ] ]
+
+    [types.literalChildren.children.type]
+    type = "any"
+    optional = true
+
+    [types.literalChildren.children.oneof]
+    type = "any"
+    optional = true
+
+    [types.literalChildren.children.anyof]
+    type = "any"
+    optional = true
+
+    [types.literalChildren.children.if]
+    type = "any"
+    optional = true
 
 # Schema document structure
 [elements.toml-schema]

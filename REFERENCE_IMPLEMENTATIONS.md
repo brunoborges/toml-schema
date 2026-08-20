@@ -361,6 +361,9 @@ Every reference implementation should:
 1. Validate `config.tosd` against `toml-schema.tosd`.
 1. Validate `toml-schema.tosd` against itself.
 1. Keep supported schema vocabulary aligned with `toml-schema.abnf` and `toml-schema.tosd`.
+1. Treat the schema definition properties as a closed set and reject any
+   unrecognized property name at schema-load time rather than ignoring it, as
+   required by [Schema Definition Properties](SPEC.md#schema-definition-properties).
 1. Implement the TOML Schema 1.0 semantic vocabulary, including sibling
    presence rules, conjunctive composition, array uniqueness, standardized
    string formats, defaults, and deprecation warnings.

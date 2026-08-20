@@ -27,6 +27,10 @@ fn read_abnf() -> String {
     fs::read_to_string(abnf_path()).expect("read toml-schema.abnf")
 }
 
+fn repository_file(name: &str) -> PathBuf {
+    abnf_path().parent().expect("repository root").join(name)
+}
+
 fn rule_expression(rule: &str, abnf: &str) -> String {
     let mut expression = String::new();
     let mut in_rule = false;
@@ -86,6 +90,37 @@ fn schema_loader_definition_keys_match_abnf_schema_keys() {
     expected.insert("format".to_string());
     let actual: BTreeSet<String> = DEFINITION_KEYS.iter().map(|key| key.to_string()).collect();
     assert_eq!(actual, expected);
+}
+
+#[test]
+fn specification_and_self_schema_definition_keys_match_abnf() {
+    let abnf_keys = alternatives_for("schema-key", &read_abnf());
+    let specification =
+        fs::read_to_string(repository_file("SPEC.md")).expect("read SPEC.md");
+    let inventory = specification
+        .split_once("In full,")
+        .and_then(|(_, remainder)| remainder.split_once("The set is closed"))
+        .map(|(inventory, _)| inventory)
+        .expect("SPEC.md schema definition property inventory");
+    let token = Regex::new(r"`([a-z]+)`").expect("compile property token regex");
+    let specification_keys: BTreeSet<String> = token
+        .captures_iter(inventory)
+        .map(|capture| capture[1].to_string())
+        .collect();
+    assert_eq!(specification_keys, abnf_keys);
+
+    let self_schema = fs::read_to_string(repository_file("toml-schema.tosd"))
+        .expect("read toml-schema.tosd");
+    let keypattern = Regex::new(r"(?m)^keypattern = '\^\(([^)]*)\)")
+        .expect("compile self-schema keypattern regex")
+        .captures(&self_schema)
+        .expect("self-schema escaped-children keypattern");
+    let self_schema_keys: BTreeSet<String> = keypattern[1]
+        .split('|')
+        .filter(|key| *key != "children")
+        .map(str::to_string)
+        .collect();
+    assert_eq!(self_schema_keys, abnf_keys);
 }
 
 #[test]

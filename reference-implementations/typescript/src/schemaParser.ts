@@ -145,12 +145,20 @@ function validateAlternativeReferences(
   property: string,
   references: readonly string[],
 ): void {
+  const seen = new Map<string, string>();
   for (const reference of references) {
     const normalized = normalizeReference(reference);
     rejectBareCollectionReference(name, property, normalized);
     if (normalized === "any") {
       throw new SchemaError(`${name} cannot use any directly in ${property}`);
     }
+    const first = seen.get(normalized);
+    if (first !== undefined) {
+      throw new SchemaError(
+        `${name} ${property} contains duplicate type references ${JSON.stringify(first)} and ${JSON.stringify(reference)}; both resolve to ${normalized}`,
+      );
+    }
+    seen.set(normalized, reference);
   }
 }
 
@@ -196,6 +204,26 @@ function validateRangeConstraints(
   if (typeName !== undefined) {
     validateBoundaryMatchesType(name, "min", min, typeName);
     validateBoundaryMatchesType(name, "max", max, typeName);
+    validateOrderedRange(name, min, max, typeName);
+  }
+}
+
+export function validateOrderedRange(
+  name: string,
+  min: TomlValue | undefined,
+  max: TomlValue | undefined,
+  comparableKind: SchemaType,
+): void {
+  if (comparableKind === "integer") {
+    if (typeof min === "number" && !Number.isFinite(min)) {
+      throw new SchemaError(`${name} cannot use infinity as min when comparable kind is integer`);
+    }
+    if (typeof max === "number" && !Number.isFinite(max)) {
+      throw new SchemaError(`${name} cannot use infinity as max when comparable kind is integer`);
+    }
+  }
+  if (min !== undefined && max !== undefined && compareValues(min, max) > 0) {
+    throw new SchemaError(`${name} min must not be greater than max`);
   }
 }
 

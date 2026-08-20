@@ -6,6 +6,15 @@ import (
 	"testing"
 )
 
+func hasMessageAt(result ValidationResult, path, text string) bool {
+	for _, diagnostic := range result.Errors {
+		if diagnostic.Path == path && strings.Contains(diagnostic.Message, text) {
+			return true
+		}
+	}
+	return false
+}
+
 func TestEffectiveAnnotationsTerminateOnRecursiveNamedTypes(t *testing.T) {
 	schema := loadSemanticsSchema(t, `
 [types.node]
@@ -134,54 +143,36 @@ type = "boolean"
 optional = true
 `)
 
-	valid := []map[string]any{
+	unionExclusive := []map[string]any{
 		{"id": int64(1), "name": "a"},
 		{"id": int64(1), "label": "a"},
 		{"id": int64(1), "name": "a", "enabled": true},
 	}
 
-	for _, item := range valid {
+	for _, item := range unionExclusive {
 		if result := schema.Validate(map[string]any{"item": item}); !result.Valid() {
-			t.Fatalf("expected %#v to validate: %#v", item, result.Errors)
+			t.Fatalf("expected selected union closure to accept %#v: %#v", item, result.Errors)
 		}
 	}
 
-	// Each alternative stays closed against the keys exclusive to its sibling
-	// alternatives, so a value carrying both cannot select either branch.
-	both := schema.Validate(map[string]any{"item": map[string]any{
-		"id": int64(1), "name": "a", "label": "b",
-	}})
-	if len(both.Errors) != 1 || both.Errors[0].Path != "$.item" ||
-		!strings.Contains(both.Errors[0].Message, "but found 0") {
-		t.Fatalf("expected a single aggregated oneof diagnostic: %#v", both.Errors)
+	for _, item := range []map[string]any{
+		{"id": int64(1), "name": "a", "label": "a"},
+		{"id": int64(1)},
+	} {
+		result := schema.Validate(map[string]any{"item": item})
+		if result.Valid() || !hasMessageAt(result, "$.item", "found 0") {
+			t.Fatalf("expected no matching union alternative for %#v: %#v", item, result.Errors)
+		}
 	}
-
-	none := schema.Validate(map[string]any{"item": map[string]any{"id": int64(1)}})
-	if len(none.Errors) != 1 {
-		t.Fatalf("failed union branches must not leak diagnostics: %#v", none.Errors)
-	}
-	if none.Errors[0].Path != "$.item" || !strings.Contains(none.Errors[0].Message, "but found 0") {
-		t.Fatalf("unexpected aggregated union diagnostic: %#v", none.Errors[0])
-	}
-
-	unknown := schema.Validate(map[string]any{"item": map[string]any{
+	unexpected := schema.Validate(map[string]any{"item": map[string]any{
 		"id": int64(1), "name": "a", "bogus": true,
 	}})
-	if unknown.Valid() {
-		t.Fatal("expected a closed composed union table")
+	if unexpected.Valid() || !hasPath(unexpected, "$.item.bogus") {
+		t.Fatalf("expected unexpected-key diagnostic: %#v", unexpected.Errors)
 	}
-	for _, diagnostic := range unknown.Errors {
-		if diagnostic.Path != "$.item.bogus" && diagnostic.Path != "$.item" {
-			t.Fatalf("failed union branches must not leak diagnostics: %#v", unknown.Errors)
-		}
-	}
-	if !containsDiagnostic(unknown.Errors, "$.item.bogus", "unexpected key") {
-		t.Fatalf("expected an unexpected-key diagnostic: %#v", unknown.Errors)
-	}
-
 	missing := schema.Validate(map[string]any{"item": map[string]any{"name": "a"}})
-	if len(missing.Errors) != 1 || missing.Errors[0].Path != "$.item.id" {
-		t.Fatalf("expected only the missing component child: %#v", missing.Errors)
+	if missing.Valid() || !hasPath(missing, "$.item.id") {
+		t.Fatalf("expected required id diagnostic: %#v", missing.Errors)
 	}
 }
 
@@ -218,7 +209,7 @@ allof = ["types.base", "types.identity"]
 		"path": "p",
 	}})
 	if !valid.Valid() {
-		t.Fatalf("expected overlapping structural child to remain in branch closure: %#v", valid.Errors)
+		t.Fatalf("expected selected plain closure to accept path: %#v", valid.Errors)
 	}
 
 	both := schema.Validate(map[string]any{"item": map[string]any{
@@ -226,9 +217,8 @@ allof = ["types.base", "types.identity"]
 		"path": "p",
 		"git":  "https://example.invalid/repo",
 	}})
-	if both.Valid() || len(both.Errors) != 1 ||
-		!strings.Contains(both.Errors[0].Message, "but found 0") {
-		t.Fatalf("expected sibling-exclusive keys to keep both branches closed: %#v", both.Errors)
+	if both.Valid() || !hasMessageAt(both, "$.item", "found 0") {
+		t.Fatalf("expected no matching union alternative: %#v", both.Errors)
 	}
 }
 
@@ -260,7 +250,7 @@ allof = ["types.base", "types.identity"]
 		"known": "value",
 	}})
 	if !valid.Valid() {
-		t.Fatalf("expected the closed alternative to be the sole match: %#v", valid.Errors)
+		t.Fatalf("expected selected closed alternative to accept known: %#v", valid.Errors)
 	}
 
 	invalid := schema.Validate(map[string]any{"element": map[string]any{

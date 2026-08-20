@@ -41,6 +41,10 @@ def is_nan(value: Any) -> bool:
     return isinstance(value, float) and math.isnan(value)
 
 
+def is_infinite(value: Any) -> bool:
+    return isinstance(value, float) and math.isinf(value)
+
+
 def is_offset_date_time(value: Any) -> bool:
     return isinstance(value, _dt.datetime) and value.tzinfo is not None
 

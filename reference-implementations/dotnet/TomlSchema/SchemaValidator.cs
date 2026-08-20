@@ -69,7 +69,12 @@ internal class SchemaValidator
         ValidateType(value, schema, elemPath);
     }
 
-    private void ValidateType(object? value, SchemaDefinition schema, string path, bool enforceClosure = true)
+    private void ValidateType(
+        object? value,
+        SchemaDefinition schema,
+        string path,
+        IReadOnlySet<string>? externalClosure = null,
+        bool enforceClosure = true)
     {
         // Handle null
         if (value == null)
@@ -89,6 +94,20 @@ internal class SchemaValidator
             effectiveSchema = refSchema;
         }
 
+        var determinateClosure = new HashSet<string>(externalClosure ?? new HashSet<string>());
+        determinateClosure.UnionWith(CollectDeterminateFixedChildKeys(
+            effectiveSchema, new HashSet<string>()));
+
+        if (effectiveSchema.AllOf != null)
+        {
+            foreach (var typeRef in effectiveSchema.AllOf)
+            {
+                var allOfSchema = _schema.ResolveType(typeRef)
+                    ?? throw new InvalidOperationException($"Undefined type in allof: {typeRef}");
+                ValidateType(value, allOfSchema, path, determinateClosure, enforceClosure: false);
+            }
+        }
+
         // Handle conditionals
         if (effectiveSchema.Condition != null)
         {
@@ -106,7 +125,7 @@ internal class SchemaValidator
             string? selectedType = matches ? effectiveSchema.Condition.ThenType : effectiveSchema.Condition.ElseType;
             var condSchema = _schema.ResolveType(selectedType)
                 ?? throw new InvalidOperationException($"Undefined type in conditional: {selectedType}");
-            ValidateType(value, condSchema, path);
+            ValidateType(value, condSchema, path, determinateClosure, enforceClosure);
             return;
         }
 
@@ -120,13 +139,16 @@ internal class SchemaValidator
                 if (unionSchema != null)
                 {
                     var testValidator = new SchemaValidator(_schema);
-                    testValidator.ValidateType(value, unionSchema, "$.test");
+                    testValidator.ValidateType(value, unionSchema, "$.test", determinateClosure);
                     if (testValidator._errors.Count == 0)
                         matchCount++;
                 }
             }
             if (matchCount != 1)
-                _errors.Add(new ValidationError(path, $"expected exactly one matching type from oneof", "oneof"));
+                _errors.Add(new ValidationError(
+                    path,
+                    $"expected exactly one matching type from oneof but found {matchCount}",
+                    "oneof"));
             return;
         }
 
@@ -140,7 +162,7 @@ internal class SchemaValidator
                 if (unionSchema != null)
                 {
                     var testValidator = new SchemaValidator(_schema);
-                    testValidator.ValidateType(value, unionSchema, "$.test");
+                    testValidator.ValidateType(value, unionSchema, "$.test", determinateClosure);
                     if (testValidator._errors.Count == 0)
                         matchCount++;
                 }
@@ -148,16 +170,6 @@ internal class SchemaValidator
             if (matchCount == 0)
                 _errors.Add(new ValidationError(path, "expected at least one matching type from anyof", "anyof"));
             return;
-        }
-
-        if (effectiveSchema.AllOf != null)
-        {
-            foreach (var typeRef in effectiveSchema.AllOf)
-            {
-                var allOfSchema = _schema.ResolveType(typeRef)
-                    ?? throw new InvalidOperationException($"Undefined type in allof: {typeRef}");
-                ValidateType(value, allOfSchema, path, enforceClosure: false);
-            }
         }
 
         // Type validation
@@ -204,21 +216,23 @@ internal class SchemaValidator
                     $"string is not a valid {effectiveSchema.Format}", "format"));
         }
 
-        // Numeric constraints
-        if ((effectiveSchema.Type == SchemaType.Integer || effectiveSchema.Type == SchemaType.Float) && value is IComparable)
+        // Range constraints
+        if (effectiveSchema.Min != null
+            && ValueSemantics.MatchesComparableKind(value, effectiveSchema.Type))
         {
-            double numValue = value is long l ? (double)l : value is double d ? d : 0;
-
-            if (effectiveSchema.Min.HasValue && numValue < effectiveSchema.Min.Value)
+            if (ValueSemantics.Compare(value, effectiveSchema.Min) < 0)
                 _errors.Add(new ValidationError(path, $"value below minimum", "min"));
-
-            if (effectiveSchema.Max.HasValue && numValue > effectiveSchema.Max.Value)
+        }
+        if (effectiveSchema.Max != null
+            && ValueSemantics.MatchesComparableKind(value, effectiveSchema.Type))
+        {
+            if (ValueSemantics.Compare(value, effectiveSchema.Max) > 0)
                 _errors.Add(new ValidationError(path, $"value above maximum", "max"));
         }
 
         // Table validation
         if (effectiveSchema.Type == SchemaType.Table && value is TomlTable tableValue)
-            ValidateTable(tableValue, effectiveSchema, path, enforceClosure);
+            ValidateTable(tableValue, effectiveSchema, path, externalClosure, enforceClosure);
 
         // Array validation
         if (effectiveSchema.Type == SchemaType.Array && value is TomlArray array)
@@ -229,7 +243,12 @@ internal class SchemaValidator
             ValidateCollection(collTable, effectiveSchema, path);
     }
 
-    private void ValidateTable(TomlTable table, SchemaDefinition schema, string path, bool enforceClosure = true)
+    private void ValidateTable(
+        TomlTable table,
+        SchemaDefinition schema,
+        string path,
+        IReadOnlySet<string>? externalClosure = null,
+        bool enforceClosure = true)
     {
         // Validate fixed children
         foreach (var (key, childSchema) in schema.Children)
@@ -249,7 +268,9 @@ internal class SchemaValidator
         // with no fixed children is open and accepts any keys.
         if (enforceClosure)
         {
-            var knownKeys = CollectFixedChildKeys(schema, new HashSet<string>());
+            var knownKeys = CollectEffectiveClosureKeys(schema, table, new HashSet<string>());
+            if (externalClosure != null)
+                knownKeys.UnionWith(externalClosure);
             if (knownKeys.Count > 0)
             {
                 foreach (var key in table.Keys)
@@ -269,7 +290,9 @@ internal class SchemaValidator
     /// named references and <c>allof</c> composition so that a composed table is
     /// closed over the union of every contributor's children.
     /// </summary>
-    private HashSet<string> CollectFixedChildKeys(SchemaDefinition schema, HashSet<string> visited)
+    private HashSet<string> CollectDeterminateFixedChildKeys(
+        SchemaDefinition schema,
+        HashSet<string> visited)
     {
         var keys = new HashSet<string>(schema.Children.Keys);
 
@@ -277,7 +300,7 @@ internal class SchemaValidator
         {
             var referenced = _schema.ResolveType(schema.Reference);
             if (referenced != null)
-                keys.UnionWith(CollectFixedChildKeys(referenced, visited));
+                keys.UnionWith(CollectDeterminateFixedChildKeys(referenced, visited));
         }
 
         if (schema.AllOf != null)
@@ -289,10 +312,56 @@ internal class SchemaValidator
 
                 var component = _schema.ResolveType(typeRef);
                 if (component != null)
-                    keys.UnionWith(CollectFixedChildKeys(component, visited));
+                    keys.UnionWith(CollectDeterminateFixedChildKeys(component, visited));
             }
         }
 
+        return keys;
+    }
+
+    private HashSet<string> CollectEffectiveClosureKeys(
+        SchemaDefinition schema,
+        object? value,
+        HashSet<string> visited)
+    {
+        var keys = CollectDeterminateFixedChildKeys(schema, new HashSet<string>(visited));
+
+        void MergeReference(string? reference)
+        {
+            if (string.IsNullOrEmpty(reference) || SchemaTypeExtensions.AllTypeNames.Contains(reference))
+                return;
+            if (!visited.Add(reference))
+                throw new InvalidOperationException($"Cyclic schema reference: {reference}");
+            try
+            {
+                var target = _schema.ResolveType(reference)
+                    ?? throw new InvalidOperationException($"Undefined type reference: {reference}");
+                keys.UnionWith(CollectEffectiveClosureKeys(target, value, visited));
+            }
+            finally
+            {
+                visited.Remove(reference);
+            }
+        }
+
+        MergeReference(schema.Reference);
+        foreach (var component in schema.AllOf ?? [])
+            MergeReference(component);
+        foreach (var alternative in schema.OneOf ?? [])
+            MergeReference(alternative);
+        foreach (var alternative in schema.AnyOf ?? [])
+            MergeReference(alternative);
+        if (schema.Condition != null)
+        {
+            var matches = value is TomlTable table
+                && table.TryGetValue(schema.Condition.IfKey, out var testValue)
+                && (schema.Condition.IfEquals != null
+                    ? ValueEquals(testValue, schema.Condition.IfEquals)
+                    : schema.Condition.IfIn?.Any(candidate => ValueEquals(testValue, candidate)) == true);
+            MergeReference(matches
+                ? schema.Condition.ThenType
+                : schema.Condition.ElseType);
+        }
         return keys;
     }
 
@@ -352,12 +421,10 @@ internal class SchemaValidator
             }
         }
 
-        // Array length
-        if (schema.Min.HasValue && array.Count < schema.Min)
-            _errors.Add(new ValidationError(path, "array too short", "min"));
-
-        if (schema.Max.HasValue && array.Count > schema.Max)
-            _errors.Add(new ValidationError(path, "array too long", "max"));
+        if (schema.MinLength.HasValue && array.Count < schema.MinLength)
+            _errors.Add(new ValidationError(path, "array too short", "minlength"));
+        if (schema.MaxLength.HasValue && array.Count > schema.MaxLength)
+            _errors.Add(new ValidationError(path, "array too long", "maxlength"));
 
         // Item type validation
         if (!string.IsNullOrEmpty(schema.ItemType))
@@ -367,6 +434,14 @@ internal class SchemaValidator
             for (int i = 0; i < array.Count; i++)
             {
                 ValidateType(array[i], itemSchema, $"{path}[{i}]");
+                if (schema.Min != null
+                    && ValueSemantics.AreComparable(array[i]!, schema.Min)
+                    && ValueSemantics.Compare(array[i]!, schema.Min) < 0)
+                    _errors.Add(new ValidationError($"{path}[{i}]", "value below minimum", "min"));
+                if (schema.Max != null
+                    && ValueSemantics.AreComparable(array[i]!, schema.Max)
+                    && ValueSemantics.Compare(array[i]!, schema.Max) > 0)
+                    _errors.Add(new ValidationError($"{path}[{i}]", "value above maximum", "max"));
             }
         }
     }

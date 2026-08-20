@@ -15,6 +15,8 @@ import tomllib
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from ._compare import (
+    compare,
+    is_infinite,
     is_nan,
     is_numeric,
     is_range_comparable,
@@ -305,11 +307,18 @@ def _reject_bare_collection_references(name: str, property_name: str, references
 
 
 def _validate_alternative_references(name: str, property_name: str, references: List[str]) -> None:
+    seen: Dict[str, str] = {}
     for reference in references:
         normalized = normalize_reference(reference)
         _reject_bare_collection_reference(name, property_name, normalized)
         if normalized == SchemaType.ANY.value:
             raise SchemaError(f"{name} cannot use any directly in {property_name}")
+        if normalized in seen:
+            raise SchemaError(
+                f"{name} {property_name} contains duplicate type references "
+                f"{seen[normalized]!r} and {reference!r}; both resolve to {normalized}"
+            )
+        seen[normalized] = reference
 
 
 def _is_range_boundary(value: Any) -> bool:
@@ -374,6 +383,19 @@ def _validate_range_constraints(
     if type_name is not None:
         _validate_boundary_matches_type(name, "min", min_value, type_name)
         _validate_boundary_matches_type(name, "max", max_value, type_name)
+        _validate_ordered_range(name, min_value, max_value, type_name)
+
+
+def _validate_ordered_range(
+    name: str, min_value: Any, max_value: Any, comparable_kind: SchemaType
+) -> None:
+    if comparable_kind == SchemaType.INTEGER:
+        if is_infinite(min_value):
+            raise SchemaError(f"{name} cannot use infinity as min when comparable kind is integer")
+        if is_infinite(max_value):
+            raise SchemaError(f"{name} cannot use infinity as max when comparable kind is integer")
+    if min_value is not None and max_value is not None and compare(min_value, max_value) > 0:
+        raise SchemaError(f"{name} min must not be greater than max")
 
 
 def _validate_allowed_values_constraints(
@@ -863,43 +885,48 @@ class Schema:
                 raise SchemaError(f"allof component {reference} has incompatible effective kind")
         return kind, True
 
-    def effective_fixed_children(self, definition: Definition, visiting: Set[str]) -> Set[str]:
+    def determinate_fixed_children(self, definition: Definition, visiting: Set[str]) -> Set[str]:
         fixed: Set[str] = set(definition.children.keys())
         references = list(definition.all_of)
         if definition.reference:
             references.append(definition.reference)
-        references += list(definition.one_of)
-        references += list(definition.any_of)
-        if definition.condition is not None:
-            references += [definition.then_reference, definition.else_reference]
         for reference in references:
-            if parse_schema_type(reference) is not None:
-                continue
-            if reference in visiting:
-                raise SchemaError(f"cyclic composition reference: {reference}")
-            target = self.types.get(reference)
-            if target is None:
-                raise SchemaError(f"unknown type reference: {reference}")
-            visiting.add(reference)
-            try:
-                target_fixed = self.effective_fixed_children(target, visiting)
-            finally:
-                visiting.discard(reference)
+            target_fixed = self.determinate_reference_fixed_children(reference, visiting)
             fixed.update(target_fixed)
         return fixed
 
+    def determinate_reference_fixed_children(
+        self, reference: str, visiting: Set[str]
+    ) -> Set[str]:
+        if parse_schema_type(reference) is not None:
+            return set()
+        if reference in visiting:
+            raise SchemaError(f"cyclic composition reference: {reference}")
+        target = self.types.get(reference)
+        if target is None:
+            raise SchemaError(f"unknown type reference: {reference}")
+        visiting.add(reference)
+        try:
+            return self.determinate_fixed_children(target, visiting)
+        finally:
+            visiting.discard(reference)
+
     def has_collection_item_constraint(self, definition: Definition, visiting: Set[str]) -> bool:
+        if definition.one_of or definition.any_of or definition.condition is not None:
+            return True
         if definition.item_reference:
             return True
-        references: List[str] = []
         if definition.reference:
-            references.append(definition.reference)
-        references += list(definition.one_of)
-        references += list(definition.any_of)
-        if definition.condition is not None:
-            references += [definition.then_reference, definition.else_reference]
-        references += list(definition.all_of)
-        for reference in references:
+            target = self.types.get(definition.reference)
+            if target is None:
+                raise SchemaError(f"unknown type reference: {definition.reference}")
+            visiting.add(definition.reference)
+            try:
+                if self.has_collection_item_constraint(target, visiting):
+                    return True
+            finally:
+                visiting.discard(definition.reference)
+        for reference in definition.all_of:
             if parse_schema_type(reference) is not None:
                 continue
             if reference in visiting:
@@ -907,6 +934,8 @@ class Schema:
             target = self.types.get(reference)
             if target is None:
                 raise SchemaError(f"unknown type reference: {reference}")
+            if target.one_of or target.any_of or target.condition is not None:
+                continue
             visiting.add(reference)
             try:
                 found = self.has_collection_item_constraint(target, visiting)
@@ -1072,7 +1101,7 @@ class Schema:
             if not resolved or kind not in (SchemaType.TABLE, SchemaType.COLLECTION):
                 raise SchemaError(f"{definition.name} sibling rules require an effective table or collection")
             try:
-                fixed = self.effective_fixed_children(definition, set())
+                fixed = self.determinate_fixed_children(definition, set())
             except SchemaError as exc:
                 raise SchemaError(f"{definition.name}: {exc}") from exc
 
@@ -1125,6 +1154,7 @@ class Schema:
                     )
                 _validate_boundary_matches_type(definition.name, "min", definition.min, item_type)
                 _validate_boundary_matches_type(definition.name, "max", definition.max, item_type)
+                _validate_ordered_range(definition.name, definition.min, definition.max, item_type)
             for child in definition.children.values():
                 validate_definition(child)
 

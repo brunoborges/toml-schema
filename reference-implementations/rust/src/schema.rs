@@ -5,7 +5,7 @@
 //! tables are decoded into [`Definition`] values, and a [`Schema`] can validate
 //! a parsed TOML document against those definitions.
 
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fs;
 use std::net::{Ipv4Addr, Ipv6Addr};
@@ -669,7 +669,11 @@ impl Schema {
         }
         if has_sibling_rules {
             let mut children = HashSet::new();
-            self.collect_effective_child_names(definition, &mut HashSet::new(), &mut children)?;
+            self.collect_determinate_fixed_child_names(
+                definition,
+                &mut HashSet::new(),
+                &mut children,
+            )?;
             for (trigger, required) in &definition.dependent_required {
                 if !children.contains(trigger) {
                     return Err(format!(
@@ -709,35 +713,41 @@ impl Schema {
     }
 
     /// Reports whether a definition supplies a collection item constraint
-    /// locally or through any composed, referenced, or alternative definition.
+    /// locally or through a structurally contributing type/allof component.
     fn has_collection_item_constraint(
         &self,
         definition: &Definition,
         seen: &mut HashSet<String>,
     ) -> bool {
+        if definition.conditional.is_some()
+            || !definition.one_of.is_empty()
+            || !definition.any_of.is_empty()
+        {
+            return true;
+        }
         if definition.item_reference.is_some() {
             return true;
         }
-        let alternatives = if definition.one_of.is_empty() {
-            &definition.any_of
-        } else {
-            &definition.one_of
-        };
-        definition
-            .reference
-            .iter()
-            .chain(alternatives.iter())
-            .chain(
-                definition
-                    .conditional
-                    .iter()
-                    .flat_map(|selector| [&selector.then_reference, &selector.else_reference]),
-            )
-            .chain(definition.all_of.iter())
-            .any(|reference| self.reference_has_collection_item_constraint(reference, seen))
+        if let Some(reference) = definition.reference.as_deref() {
+            let normalized = normalize_reference(reference.to_string());
+            if !seen.insert(normalized.clone()) {
+                return false;
+            }
+            let found = self
+                .types
+                .get(&normalized)
+                .is_some_and(|target| self.has_collection_item_constraint(target, seen));
+            seen.remove(&normalized);
+            if found {
+                return true;
+            }
+        }
+        definition.all_of.iter().any(|reference| {
+            self.structural_reference_has_collection_item_constraint(reference, seen)
+        })
     }
 
-    fn reference_has_collection_item_constraint(
+    fn structural_reference_has_collection_item_constraint(
         &self,
         reference: &str,
         seen: &mut HashSet<String>,
@@ -749,10 +759,16 @@ impl Schema {
         if !seen.insert(normalized.clone()) {
             return false;
         }
-        let found = self
-            .types
-            .get(&normalized)
-            .is_some_and(|definition| self.has_collection_item_constraint(definition, seen));
+        let found = self.types.get(&normalized).is_some_and(|definition| {
+            if definition.conditional.is_some()
+                || !definition.one_of.is_empty()
+                || !definition.any_of.is_empty()
+            {
+                false
+            } else {
+                self.has_collection_item_constraint(definition, seen)
+            }
+        });
         seen.remove(&normalized);
         found
     }
@@ -841,7 +857,7 @@ impl Schema {
         result
     }
 
-    fn collect_effective_child_names(
+    fn collect_determinate_fixed_child_names(
         &self,
         definition: &Definition,
         seen: &mut HashSet<String>,
@@ -849,26 +865,15 @@ impl Schema {
     ) -> Result<(), String> {
         names.extend(definition.children.keys().cloned());
         if let Some(reference) = definition.reference.as_deref() {
-            self.collect_reference_child_names(reference, seen, names)?;
+            self.collect_determinate_reference_child_names(reference, seen, names)?;
         }
-        for reference in definition
-            .one_of
-            .iter()
-            .chain(definition.any_of.iter())
-            .chain(
-                definition
-                    .conditional
-                    .iter()
-                    .flat_map(|selector| [&selector.then_reference, &selector.else_reference]),
-            )
-            .chain(definition.all_of.iter())
-        {
-            self.collect_reference_child_names(reference, seen, names)?;
+        for reference in &definition.all_of {
+            self.collect_determinate_reference_child_names(reference, seen, names)?;
         }
         Ok(())
     }
 
-    fn collect_reference_child_names(
+    fn collect_determinate_reference_child_names(
         &self,
         reference: &str,
         seen: &mut HashSet<String>,
@@ -885,7 +890,7 @@ impl Schema {
             .types
             .get(&normalized)
             .ok_or_else(|| format!("unknown type reference: {reference}"))?;
-        let result = self.collect_effective_child_names(definition, seen, names);
+        let result = self.collect_determinate_fixed_child_names(definition, seen, names);
         seen.remove(&normalized);
         result
     }
@@ -990,6 +995,12 @@ impl Schema {
             validate_boundary_matches_type(
                 &definition.name,
                 "max",
+                definition.max.as_ref(),
+                item_type,
+            )?;
+            validate_ordered_range(
+                &definition.name,
+                definition.min.as_ref(),
                 definition.max.as_ref(),
                 item_type,
             )?;
@@ -1356,6 +1367,7 @@ fn parse_definition(
     reject_bare_collection_references(name, "items", &items)?;
     validate_alternative_references(name, "oneof", &one_of)?;
     validate_alternative_references(name, "anyof", &any_of)?;
+    validate_alternative_references(name, "allof", &all_of)?;
     validate_composition_references(name, &all_of)?;
     if type_selector.as_deref().is_some_and(|selector| {
         type_name != Some(SchemaType::Collection)
@@ -1683,10 +1695,17 @@ fn validate_alternative_references(
     property: &str,
     references: &[String],
 ) -> Result<(), String> {
+    let mut seen = HashMap::new();
     for reference in references {
         reject_bare_collection_reference(name, property, Some(reference.as_str()))?;
-        if normalize_reference(reference.clone()) == SchemaType::Any.schema_name() {
+        let normalized = normalize_reference(reference.clone());
+        if normalized == SchemaType::Any.schema_name() {
             return Err(format!("{name} cannot use any directly in {property}"));
+        }
+        if let Some(first) = seen.insert(normalized.clone(), reference) {
+            return Err(format!(
+                "{name} {property} contains duplicate type references {first:?} and {reference:?}; both resolve to {normalized}"
+            ));
         }
     }
     Ok(())
@@ -1821,6 +1840,30 @@ fn validate_range_constraints(
         }
         validate_boundary_matches_type(name, "min", min, type_name)?;
         validate_boundary_matches_type(name, "max", max, type_name)?;
+        validate_ordered_range(name, min, max, type_name)?;
+    }
+    Ok(())
+}
+
+fn validate_ordered_range(
+    name: &str,
+    min: Option<&Value>,
+    max: Option<&Value>,
+    comparable_kind: SchemaType,
+) -> Result<(), String> {
+    if comparable_kind == SchemaType::Integer {
+        for (key, boundary) in [("min", min), ("max", max)] {
+            if matches!(boundary, Some(Value::Float(value)) if value.is_infinite()) {
+                return Err(format!(
+                    "{name} cannot use infinity as {key} when comparable kind is integer"
+                ));
+            }
+        }
+    }
+    if let (Some(min), Some(max)) = (min, max) {
+        if compare(min, max)? == std::cmp::Ordering::Greater {
+            return Err(format!("{name} min must not be greater than max"));
+        }
     }
     Ok(())
 }
@@ -2094,6 +2137,8 @@ impl<'schema> Validator<'schema> {
                 &union.any_of
             };
             let mut successful = Vec::new();
+            let mut candidate_closure_names = HashSet::new();
+            let determinate_children = collect_effective_closure_children(&components);
             for reference in alternatives {
                 let alternative = match self.resolve_reference(reference, &mut HashSet::new()) {
                     Ok(alternative) => alternative,
@@ -2122,6 +2167,10 @@ impl<'schema> Validator<'schema> {
                         return;
                     }
                 }
+                candidate_closure_names.extend(
+                    collect_effective_closure_children(&candidate_components)
+                        .into_keys(),
+                );
                 let mut candidate = Validator::new(self.schema);
                 candidate.emit_deprecations = self.emit_deprecations;
                 candidate.validate_component_set(path, value, candidate_components);
@@ -2138,6 +2187,20 @@ impl<'schema> Validator<'schema> {
                             successful.len()
                         ),
                     );
+                    if successful.is_empty() {
+                        self.report_keys_outside_candidate_closures(
+                            path,
+                            value,
+                            &candidate_closure_names,
+                        );
+                        if let Value::Table(table) = value {
+                            self.validate_missing_fixed_children(
+                                path,
+                                table,
+                                &determinate_children,
+                            );
+                        }
+                    }
                     false
                 } else {
                     true
@@ -2201,8 +2264,24 @@ impl<'schema> Validator<'schema> {
         }
     }
 
+    fn report_keys_outside_candidate_closures(
+        &mut self,
+        path: &str,
+        value: &Value,
+        candidate_closure_names: &HashSet<String>,
+    ) {
+        let Value::Table(table) = value else {
+            return;
+        };
+        for key in table.keys() {
+            if !candidate_closure_names.contains(key) {
+                self.add(&append_path(path, key), "unexpected key");
+            }
+        }
+    }
+
     fn validate_table_value(&mut self, path: &str, table: &Table, components: &[Definition]) {
-        let children = collect_children(components);
+        let children = collect_effective_closure_children(components);
         if children.is_empty() {
             return;
         }
@@ -2216,7 +2295,7 @@ impl<'schema> Validator<'schema> {
     }
 
     fn validate_collection(&mut self, path: &str, table: &Table, components: &[Definition]) {
-        let children = collect_children(components);
+        let children = collect_effective_closure_children(components);
         let mut dynamic_entries = 0usize;
         for (key, value) in table.iter() {
             let child_path = append_path(path, key);
@@ -2620,7 +2699,9 @@ impl<'schema> Validator<'schema> {
     }
 }
 
-fn collect_children(components: &[Definition]) -> BTreeMap<String, Vec<Definition>> {
+fn collect_effective_closure_children(
+    components: &[Definition],
+) -> BTreeMap<String, Vec<Definition>> {
     let mut children: BTreeMap<String, Vec<Definition>> = BTreeMap::new();
     for component in components {
         for (name, definition) in &component.children {

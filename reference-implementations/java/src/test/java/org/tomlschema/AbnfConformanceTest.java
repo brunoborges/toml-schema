@@ -26,6 +26,31 @@ class AbnfConformanceTest {
     }
 
     @Test
+    void specificationAndSelfSchemaDefinitionKeysMatchAbnf() throws IOException {
+        Set<String> abnfKeys = alternativesFor("schema-key", readAbnf());
+        String specification = Files.readString(fixture("SPEC.md"), StandardCharsets.UTF_8);
+        int inventoryStart = specification.indexOf("In full,");
+        int inventoryEnd = specification.indexOf("The set is closed", inventoryStart);
+        String inventory = specification.substring(inventoryStart, inventoryEnd);
+        Matcher property = Pattern.compile("`([a-z]+)`").matcher(inventory);
+        Set<String> specificationKeys = property.results()
+                .map(result -> result.group(1))
+                .collect(Collectors.toSet());
+        assertEquals(abnfKeys, specificationKeys);
+
+        String selfSchema = Files.readString(fixture("toml-schema.tosd"), StandardCharsets.UTF_8);
+        Matcher keyPattern = Pattern.compile("(?m)^keypattern = '\\^\\(([^)]*)\\)")
+                .matcher(selfSchema);
+        if (!keyPattern.find()) {
+            throw new AssertionError("self-schema escaped-children keypattern not found");
+        }
+        Set<String> selfSchemaKeys = Arrays.stream(keyPattern.group(1).split("\\|"))
+                .filter(key -> !key.equals("children"))
+                .collect(Collectors.toSet());
+        assertEquals(abnfKeys, selfSchemaKeys);
+    }
+
+    @Test
     void schemaTypesMatchAbnfBuiltInTypes() throws IOException {
         String abnf = readAbnf();
         Set<String> implementationTypes = Arrays.stream(SchemaType.values())

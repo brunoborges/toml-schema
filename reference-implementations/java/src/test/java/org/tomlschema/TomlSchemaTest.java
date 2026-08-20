@@ -8,6 +8,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -2621,6 +2622,41 @@ class TomlSchemaTest {
         ValidationResult result = TomlSchema.load(schema).validate(document);
 
         assertTrue(result.isValid(), () -> result.errors().toString());
+    }
+
+    @Test
+    void validatesRangeBoundariesAtSchemaLoadTime() throws IOException {
+        assertDoesNotThrow(() -> TomlSchema.load(rangeSchema(
+                "valid-range.tosd", "type = \"float\"\nmin = -inf\nmax = inf")));
+        assertDoesNotThrow(() -> TomlSchema.load(rangeSchema(
+                "ordered-range.tosd", "type = \"integer\"\nmin = 1\nmax = 10")));
+
+        Map<String, String> reversed = Map.of(
+                "numeric", "type = \"integer\"\nmin = 10\nmax = 1",
+                "mixed-precision", "type = \"integer\"\nmin = 9007199254740993\nmax = 9007199254740992.0",
+                "offset", "type = \"offset-date-time\"\nmin = 2024-01-02T00:00:00Z\nmax = 2024-01-01T23:00:00Z",
+                "local-date-time", "type = \"local-date-time\"\nmin = 2024-01-02T00:00:00\nmax = 2024-01-01T23:00:00",
+                "local-date", "type = \"local-date\"\nmin = 2024-01-02\nmax = 2024-01-01",
+                "local-time", "type = \"local-time\"\nmin = 12:00:01\nmax = 12:00:00",
+                "array", "type = \"array\"\nitemtype = \"integer\"\nmin = 10\nmax = 1");
+        for (Map.Entry<String, String> entry : reversed.entrySet()) {
+            SchemaException error = assertThrows(SchemaException.class,
+                    () -> TomlSchema.load(rangeSchema(entry.getKey() + ".tosd", entry.getValue())));
+            assertTrue(error.getMessage().contains("min must not be greater than max"), error.getMessage());
+        }
+
+        for (String boundary : List.of("min = -inf", "max = inf")) {
+            SchemaException error = assertThrows(SchemaException.class,
+                    () -> TomlSchema.load(rangeSchema(
+                            "integer-infinity-" + boundary.charAt(1) + ".tosd",
+                            "type = \"integer\"\n" + boundary)));
+            assertTrue(error.getMessage().contains("when comparable kind is integer"), error.getMessage());
+        }
+    }
+
+    private Path rangeSchema(String fileName, String definition) throws IOException {
+        return write(fileName, "[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\n"
+                + definition + "\n");
     }
 
     private Path write(String fileName, String content) throws IOException {
