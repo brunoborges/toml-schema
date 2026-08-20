@@ -82,6 +82,13 @@ public class TomlSchema
     /// <returns>The validation result, including any discovery version-compatibility warnings.</returns>
     public static ValidationResult ValidateDocument(string documentPath) => Discover(documentPath).Validate();
 
+    /// <summary>Generates a draft TOML Schema describing a parsed TOML document.</summary>
+    public static string GenerateSchema(TomlTable document) => SchemaExtractor.Generate(document);
+
+    /// <summary>Reads a TOML document and writes its inferred draft schema.</summary>
+    public static void ExtractSchemaFile(string documentPath, string schemaPath) =>
+        SchemaExtractor.ExtractFile(documentPath, schemaPath);
+
     /// <summary>Gets the schema language version.</summary>
     public string Version => _version;
 

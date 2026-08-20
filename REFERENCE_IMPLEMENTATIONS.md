@@ -9,10 +9,10 @@ command-line interface for validation, schema discovery through
 
 | Language | Location | Requires | Interfaces |
 | --- | --- | --- | --- |
-| Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, schema discovery |
+| Java | [`reference-implementations/java`](reference-implementations/java) | Java 25 and Maven | Library, schema discovery, schema extraction |
 | Go | [`reference-implementations/go`](reference-implementations/go) | Go 1.27.0 | Library, schema discovery, schema extraction |
-| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 10.0 | Library, schema discovery |
-| Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery |
+| .NET | [`reference-implementations/dotnet`](reference-implementations/dotnet) | .NET 10.0 | Library, schema discovery, schema extraction |
+| Python | [`reference-implementations/python`](reference-implementations/python) | Python 3.11+ | Library, schema discovery, schema extraction |
 | Rust | [`reference-implementations/rust`](reference-implementations/rust) | Rust 1.97.1 and Cargo | Library, canonical CLI, schema discovery, schema extraction |
 | Node.js / TypeScript | [`reference-implementations/typescript`](reference-implementations/typescript) | Node.js 26.7+ and TypeScript 7 | Library, schema discovery, schema extraction |
 
@@ -25,7 +25,7 @@ package-registry releases.
 The Java 25 reference library uses [Tomlj](https://github.com/tomlj/tomlj) to
 parse TOML and validates the parsed data model against a `.tosd` schema. Its
 library API also supports document-driven schema discovery through
-`[toml-schema].location`.
+`[toml-schema].location` and starter-schema extraction.
 
 Run the full Java test suite:
 
@@ -65,6 +65,12 @@ import org.tomlschema.TomlSchema;
 import org.tomlschema.ValidationResult;
 
 ValidationResult result = TomlSchema.validateDocument(Path.of("config.toml"));
+```
+
+Extract a starter schema:
+
+```java
+TomlSchema.extractSchemaFile(Path.of("config.toml"), Path.of("config.generated.tosd"));
 ```
 
 `TomlSchema.discover(...)` resolves a relative `[toml-schema].location` from the
@@ -116,7 +122,7 @@ The Go test suite includes an ABNF conformance test (`abnf_conformance_test.go`)
 The .NET 10.0 reference library uses [Tomlyn](https://github.com/xoofx/Tomlyn)
 to parse TOML and validates the parsed data model against a `.tosd` schema.
 Its library API also supports document-driven schema discovery through
-`[toml-schema].location`.
+`[toml-schema].location` and starter-schema extraction.
 
 Run the full .NET test suite:
 
@@ -159,6 +165,12 @@ using TomlSchema;
 var result = TomlSchema.TomlSchema.ValidateDocument("config.toml");
 ```
 
+Extract a starter schema:
+
+```csharp
+TomlSchema.TomlSchema.ExtractSchemaFile("config.toml", "config.generated.tosd");
+```
+
 `TomlSchema.Discover(...)` resolves a relative `[toml-schema].location` from
 the document's parent directory, also accepts an absolute local path or a
 hierarchical `file` URI, and rejects unsupported URI schemes, opaque `file`
@@ -174,7 +186,8 @@ The .NET test suite reads `toml-schema.abnf` as a conformance guard and checks t
 The Python 3.11+ reference library uses the standard-library
 [`tomllib`](https://docs.python.org/3/library/tomllib.html) parser to validate
 parsed TOML documents against a `.tosd` schema. Its library API also supports
-document-driven schema discovery through `[toml-schema].location`.
+document-driven schema discovery through `[toml-schema].location` and
+starter-schema extraction.
 
 Run the full Python test suite:
 
@@ -201,6 +214,14 @@ Validate using `[toml-schema].location` from the TOML document:
 from toml_schema import validate_document
 
 result = validate_document("config.toml")
+```
+
+Extract a starter schema:
+
+```python
+from toml_schema import extract_schema_file
+
+extract_schema_file("config.toml", "config.generated.tosd")
 ```
 
 Schema discovery resolves relative locations from the document's parent

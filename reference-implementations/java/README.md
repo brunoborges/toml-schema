@@ -80,6 +80,20 @@ document `[toml-schema].version` is compared against the resolved schema's
 declared version: a major-version mismatch fails discovery, while any other
 difference is reported as a warning rather than an error.
 
+### Schema extraction
+
+```java
+TomlSchema.extractSchemaFile(
+    Path.of("config.toml"),
+    Path.of("config.generated.tosd")
+);
+```
+
+`TomlSchema.generateSchema(TomlTable)` provides the same inference for an
+already parsed document. Extraction infers structure and built-in types, uses
+`any` for empty or heterogeneous array item types, skips reserved root
+`[toml-schema]` metadata, and never invents defaults.
+
 ## Conformance
 
 The test suite includes `AbnfConformanceTest`, which reads [`toml-schema.abnf`](../../toml-schema.abnf) and asserts that the implementation's supported schema keys and built-in type names match the grammar.

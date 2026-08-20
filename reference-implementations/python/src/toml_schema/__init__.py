@@ -30,6 +30,7 @@ from ._discovery import (
     validate_document,
 )
 from ._errors import DiscoveryError, SchemaError
+from ._extract import extract_schema_file, generate_schema
 from ._schema import Schema, load_document, load_schema
 from ._types import Diagnostic, Severity, SchemaType, ValidationError, ValidationResult
 
@@ -39,6 +40,8 @@ __all__ = [
     "__version__",
     "load_schema",
     "load_document",
+    "generate_schema",
+    "extract_schema_file",
     "schema_from_document",
     "validate_document",
     "resolve_schema_location",
