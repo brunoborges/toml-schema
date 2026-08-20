@@ -13,13 +13,14 @@ All commands below assume you run them from the repository root.
 
 ## Install the CLI
 
-The canonical CLI is distributed through
+The canonical CLI is distributed through the
+[TOML Schema CLI releases page](https://toml-schema.org/cli/releases/) and
 [GitHub Releases](https://github.com/brunoborges/toml-schema/releases).
 Install `1.0.0-rc.2` on Linux or Apple Silicon macOS:
 
 ```shell
 curl --proto '=https' --tlsv1.2 -sSfL \
-  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  https://toml-schema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
   bash -s -- --version 1.0.0-rc.2
 ```
 
@@ -29,7 +30,7 @@ directory is on `PATH`. Override the destination when needed:
 
 ```shell
 curl --proto '=https' --tlsv1.2 -sSfL \
-  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh |
+  https://toml-schema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
   TOSD_INSTALL_DIR="$HOME/bin" bash -s -- --version 1.0.0-rc.2
 ```
 
@@ -37,7 +38,7 @@ To inspect the installer before running it:
 
 ```shell
 curl --proto '=https' --tlsv1.2 -sSfLo install-tosd.sh \
-  https://github.com/brunoborges/toml-schema/releases/download/rust-v1.0.0-rc.2/install-tosd.sh
+  https://toml-schema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh
 less install-tosd.sh
 bash install-tosd.sh --version 1.0.0-rc.2
 ```
