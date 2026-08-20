@@ -98,7 +98,7 @@ uniqueitems = true</code></pre>
           <article class="card">
             <span class="badge">Practical</span>
             <h3>Validation-focused</h3>
-            <p>Define required fields, types, conditional branches, collections, unions, composition, sibling rules, uniqueness, defaults, and deprecations.</p>
+            <p>Define required fields, types, string formats, conditional branches, collections, unions, composition, sibling rules, uniqueness, defaults, and deprecations.</p>
           </article>
           <article class="card">
             <span class="badge">Toolable</span>
@@ -334,7 +334,7 @@ role = "backend"</code></pre>
             <div>
               <span class="badge">Constraints</span>
               <h3>Add rules where they matter</h3>
-              <p>Values can be constrained with allowed values, numeric ranges, string lengths, or patterns.</p>
+              <p>Values can be constrained with standardized string formats, allowed values, numeric ranges, string lengths, or patterns.</p>
             </div>
             <div class="tour-examples">
               <div>
@@ -346,12 +346,17 @@ allowedvalues = ["dev", "stage", "prod"]
 [elements.retries]
 type = "integer"
 min = 0
-max = 10</code></pre>
+max = 10
+
+[elements.contact]
+type = "string"
+format = "email"</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
                 <pre class="toml-example"><code class="language-toml">environment = "prod"
-retries = 3</code></pre>
+retries = 3
+contact = "ops@example.com"</code></pre>
               </div>
             </div>
           </article>
@@ -371,6 +376,7 @@ retries = 3</code></pre>
           <div class="spec-item"><strong>Alternative types</strong><span><code>oneof</code> requires exactly one matching type; <code>anyof</code> requires at least one.</span></div>
           <div class="spec-item"><strong>Conditional shapes</strong><span><code>if</code> selects a reusable <code>then</code> or <code>else</code> definition from a direct child's parsed value.</span></div>
           <div class="spec-item"><strong>Semantic rules</strong><span><code>dependentrequired</code>, <code>mutuallyexclusive</code>, and <code>exactlyone</code> constrain direct sibling presence.</span></div>
+          <div class="spec-item"><strong>String formats</strong><span><code>format</code> validates strings as <code>email</code>, <code>uuid</code>, <code>uri</code>, <code>hostname</code>, <code>ipv4</code>, or <code>ipv6</code>.</span></div>
           <div class="spec-item"><strong>Annotations</strong><span><code>default</code> is non-mutating metadata; <code>deprecated</code> produces warnings without invalidating a document.</span></div>
           <div class="spec-item"><strong>Containers and tuples</strong><span><code>itemtype</code> validates homogeneous array and collection members; <code>items</code> defines positional arrays.</span></div>
           <div class="spec-item"><strong>Media type</strong><span>TOML Schema files use <code>.tosd</code> and the registered <code>application/toml</code> media type.</span></div>
@@ -414,7 +420,7 @@ retries = 3</code></pre>
           </article>
           <article class="card">
             <span class="badge">Node.js</span>
-            <h3>TypeScript 6 library</h3>
+            <h3>TypeScript 7 library</h3>
             <p>Uses smol-toml and provides validation, schema discovery, and schema extraction through an ESM API.</p>
           </article>
         </div>

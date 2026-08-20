@@ -380,6 +380,8 @@ default = <toml-value>
 deprecated = true|false
 ```
 
+#### Schema Definition Properties
+
 The following matrix summarizes where definition properties apply. The
 detailed sections below remain authoritative.
 
@@ -430,15 +432,16 @@ path.
 
 The `children` table is a selective escape hatch, not a general alternative
 child syntax. Every direct entry below it MUST be named either `children` or one
-of the schema properties listed under [Supported Properties](#supported-properties).
-Schema loaders MUST reject non-conflicting names there. Ordinary, quoted,
-dotted, and empty child keys continue to use direct TOML table paths.
+of the [schema-definition properties](#schema-definition-properties) listed
+above. Schema loaders MUST reject non-conflicting names there. Ordinary,
+quoted, dotted, and empty child keys continue to use direct TOML table paths.
 
-A table named `children` that declares `type`, `oneof`, `anyof`, or the
-`if`/`then`/`else` selector is an ordinary target child definition rather than
-the escape namespace. This preserves the direct form for a target child
-literally named `children`. A selectorless table child with that name is written
-through the escape namespace as `[elements.parent.children.children]`.
+A table named `children` whose own definition declares a `type`, `oneof`,
+`anyof`, or `if` selector property is an ordinary target child definition
+rather than the escape namespace. This preserves the direct form for a target
+child literally named `children`. A selectorless table child with that name is
+written through the escape namespace as
+`[elements.parent.children.children]`.
 
 For example, this schema defines a scalar target key named `children` directly:
 
