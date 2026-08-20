@@ -7,7 +7,7 @@ TOML Schema validates the parsed input of a TOML file to:
 1. Eliminate or reduce misconfiguration that could cause damage if it were only detected when the configuration is evaluated in production,
 1. Be leveraged by editors and other tools to provide and enrich auto-completion and code hints for validation on the fly.
 
-The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document.
+The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document. The revision of TOML that this specification is defined against is pinned under [TOML Language Version](#toml-language-version).
 
 ## Conformance Terminology
 
@@ -27,6 +27,7 @@ command.
 - [First Glance](#first-glance)
   - [TOML example](#toml-example)
   - [TOML Schema example](#toml-schema-example)
+- [TOML Language Version](#toml-language-version)
 - [Schema Structure Reference](#schema-structure-reference)
   - [Top-level Structure Conditions](#top-level-structure-conditions)
 - [Metadata Table - `[toml-schema]`](#metadata-table---toml-schema)
@@ -58,7 +59,9 @@ command.
     - [Composition Examples](#composition-examples)
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
   - [Conditional Selection - `if`, `then`, and `else`](#conditional-selection---if-then-and-else)
+    - [The discriminator key and closed branches](#the-discriminator-key-and-closed-branches)
   - [Sibling Presence Rules](#sibling-presence-rules)
+  - [Annotations](#annotations)
   - [Description - `description`](#description---description)
   - [Default - `default`](#default---default)
   - [Deprecation - `deprecated`](#deprecation---deprecated)
@@ -153,6 +156,57 @@ itemtype = "types.serverType"
 minlength = 1
 ```
 
+## TOML Language Version
+
+This specification is defined against [TOML 1.0.0](https://toml.io/en/v1.0.0).
+That revision fixes both the grammar a conforming parser accepts and the logical
+value model — the TOML kinds `string`, `integer`, `float`, `boolean`, offset
+date-time, local date-time, local date, local time, array, and table — that every
+rule in this document is written against.
+
+- A TOML Schema document MUST be a well-formed TOML 1.0.0 document. Schema
+  loaders MUST reject a schema document that is not.
+- A TOML document being validated MUST be parsed as TOML 1.0.0 before validation
+  begins. Parsing precedes validation: a document that is not well-formed TOML
+  never reaches a validator, and its parse failure is a parse error rather than
+  a validation diagnostic.
+
+This baseline is a property of the language, not of an individual schema. No
+schema property selects a TOML version, and a schema document cannot request a
+different one.
+
+A TOML parser MAY accept input beyond TOML 1.0.0, whether from a later TOML
+revision — multi-line inline tables, trailing commas in inline tables,
+additional string escapes, or omitted seconds in date-times, for example — or
+from a vendor extension. Such a parser MUST NOT silently change validation
+outcomes. An implementation built on one:
+
+- MUST NOT report a schema document or a validated document as conforming to
+  TOML Schema 1.0 when the document parses only because of an extension;
+- MUST NOT let an extension change the logical value produced for input that is
+  well-formed TOML 1.0.0, because every validation rule in this specification is
+  evaluated against that logical value; and
+- MUST document the extended profile it accepts and SHOULD provide a mode that
+  restricts parsing to TOML 1.0.0.
+
+An implementation that cannot restrict its parser MUST treat acceptance beyond
+TOML 1.0.0 as an implementation extension and MUST report it, so that a schema
+or document that depends on it is never mistaken for a portable one. Conformance
+suites MUST use only TOML 1.0.0 syntax.
+
+**This is not the schema language version.** The TOML version pinned here and
+the TOML Schema language version described under
+[Schema Versioning](#schema-versioning) are different numbers with different
+meanings, and conflating them is a misreading this specification explicitly
+rejects. `[toml-schema].version` states which revision of the *schema
+vocabulary* — the properties, built-in type names, and validation rules defined
+by this document — a schema document is written against. This section states
+which revision of *TOML itself* both the schema document and the validated
+document are parsed as. The two version numbers move independently: a schema
+document that declares `version = "1.0.0"` declares TOML Schema 1.0.0, not
+TOML 1.0.0, and a future TOML Schema version would not by itself change the
+pinned TOML version.
+
 ## Schema Structure Reference
 
 A TOML Schema file has the following structure:
@@ -209,6 +263,12 @@ Custom properties and tables MUST NOT appear directly under `toml-schema`; they
 MAY appear only inside the `toml-schema.meta` table.
 
 ### Schema Versioning
+
+This section is about the TOML Schema **language** version, which is unrelated
+to the TOML language version pinned under
+[TOML Language Version](#toml-language-version). A schema document declares the
+schema vocabulary it uses; it never declares which revision of TOML it is
+written in.
 
 TOML Schema follows the same version-numbering policy as the TOML specification: schema language versions use [Semantic Versioning](https://semver.org/).
 
@@ -1739,14 +1799,50 @@ table-like node. The condition inspects one direct child of the current parsed
 table and selects one of two named reusable definitions:
 
 ```toml
+[types.sqliteDatabase]
+type = "table"
+
+    [types.sqliteDatabase.engine]
+    type = "string"
+    allowedvalues = [ "sqlite" ]
+
+    [types.sqliteDatabase.path]
+    type = "string"
+
+[types.serverDatabase]
+type = "table"
+
+    [types.serverDatabase.engine]
+    type = "string"
+    allowedvalues = [ "postgresql", "mysql" ]
+
+    [types.serverDatabase.host]
+    type = "string"
+
 [types.database]
 if = { key = "engine", equals = "sqlite" }
 then = "types.sqliteDatabase"
 else = "types.serverDatabase"
 ```
 
+Both branches declare `engine`, the key the condition reads. That is required
+rather than stylistic: see
+[The discriminator key and closed branches](#the-discriminator-key-and-closed-branches)
+below.
+
 `if` MUST be an inline table containing `key` and exactly one of `equals` or
 `in`. It MUST contain no other members.
+
+Because `if` is also a legal child key, an `if = { ... }` key/value entry is
+always the conditional selector, while a table header such as
+`[types.example.if]` is always a child definition named `if`. Consequently the
+condition MUST use inline-table syntax and can never be written as
+`[types.example.if]`. A definition that needs a target child named `if` writes
+that child through the `children` namespace, as described under
+[Quoted and Special Keys](#quoted-and-special-keys). A conditional definition
+has no nested child definitions of its own, so the two spellings never compete
+within one conditional definition, but a loader still MUST NOT infer the
+selector from a table-form `if`.
 
 - `key` MUST be a string naming one direct child key of the parsed table being
   validated. It is a decoded TOML key, not a dotted document path, and it does
@@ -1765,6 +1861,23 @@ Validation diagnostics and deprecation annotations come only from the selected
 branch. A branch default does not become the conditional slot's effective
 default; for a present value, an implementation MAY surface the selected
 branch's default as a hint.
+
+The condition reads a direct child of a parsed table. When the document value at
+a conditional node is not a table — a scalar, an array, or an array of tables —
+no direct child can be read, so the condition cannot be satisfied and is false,
+exactly as it is for an absent child. `else` is therefore the selected branch.
+Because both branches MUST resolve to the same table-like effective kind, that
+value cannot validate against either branch, and the node is invalid. A
+validator MUST report this as a kind mismatch against the common branch kind at
+the node's location, and MUST NOT report the branch's internal missing-child or
+unknown-key diagnostics for a value that is not a table at all. It MUST NOT
+report a diagnostic describing the condition, which never fails on its own.
+<!-- Integrator note: "kind mismatch" is the type-mismatch class of the
+     forthcoming canonical error model; adopt that code here. -->
+
+Consequently, a `default` on a conditional definition MUST be a table. A
+non-table default cannot satisfy either branch, so a schema loader MUST reject
+it at schema-load time under the default-validation rule stated below.
 
 Like a union, the conditional triple contributes nothing to the
 [determinate fixed-child set](#determinate-fixed-child-set) of the node it
@@ -1803,6 +1916,44 @@ else = "types.embeddedDatabase"
 
 Additional alternatives can be expressed by referencing another conditional
 definition from `then` or `else`.
+
+#### The discriminator key and closed branches
+
+The key named by `if.key` is ordinary application data. It is read to select a
+branch, and it is then validated by the selected branch like any other key. A
+conditional definition contributes no fixed children of its own, so nothing
+declares the discriminator on the node's behalf.
+
+A branch that declares fixed children is closed against exactly those children,
+as [Effective Closure Set](#effective-closure-set) defines. If such a branch
+omits the discriminator, the key the condition just read is not in the node's
+effective closure set and a validator MUST report it as an unknown key, so the
+conditional can never accept a document. Every closed branch MUST therefore
+declare the discriminator itself.
+
+Schema loaders MUST reject a conditional definition when a branch has a
+non-empty [determinate fixed-child set](#determinate-fixed-child-set) that does
+not contain the key named by `if.key`. That set is computed at schema-load time,
+so this check catches the common authoring mistake without resolving
+document-dependent shapes. A branch whose fixed children are contributed only by
+a nested union or conditional has an empty determinate set, and a loader cannot
+decide the question for it; the same unknown-key rule still applies at
+validation time, and authors remain responsible for declaring the discriminator
+in every shape a branch can take.
+
+Two branch shapes need no declaration and are not rejected: a branch that is an
+open table, whose effective closure set is empty and which therefore accepts the
+discriminator as arbitrary data, and a branch that is a `collection`, whose
+dynamic-entry rules accept the discriminator when its `keypattern` and
+`itemtype` permit it.
+
+The `else` branch is subject to the same rule as `then`. An `else` branch is
+selected both when the discriminator holds a different value and when it is
+absent, so a closed `else` branch typically declares the discriminator with
+`optional = true`, with `allowedvalues` excluding the value that selects `then`,
+or with both. In the example above, `types.serverDatabase` declares `engine`
+with `allowedvalues = [ "postgresql", "mysql" ]`, which both admits the key and
+rejects a value that should have selected the other branch.
 
 ### Sibling Presence Rules
 
@@ -1933,9 +2084,91 @@ Ordinary requiredness is evaluated together with these rules. An absent
 optional trigger has no effect. A non-optional child remains required even if a
 presence group would otherwise permit its absence.
 
+### Annotations
+
+`description`, `default`, and `deprecated` are **annotations**. Unlike the
+assertions defined above, an annotation never decides validity: it cannot make a
+document valid or invalid, and removing every annotation from a schema leaves
+the set of documents that schema accepts unchanged. The sections below define
+each annotation; this section defines what they attach to and how one effective
+value is obtained when a definition is reached indirectly.
+
+**Attachment.** An annotation attaches to the document location being validated,
+not to the schema definition that carries it. The same definition applied at
+several locations annotates each location separately, and a definition applied
+to no location annotates nothing. Consequences:
+
+- A definition used as an array `itemtype` annotates every present item
+  location, not the array. A deprecated `itemtype` applied to an array of one
+  hundred items therefore produces one hundred warnings, one per item location,
+  and never a single warning for the array.
+- A definition used as a `collection` `itemtype` annotates every present
+  dynamically keyed entry, once per entry.
+- A definition reached through `items` annotates the one indexed location it
+  validates.
+- An absent optional value has no location, so it carries no annotation and
+  produces no deprecation warning.
+
+Every annotation-derived diagnostic therefore carries the location of the
+value it annotates.
+<!-- Integrator note: "document location" here is the concept the forthcoming
+     ## Terminology section calls the instance path of a node/slot; replace this
+     wording with that term. Warning severity and the `deprecated` diagnostic
+     code belong to the forthcoming canonical error model; this section
+     deliberately does not define severities. -->
+
+**Effective annotation.** For one document location, the participants that may
+carry an annotation are the use site, each definition along that use site's
+`type` reference chain, each `allof` component of the effective definition, the
+`oneof` or `anyof` alternative that succeeded, and the conditional branch that
+was selected. The general precedence is:
+
+1. an annotation declared at the use site takes precedence over the same
+   annotation obtained through that use site's `type` reference chain, and
+   within the chain the nearest declaration takes precedence over a more distant
+   one;
+2. `allof` components, union alternatives, and conditional branches contribute
+   annotations for the location they help validate, but never override an
+   annotation the use site or its reference chain already supplies.
+
+Each annotation then resolves its own contributions as follows.
+
+`description` follows the general precedence and resolves to at most one value.
+A use-site `description` overrides the one carried by the definition it
+references, and the nearest description along a reference chain overrides a more
+distant one; the use site is the more specific statement about that location, so
+it wins. Descriptions carried by `allof` components, by the successful union
+alternative, and by the selected conditional branch never replace that value.
+Where a single description is required — an editor hover, for instance — the
+effective description is the use-site or reference-chain value if one exists,
+and otherwise nothing. An implementation MAY additionally expose the
+contributed descriptions as documentation, in a stable order: `allof`
+components in declaration order, then the successful alternative or selected
+branch. It MUST NOT merge or concatenate contributions into a value it presents
+as a single authored description, and it MUST NOT reject a schema because two
+participants carry different descriptions.
+
+`default` does not follow this general precedence alone, because it is
+machine-readable and must resolve to exactly one value. Its precedence and
+conflict rules, including the `allof` and union rules, are defined under
+[Default](#default---default) and are authoritative.
+
+`deprecated` is a per-location warning. It fires once for each present document
+location whose effective definition is deprecated, and duplicate warnings
+contributed by more than one successful path are deduplicated as
+[Validation Diagnostics](#validation-diagnostics) requires. It fires per
+location and never per definition, so the count follows the attachment rules
+above. Deprecation is not inherited downward: a deprecated parent produces one
+warning at the parent location, and a descendant produces a warning only when
+its own effective definition is deprecated. When a union or conditional
+definition is itself deprecated, that warning is reported at the node's own
+location in addition to any warning contributed by the successful alternative
+or selected branch, and the two are distinct locations only when the branch
+annotates a descendant.
+
 ### Description - `description`
 
-`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation.
+`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation. Its precedence when a definition is reached through a reference, composition, an alternative, or a conditional branch is defined under [Annotations](#annotations).
 
 ```toml
 [types.game]
@@ -1954,7 +2187,10 @@ itemtype = "types.game"
 
 ### Default - `default`
 
-`default` is a machine-readable annotation containing any TOML value.
+`default` is a machine-readable annotation containing any TOML value. Like the
+other annotations, it attaches to the document location a definition validates,
+as described under [Annotations](#annotations); unlike them, it MUST resolve to
+exactly one value, and the rules below are authoritative for that resolution.
 
 ```toml
 [elements.retries]
@@ -2029,7 +2265,10 @@ optional = true
 Deprecation never makes a document invalid. A successfully validated present
 value produces a warning diagnostic; an absent optional value produces no
 warning. A deprecated parent produces one warning at the parent path rather
-than one warning for every descendant.
+than one warning for every descendant. The location a deprecation warning is
+reported at, and how many warnings a deprecated array `itemtype` or collection
+`itemtype` produces, follow the attachment rules under
+[Annotations](#annotations).
 
 Deprecation propagates through named references. Across `allof`, any
 contributing `deprecated = true` deprecates the location, and a local
@@ -2074,10 +2313,51 @@ support this profile.
 
 Character-class shorthands such as `\d`, `\s`, and `\w` are outside the
 portable profile because regular-expression engines disagree about whether
-they use ASCII or Unicode membership. Backreferences, look-around assertions,
-atomic groups, conditionals, and recursion are also outside the portable
-profile. Implementations MAY accept additional constructs, but schemas that use those
-extensions are not portable between TOML Schema implementations.
+they use ASCII or Unicode membership. Unicode property classes such as
+`\p{L}`, inline flag groups such as `(?i)`, backreferences, look-around
+assertions, atomic groups, conditionals, and recursion are also outside the
+portable profile.
+
+**Patterns are compiled at schema-load time.** A schema loader MUST compile
+every `pattern` value when it loads the schema, whether or not any document
+exercises it. A pattern that does not compile — `"["`, `"{2,1}"`, or a trailing
+backslash, for example — makes the schema malformed, and the loader MUST reject
+it at schema-load time. An implementation MUST NOT defer a compilation failure
+to match time, MUST NOT treat an uncompilable pattern as a failed match, and
+MUST NOT treat it as a satisfied constraint.
+
+A construct outside the portable profile is likewise a schema-load error. A
+loader operating in its conformant TOML Schema 1.0 mode MUST reject a `pattern`
+that uses one, even when the underlying engine could compile it. An
+implementation MAY offer an additional, explicitly named and documented extended
+pattern profile that accepts further constructs, but that profile MUST NOT be
+the default, and a schema accepted only under it is not a TOML Schema 1.0
+schema. Portability is the whole purpose of naming a profile: if a
+non-portable construct were merely discouraged, the same schema would be a
+load error on one implementation, an ASCII-only match on a second, and a
+Unicode match on a third, which is precisely the interoperability split the
+profile exists to prevent. Conformance suites MUST use only the portable
+profile.
+
+**Unicode semantics.** A pattern is compiled from, and matched against, the
+decoded parsed string: a sequence of Unicode scalar values. The TOML parser has
+already applied string escapes such as `\u00E9`, so a loader never sees TOML
+escape syntax in a pattern. Matching operates on Unicode scalar values, never on
+UTF-8 bytes, UTF-16 code units, or grapheme clusters, and the count semantics of
+`{n,m}` follow that same unit. `.` matches exactly one scalar value other than
+a line feed. A character class matches one scalar value from its members, and a
+range such as `[a-z]` or `[À-Ö]` is an inclusive range over Unicode code
+points; a range whose start code point is greater than its end code point does
+not compile and is therefore a schema-load error. A negated class matches any
+scalar value not listed, including a line feed.
+
+Matching is case-sensitive and applies no case folding. No Unicode
+normalization is applied to the pattern or to the subject before matching:
+both are compared as the exact decoded scalar sequences the TOML parser
+produced, consistent with the string rule under
+[Parsed Value Equality](#parsed-value-equality). Two strings that are
+canonically equivalent but differently composed are therefore distinct
+subjects, and an implementation MUST NOT normalize either operand.
 
 The pattern is not implicitly anchored. A value validates if the regular
 expression matches anywhere in the string. Authors who require a full-string
@@ -2104,7 +2384,15 @@ key-value pairs) are validated by their own definitions and are not subject to `
 dynamic, user-provided keys are matched against the pattern.
 
 Implementations MUST support the same portable RE2 regular-expression profile as
-[`pattern`](#pattern---pattern). Like `pattern`, `keypattern` is not implicitly
+[`pattern`](#pattern---pattern), and every rule that section states about
+regular expressions applies unchanged to `keypattern`: schema-load compilation,
+rejection of uncompilable patterns and of constructs outside the portable
+profile, Unicode scalar-value matching, character-class and range behavior,
+case sensitivity, and the absence of Unicode normalization. The subject is the
+decoded TOML key rather than a string value; keys are matched as the exact
+decoded scalar sequences the TOML parser produced, so a quoted key and a bare
+key that decode to the same characters are the same subject. Like `pattern`,
+`keypattern` is not implicitly
 anchored: a key validates if the regular expression matches anywhere in the key
 string. Authors who require a full-key match MUST anchor the expression with
 `^` and `$`.
@@ -2139,7 +2427,8 @@ parsed keys and values that would exist without schema validation.
 
 Schema loading additionally requires source-shape information for inline-table
 properties whose names may also name child definitions. In particular,
-`default = { ... }` and `dependentrequired = { ... }` cannot be distinguished
+`default = { ... }`, `dependentrequired = { ... }`, and `if = { ... }` cannot be
+distinguished
 from same-named child tables by their logical TOML values alone. A schema loader
 MUST use a parser that preserves key/value-versus-table syntax or exposes enough
 source-position information to recover it; a logical-value-only TOML API is
@@ -2235,9 +2524,51 @@ define keywords for:
 - following arbitrary document paths or comparing values at different paths;
 - making a field absent precisely when its name appears in another array;
 - selecting array uniqueness by one field rather than the complete item value;
-- materializing defaults into parsed TOML data; or
+- materializing defaults into parsed TOML data;
 - overriding a constraint or modeling an application's runtime inheritance and
-  merge precedence.
+  merge precedence;
+- importing, including, or otherwise referencing a definition in another schema
+  document;
+- closing a `collection` against unknown dynamic keys; or
+- opening or dynamically keying the document root.
+
+The last three are capabilities a reader may reasonably expect, so they are
+stated explicitly rather than left to inference.
+
+**No cross-file composition.** Version 1.0 defines no import, include, or
+cross-document reference mechanism. Every named reference resolves within the
+`[types]` table of the same schema document, as
+[Types table](#types-table---types) requires, and the `location` metadata
+described under
+[TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema) binds one
+TOML document to one schema document rather than assembling several. A shared
+vocabulary must therefore be copied into each schema that needs it. This is a
+deliberate boundary for 1.0: a cross-document reference mechanism also requires
+retrieval, identity, caching, and trust rules for the referenced documents, and
+those are out of scope for this version.
+
+**No closed collection.** A `collection` is open to dynamic keys by
+construction, as [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
+states. `keypattern` constrains the shape of a dynamic key and `itemtype`
+constrains its value, but no keyword fixes a collection's key set the way a
+`table` with fixed children is closed. A schema that needs both dynamic entries
+and a bounded key set must either enumerate the keys as fixed children of a
+`table`, which gives up dynamic keying, or make the dynamic-entry rule
+unsatisfiable so that only the fixed children remain acceptable. The companion
+[`toml-schema.tosd`](toml-schema.tosd) uses the second technique, referencing a
+`types.never` definition as an `itemtype` to emulate a closed collection. That
+idiom works, but it is a workaround for a missing capability rather than a
+language feature, and schema authors SHOULD prefer a closed `table` when the key
+set really is fixed.
+
+**No open or dynamically keyed root.** The `[elements]` table is a closed,
+fixed-key table, as [Elements table](#elements-table---elements) requires. No
+schema property applies to `[elements]` itself, so the root cannot be declared a
+`collection`, cannot carry a `keypattern` or an `itemtype`, and cannot be left
+open to arbitrary top-level keys. A document format whose top-level keys are
+user-chosen cannot be described at the root in version 1.0; it can only be
+described one level down, by declaring a top-level key whose definition is a
+`collection`.
 
 For example, a schema can choose a database configuration shape from a sibling
 `engine` value. It still cannot compare values in different tables or follow an
@@ -2281,17 +2612,32 @@ that way and remain schema-load semantics:
  - reference existence and cycles;
  - effective `allof` compatibility;
  - conditional branch kinds;
+ - the presence of the `if.key` discriminator in a branch's determinate
+   fixed-child set;
  - collection `itemtype` inherited through composition;
  - defaults against effective types;
  - duplicate `oneof`, `anyof`, and `allof` entries after type-reference resolution;
  - allowed values against resolved constraints; and
  - sibling-rule operands against the determinate fixed-child set.
 
+A second group of rules needs no reference graph but is still beyond what a
+schema document can assert about a value, and so also remains schema-load
+semantics:
+
+ - `version` rejecting a major-version-zero value, which the Semantic Versioning
+   `pattern` in the self-schema necessarily accepts;
+ - `min` being less than or equal to `max`, `minlength` being less than or equal
+   to `maxlength`, and a boundary's TOML kind agreeing with the type it
+   constrains; and
+ - `pattern` and `keypattern` values compiling at schema-load time and staying
+   inside the portable regular-expression profile, as
+   [Pattern](#pattern---pattern) requires.
+
 Schema loading also depends on the source-form information required under
 [Validation and Data Model](#validation-and-data-model). That information is what
-lets a loader distinguish the inline-table properties `default` and
-`dependentrequired` from direct child tables with those names, and validate the
-latter recursively.
+lets a loader distinguish the inline-table properties `default`,
+`dependentrequired`, and `if` from direct child tables with those names, and
+validate the latter recursively.
 
 A conforming implementation MUST apply both the self-schema validation and these
 reference-aware and source-aware schema-load checks.
