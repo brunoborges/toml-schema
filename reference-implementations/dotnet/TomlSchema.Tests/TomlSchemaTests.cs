@@ -10,7 +10,7 @@ public class TomlSchemaTests : TestBase
         var schema = TomlSchema.Load(Fixture("config.tosd"));
         var result = schema.Validate(Fixture("config.toml"));
 
-        Assert.True(result.IsValid, $"Validation failed: {string.Join(", ", result.Errors.Select(e => e.Message))}");
+        Assert.True(result.IsValid, $"Validation failed: {string.Join(", ", result.Errors.Select(e => $"{e.Path}: {e.Message}"))}");
     }
 
     [Fact]
@@ -19,7 +19,7 @@ public class TomlSchemaTests : TestBase
         var selfSchema = TomlSchema.Load(Fixture("toml-schema.tosd"));
         var result = selfSchema.Validate(Fixture("config.tosd"));
 
-        Assert.True(result.IsValid, $"Validation failed: {string.Join(", ", result.Errors.Select(e => e.Message))}");
+        Assert.True(result.IsValid, $"Validation failed: {string.Join(", ", result.Errors.Select(e => $"{e.Path}: {e.Message}"))}");
     }
 
     [Fact]
@@ -115,6 +115,73 @@ public class TomlSchemaTests : TestBase
         // Invalid schema should fail on load
         var ex = Assert.ThrowsAny<Exception>(() => TomlSchema.Load(invalidSchema));
         Assert.NotNull(ex);
+    }
+
+    [Fact]
+    public void SupportsSelectiveChildrenEscapeAndLiteralChildren()
+    {
+        var schemaPath = Write("children-escape.tosd", """
+            [toml-schema]
+            version = "1.0.0"
+
+            [elements.plugin]
+            type = "table"
+
+            [elements.plugin.children.type]
+            type = "string"
+
+            [elements.plugin.children.children]
+            type = "boolean"
+            """);
+        var documentPath = Write("children-escape.toml", """
+            [plugin]
+            type = "npm"
+            children = true
+            """);
+
+        var schema = TomlSchema.Load(schemaPath);
+        var result = schema.Validate(documentPath);
+
+        Assert.True(result.IsValid, $"Validation failed: {string.Join(", ", result.Errors.Select(e => e.Message))}");
+
+        var literalSchemaPath = Write("literal-children.tosd", """
+            [toml-schema]
+            version = "1.0.0"
+
+            [elements.plugin]
+            type = "table"
+
+            [elements.plugin.children]
+            type = "string"
+            """);
+        var literalDocumentPath = Write("literal-children.toml", """
+            [plugin]
+            children = "ordinary child"
+            """);
+
+        var literalSchema = TomlSchema.Load(literalSchemaPath);
+        var literalResult = literalSchema.Validate(literalDocumentPath);
+
+        Assert.True(literalResult.IsValid,
+            $"Validation failed: {string.Join(", ", literalResult.Errors.Select(e => e.Message))}");
+    }
+
+    [Theory]
+    [InlineData("[elements.plugin.children]")]
+    [InlineData("[elements.plugin.children.name]\ntype = \"string\"")]
+    public void RejectsInvalidChildrenEscapeNamespaces(string body)
+    {
+        var schemaPath = Write($"invalid-children-{Guid.NewGuid():N}.tosd", $$"""
+            [toml-schema]
+            version = "1.0.0"
+
+            [elements.plugin]
+            type = "table"
+
+            {{body}}
+            """);
+
+        Assert.ThrowsAny<Exception>(() => TomlSchema.Load(schemaPath));
     }
 
     [Fact]

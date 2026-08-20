@@ -145,9 +145,11 @@ public class SchemaLoader
             }
         }
 
-        var hasOneOf = table.ContainsKey("oneof");
-        var hasAnyOf = table.ContainsKey("anyof");
-        var hasConditional = table.ContainsKey("if");
+        var hasOneOf = table.TryGetValue("oneof", out var oneOfSelector) && oneOfSelector is not TomlTable;
+        var hasAnyOf = table.TryGetValue("anyof", out var anyOfSelector) && anyOfSelector is not TomlTable;
+        var hasConditional = table.TryGetValue("if", out var conditionalSelector)
+            && conditionalSelector is TomlTable conditionalTable
+            && IsConditionalProperty(conditionalTable);
 
         var format = GetString(table, "format");
         if (format != null)
@@ -181,13 +183,43 @@ public class SchemaLoader
         }
 
         var children = new Dictionary<string, SchemaDefinition>();
+        var hasEscapeNamespace = table.TryGetValue("children", out var escapedValue)
+            && escapedValue is TomlTable escapedChildren
+            && !HasSelectorMarker(escapedChildren);
+        if (hasEscapeNamespace)
+        {
+            var escapeTable = (TomlTable)escapedValue!;
+            if (escapeTable.Count == 0)
+                throw new InvalidOperationException($"{location} children escape namespace must not be empty");
+
+            foreach (var (key, value) in escapeTable)
+            {
+                if (!DefinitionKeys.Contains(key) && key != "children")
+                    throw new InvalidOperationException(
+                        $"{location} children escape namespace contains non-conflicting child: {key}");
+                if (value is not TomlTable childTable)
+                    throw new InvalidOperationException(
+                        $"{location}.children.{key} must be a child definition table");
+
+                children[key] = ParseDefinition($"{location}.{key}", childTable);
+            }
+        }
+
         foreach (var (key, value) in table)
         {
-            if (DefinitionKeys.Contains(key))
+            if (key == "children" && hasEscapeNamespace)
+                continue;
+            if (DefinitionKeys.Contains(key)
+                && (value is not TomlTable definitionTable
+                    || IsTableValuedProperty(key, definitionTable)))
                 continue;
 
             if (value is TomlTable childTable)
+            {
+                if (children.ContainsKey(key))
+                    throw new InvalidOperationException($"{location} defines child {key} more than once");
                 children[key] = ParseDefinition($"{location}.{key}", childTable);
+            }
         }
 
         var oneOf = table.TryGetValue("oneof", out var oneOfValue) && oneOfValue is TomlArray oneOfArray
@@ -272,7 +304,9 @@ public class SchemaLoader
 
     private SchemaCondition? ParseCondition(string location, TomlTable table)
     {
-        if (!table.TryGetValue("if", out var ifValue) || ifValue is not TomlTable ifTable)
+        if (!table.TryGetValue("if", out var ifValue)
+            || ifValue is not TomlTable ifTable
+            || !IsConditionalProperty(ifTable))
             return null;
 
         var key = GetString(ifTable, "key");
@@ -306,6 +340,25 @@ public class SchemaLoader
     {
         return table.TryGetValue(key, out var value) && value is TomlTable;
     }
+
+    private static bool HasSelectorMarker(TomlTable table) =>
+        table.TryGetValue("type", out var type) && type is not TomlTable
+        || table.TryGetValue("oneof", out var oneOf) && oneOf is not TomlTable
+        || table.TryGetValue("anyof", out var anyOf) && anyOf is not TomlTable
+        || table.TryGetValue("if", out var condition) && condition is TomlTable conditionTable
+            && IsConditionalProperty(conditionTable);
+
+    private static bool IsConditionalProperty(TomlTable table) =>
+        table.ContainsKey("key")
+        && (table.ContainsKey("equals") || table.ContainsKey("in"));
+
+    private static bool IsTableValuedProperty(string key, TomlTable table) =>
+        key switch
+        {
+            "if" => IsConditionalProperty(table),
+            "default" or "dependentrequired" => !HasSelectorMarker(table),
+            _ => false
+        };
 
     private static List<List<string>> ParseNameGroups(TomlArray values) =>
         values.All(value => value is string)
