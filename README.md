@@ -35,7 +35,7 @@ repository remains `brunoborges/toml-schema`.
   Cloudflare Wrangler.
 - [Validation report](https://tomlschema.org/validation-report/) - results from
   validating representative real-world TOML documents.
-- [CLI releases](https://toml-schema.org/cli/releases/) - versioned `tosd`
+- [CLI releases](https://tomlschema.org/cli/releases/) - versioned `tosd`
   binaries, checksums, and installer downloads.
 - [Reference implementations](REFERENCE_IMPLEMENTATIONS.md) - canonical CLI and reference library usage, status, and conformance expectations.
 
@@ -92,7 +92,7 @@ Install the `1.0.0-rc.2` CLI on Linux or Apple Silicon macOS:
 
 ```shell
 curl --proto '=https' --tlsv1.2 -sSfL \
-  https://toml-schema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
+  https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
   bash -s -- --version 1.0.0-rc.2
 ```
 
