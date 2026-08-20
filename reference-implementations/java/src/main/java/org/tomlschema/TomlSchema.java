@@ -6,6 +6,8 @@ import org.tomlj.TomlParseResult;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.nio.file.Files;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -104,6 +106,34 @@ public final class TomlSchema {
      */
     public static ValidationResult validateDocument(Path documentPath) throws IOException {
         return discover(documentPath).validate();
+    }
+
+    /**
+     * Generates a draft TOML Schema describing an already parsed TOML document.
+     *
+     * @param document the parsed TOML document
+     * @return deterministic TOML Schema source text
+     */
+    public static String generateSchema(org.tomlj.TomlTable document) {
+        return SchemaExtractor.generate(document);
+    }
+
+    /**
+     * Reads a TOML document and writes its inferred draft schema.
+     *
+     * @param documentPath the source TOML document
+     * @param schemaPath the draft schema destination
+     * @throws IOException if either file cannot be read or written
+     * @throws SchemaException if the source document is invalid TOML
+     */
+    public static void extractSchemaFile(Path documentPath, Path schemaPath) throws IOException {
+        TomlParseResult document = Toml.parse(documentPath);
+        if (document.hasErrors()) {
+            throw new SchemaException("Unable to parse document " + documentPath + ": "
+                    + document.errors().stream().map(Object::toString)
+                    .collect(Collectors.joining("; ")));
+        }
+        Files.writeString(schemaPath, generateSchema(document), StandardCharsets.UTF_8);
     }
 
     Path source() {

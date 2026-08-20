@@ -69,6 +69,18 @@ result = schema.validate(document)
 print(schema.warnings)  # e.g. schema-version compatibility notices
 ```
 
+Extract a starter schema from a TOML document:
+
+```python
+from toml_schema import extract_schema_file
+
+extract_schema_file("config.toml", "config.generated.tosd")
+```
+
+Extraction infers structure and built-in types, uses `any` for empty or
+heterogeneous array item types, skips reserved root `[toml-schema]` metadata,
+and never invents defaults.
+
 Schema discovery resolves relative `location` values against the document's
 own directory, accepts absolute local paths, and accepts hierarchical
 `file://` URIs (rejecting opaque `file:` URIs, non-local hosts, and
@@ -93,6 +105,8 @@ child = element.child("host")    # nested Definition, or None
   schema file, raising `toml_schema.SchemaError` on any structural or
   semantic problem.
 - `load_document(path) -> dict` — parses a TOML document with `tomllib`.
+- `generate_schema(document: dict) -> str` — infers starter-schema source text.
+- `extract_schema_file(document_path, schema_path)` — writes an inferred schema.
 - `Schema.validate(document: dict) -> ValidationResult`
 - `Schema.validate_file(path) -> ValidationResult`
 - `Schema.element(name) / Schema.type(name) -> Definition | None` — schema
