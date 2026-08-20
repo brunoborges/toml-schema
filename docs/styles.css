@@ -476,7 +476,6 @@ footer {
 .editor-promo {
   align-items: center;
   border-bottom: 1px solid var(--cp-border-strong);
-  border-top: 1px solid var(--cp-border-strong);
   display: grid;
   gap: 48px;
   grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
