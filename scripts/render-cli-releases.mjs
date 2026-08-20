@@ -172,9 +172,9 @@ const page = `<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="description" content="Download versioned tosd CLI binaries for Linux, macOS, and Windows.">
+  <meta name="description" content="Install and use the tosd CLI to validate TOML documents and extract starter TOML schemas.">
   <link rel="canonical" href="https://tomlschema.org/cli/releases/">
-  <title>tosd CLI releases — TOML Schema</title>
+  <title>tosd CLI documentation and releases — TOML Schema</title>
   <script>
     (() => {
       const param = new URLSearchParams(window.location.search).get("clawpilotTheme");
@@ -214,10 +214,62 @@ const page = `<!doctype html>
 
     <main>
       <section class="report-hero">
-        <span class="eyebrow">Downloads</span>
-        <h1>tosd CLI releases</h1>
-        <p class="lead">Versioned, checksum-protected binaries for Linux, Apple Silicon macOS, and Windows.</p>
+        <span class="eyebrow">Command-line interface</span>
+        <h1>tosd CLI</h1>
+        <p class="lead">Validate TOML documents against a TOML Schema or extract a starter schema from an existing document.</p>
         ${heroContent}
+      </section>
+
+      <article class="markdown cli-docs" aria-labelledby="cli-usage">
+        <h2 id="cli-usage"><a class="anchor" href="#cli-usage" aria-hidden="true">#</a>CLI usage</h2>
+        <p>Run <code>tosd --help</code> to display the command summary or <code>tosd --version</code> to display the installed version.</p>
+
+        <h3 id="validate-explicit"><a class="anchor" href="#validate-explicit" aria-hidden="true">#</a>Validate with an explicit schema</h3>
+        <p>Pass the schema first and the TOML document second:</p>
+        <pre><code>tosd validate config.tosd config.toml</code></pre>
+        <p>A successful validation prints <code>config.toml is valid</code>. Validation errors and warnings are written to standard error, making the command suitable for local scripts and CI.</p>
+
+        <h3 id="validate-discovered"><a class="anchor" href="#validate-discovered" aria-hidden="true">#</a>Validate with schema discovery</h3>
+        <p>A TOML document can identify its schema with reserved metadata:</p>
+        <pre><code class="language-toml">[toml-schema]
+location = "config.tosd"
+version = "1.0.0"</code></pre>
+        <p>Then pass only the document:</p>
+        <pre><code>tosd validate config.toml</code></pre>
+        <p>Relative schema locations resolve from the document's directory. Absolute local paths and hierarchical <code>file</code> URIs are also supported; other URI schemes are rejected. The optional version must use a compatible major TOML Schema version.</p>
+
+        <h3 id="extract"><a class="anchor" href="#extract" aria-hidden="true">#</a>Extract a starter schema</h3>
+        <p>Generate a <code>.tosd</code> schema from the value types and structure of an existing TOML document:</p>
+        <pre><code>tosd extract config.toml config.generated.tosd</code></pre>
+        <p>Extraction omits the reserved <code>[toml-schema]</code> metadata from the inferred document shape and does not invent default values. Review and refine the generated constraints before adopting the schema.</p>
+
+        <h2 id="command-reference"><a class="anchor" href="#command-reference" aria-hidden="true">#</a>Command reference</h2>
+        <table>
+          <thead><tr><th>Command</th><th>Purpose</th></tr></thead>
+          <tbody>
+            <tr><td><code>tosd validate &lt;schema.tosd&gt; &lt;document.toml&gt;</code></td><td>Validate with an explicit schema.</td></tr>
+            <tr><td><code>tosd validate &lt;document.toml&gt;</code></td><td>Discover the schema from <code>[toml-schema].location</code> and validate.</td></tr>
+            <tr><td><code>tosd extract &lt;document.toml&gt; &lt;schema.tosd&gt;</code></td><td>Write an inferred starter schema.</td></tr>
+            <tr><td><code>tosd --help</code></td><td>Print command usage.</td></tr>
+            <tr><td><code>tosd --version</code></td><td>Print the installed CLI version.</td></tr>
+          </tbody>
+        </table>
+
+        <h3 id="exit-codes"><a class="anchor" href="#exit-codes" aria-hidden="true">#</a>Exit codes</h3>
+        <table>
+          <thead><tr><th>Code</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td><code>0</code></td><td>The command completed successfully; for validation, the document is valid.</td></tr>
+            <tr><td><code>1</code></td><td>Validation failed, or an extraction input could not be read or parsed.</td></tr>
+            <tr><td><code>2</code></td><td>The command usage, schema loading or discovery, or extraction output failed.</td></tr>
+          </tbody>
+        </table>
+      </article>
+
+      <section class="section releases-list" aria-labelledby="downloads">
+        <span class="eyebrow">Downloads</span>
+        <h2 id="downloads">Release archives</h2>
+        <p class="section-intro">Versioned, checksum-protected binaries for Linux, Apple Silicon macOS, and Windows.</p>
       </section>
 
 ${releaseSections}

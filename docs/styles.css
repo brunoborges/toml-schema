@@ -303,6 +303,14 @@ pre {
   margin-top: 28px;
   max-width: 820px;
 }
+.cli-docs {
+  margin-top: 48px;
+}
+.releases-list {
+  border-top: 1px solid var(--cp-border);
+  margin-top: 48px;
+  padding-bottom: 0;
+}
 .release {
   border-top: 1px solid var(--cp-border);
 }
