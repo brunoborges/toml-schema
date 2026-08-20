@@ -23,6 +23,7 @@ from ._compare import (
 )
 from ._definition import Condition, Definition
 from ._errors import SchemaError
+from ._formats import SUPPORTED_FORMATS, matches_format
 from ._source import SchemaSource
 from ._types import (
     Diagnostic,
@@ -47,6 +48,7 @@ DEFINITION_KEYS = frozenset(
         "items",
         "allowedvalues",
         "pattern",
+        "format",
         "keypattern",
         "optional",
         "min",
@@ -466,6 +468,10 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
         raise SchemaError(f"{name} items must contain at least one type reference")
     optional = _get_bool(table, "optional")
     pattern = _get_pattern(name, table)
+    format_name = _get_string(table, "format")
+    if _property_value(table, "format") is not None and format_name not in SUPPORTED_FORMATS:
+        supported = ", ".join(sorted(SUPPORTED_FORMATS))
+        raise SchemaError(f"{name} has unknown format {format_name!r}; supported formats: {supported}")
     key_pattern = _get_pattern_key(name, table, "keypattern")
     min_length = _get_integer_pointer(table, "minlength")
     max_length = _get_integer_pointer(table, "maxlength")
@@ -576,6 +582,10 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
         raise SchemaError(f"{name} can only define keypattern when type is collection")
     if pattern is not None and type_name != SchemaType.STRING:
         raise SchemaError(f"{name} can only define pattern when type is string")
+    if format_name and type_name != SchemaType.STRING:
+        raise SchemaError(
+            f"{name} can only define format when locally selecting built-in type string"
+        )
     if has_allowed_values and type_name in (SchemaType.TABLE, SchemaType.COLLECTION):
         raise SchemaError(f"{name} can only define allowedvalues for scalar, unconstrained, or array types")
     if (min_length is not None or max_length is not None) and type_name not in (
@@ -593,6 +603,12 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
     _validate_allowed_values_constraints(
         name, type_name, allowed_values, pattern, min_value, max_value, min_length, max_length
     )
+    if format_name:
+        for index, allowed in enumerate(allowed_values):
+            if not isinstance(allowed, str) or not matches_format(allowed, format_name):
+                raise SchemaError(
+                    f"{name} allowedvalues[{index}] does not satisfy format {format_name}"
+                )
 
     dependent_required = _get_dependent_required(name, path, table, source)
     mutually_exclusive = _get_key_groups(name, path, table, "mutuallyexclusive", source)
@@ -613,6 +629,7 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
         optional=optional,
         allowed_values=tuple(allowed_values),
         pattern=pattern,
+        format=format_name,
         key_pattern=key_pattern,
         min=min_value,
         max=max_value,

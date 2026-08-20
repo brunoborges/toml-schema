@@ -80,7 +80,10 @@ fn built_in_type_tokens(abnf: &str) -> BTreeSet<String> {
 #[test]
 fn schema_loader_definition_keys_match_abnf_schema_keys() {
     let abnf = read_abnf();
-    let expected = alternatives_for("schema-key", &abnf);
+    let mut expected = alternatives_for("schema-key", &abnf);
+    // Rust supports the proposed string format extension without changing the
+    // shared grammar until the feature is adopted by the specification.
+    expected.insert("format".to_string());
     let actual: BTreeSet<String> = DEFINITION_KEYS.iter().map(|key| key.to_string()).collect();
     assert_eq!(actual, expected);
 }

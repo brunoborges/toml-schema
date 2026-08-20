@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
 final class SchemaLoader {
     static final Set<String> TOP_LEVEL_KEYS = Set.of("toml-schema", "types", "elements");
     static final Set<String> DEFINITION_KEYS = Set.of(
-            "type", "description", "itemtype", "items", "allowedvalues", "pattern",
+            "type", "description", "itemtype", "items", "allowedvalues", "pattern", "format",
             "keypattern", "optional", "min", "max", "minlength", "maxlength",
             "oneof", "anyof", "dependentrequired", "mutuallyexclusive", "exactlyone",
             "if", "then", "else", "allof", "uniqueitems", "default", "deprecated"
@@ -140,6 +140,9 @@ final class SchemaLoader {
         }
         Boolean optional = getBoolean(table, "optional");
         Pattern pattern = getPattern(name, table, "pattern");
+        String formatName = getString(table, "format");
+        SchemaStringFormat format = formatName == null
+                ? null : SchemaStringFormat.fromSchemaName(formatName);
         Pattern keyPattern = getPattern(name, table, "keypattern");
         Integer minLength = getInteger(table, "minlength");
         Integer maxLength = getInteger(table, "maxlength");
@@ -263,6 +266,9 @@ final class SchemaLoader {
         if (pattern != null && type != SchemaType.STRING) {
             throw new SchemaException(name + " can only define pattern when type is string");
         }
+        if (format != null && type != SchemaType.STRING) {
+            throw new SchemaException(name + " can only define format when type is string");
+        }
         if (hasAllowedValues && (type == SchemaType.TABLE || type == SchemaType.COLLECTION)) {
             throw new SchemaException(name + " can only define allowedvalues for scalar, unconstrained, or array types");
         }
@@ -279,7 +285,8 @@ final class SchemaLoader {
         Object min = getPropertyValue(table, "min");
         Object max = getPropertyValue(table, "max");
         validateRangeConstraints(name, type, itemReference, min, max);
-        validateAllowedValuesConstraints(name, type, allowedValues, pattern, min, max, minLength, maxLength);
+        validateAllowedValuesConstraints(
+                name, type, allowedValues, pattern, format, min, max, minLength, maxLength);
         return new SchemaDefinition(
                 name,
                 type,
@@ -290,6 +297,7 @@ final class SchemaLoader {
                 optional != null && optional,
                 allowedValues,
                 pattern,
+                format,
                 keyPattern,
                 min,
                 max,
@@ -824,6 +832,7 @@ final class SchemaLoader {
             SchemaType type,
             List<Object> allowedValues,
             Pattern pattern,
+            SchemaStringFormat format,
             Object min,
             Object max,
             Integer minLength,
@@ -837,6 +846,9 @@ final class SchemaLoader {
             String entry = name + " allowedvalues[" + i + "]";
             if (pattern != null && (!(allowed instanceof String stringValue) || !pattern.matcher(stringValue).find())) {
                 throw new SchemaException(entry + " does not satisfy pattern");
+            }
+            if (format != null && (!(allowed instanceof String stringValue) || !format.isValid(stringValue))) {
+                throw new SchemaException(entry + " does not satisfy format " + format.schemaName());
             }
             if ((min != null || max != null) && allowed instanceof Double doubleValue && doubleValue.isNaN()) {
                 throw new SchemaException(entry + " does not satisfy min or max");
@@ -1062,7 +1074,7 @@ final class SchemaLoader {
 
     private SchemaDefinition builtInDefinition(String name, SchemaType type) {
         return new SchemaDefinition(name, type, null, null, null, List.of(), false,
-                List.of(), null, null, null, null, null, null, List.of(), List.of(),
+                List.of(), null, null, null, null, null, null, null, List.of(), List.of(),
                 null, null, null, List.of(), Map.of(), List.of(), List.of(), null,
                 false, null, false, Map.of());
     }

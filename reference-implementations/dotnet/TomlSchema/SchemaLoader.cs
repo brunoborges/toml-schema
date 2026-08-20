@@ -12,7 +12,7 @@ public class SchemaLoader
     /// <summary>All allowed schema property keys</summary>
     public static readonly HashSet<string> DefinitionKeys = new()
     {
-        "type", "description", "itemtype", "items", "allowedvalues", "pattern", "keypattern",
+        "type", "description", "itemtype", "items", "allowedvalues", "pattern", "format", "keypattern",
         "optional", "min", "max", "minlength", "maxlength", "oneof", "anyof", "allof",
         "dependentrequired", "mutuallyexclusive", "exactlyone", "uniqueitems", "default",
         "deprecated", "if", "then", "else"
@@ -149,6 +149,15 @@ public class SchemaLoader
         var hasAnyOf = table.ContainsKey("anyof");
         var hasConditional = table.ContainsKey("if");
 
+        var format = GetString(table, "format");
+        if (format != null)
+        {
+            if (type != SchemaType.String || reference != null)
+                throw new InvalidOperationException($"{location} format is valid only with a locally selected built-in string type");
+            if (!StringFormatValidator.IsSupported(format))
+                throw new InvalidOperationException($"{location} contains unknown string format: {format}");
+        }
+
         // Enforce allowed keys based on definition type
         foreach (var key in table.Keys)
         {
@@ -198,6 +207,30 @@ public class SchemaLoader
         var allowedValues = table.TryGetValue("allowedvalues", out var avValue) && avValue is TomlArray avArray
             ? avArray.Cast<object?>().ToList()
             : null;
+        var defaultValue = GetValue(table, "default");
+
+        if (format != null)
+        {
+            if (allowedValues != null)
+            {
+                foreach (var allowedValue in allowedValues)
+                {
+                    if (allowedValue is not string text || !StringFormatValidator.IsValid(format, text))
+                        throw new InvalidOperationException(
+                            $"{location}.allowedvalues contains a value that does not satisfy format {format}");
+                }
+            }
+            if (table.ContainsKey("default")
+                && (defaultValue is not string defaultText
+                    || !StringFormatValidator.IsValid(format, defaultText)))
+                throw new InvalidOperationException(
+                    $"{location}.default does not satisfy format {format}");
+            if (defaultValue is string formattedDefault
+                && allowedValues != null
+                && !allowedValues.OfType<string>().Contains(formattedDefault, StringComparer.Ordinal))
+                throw new InvalidOperationException(
+                    $"{location}.default is not included in allowedvalues");
+        }
 
         var mutuallyExclusive = table.TryGetValue("mutuallyexclusive", out var meValue) && meValue is TomlArray meArray
             ? ParseNameGroups(meArray)
@@ -216,6 +249,7 @@ public class SchemaLoader
             Items = GetStringArray(table, "items"),
             AllowedValues = allowedValues,
             Pattern = GetString(table, "pattern"),
+            Format = format,
             KeyPattern = GetString(table, "keypattern"),
             Optional = GetBool(table, "optional") ?? false,
             Min = GetNumber(table, "min"),
@@ -226,7 +260,7 @@ public class SchemaLoader
             OneOf = oneOf,
             AnyOf = anyOf,
             AllOf = allOf,
-            Default = GetValue(table, "default"),
+            Default = defaultValue,
             Deprecated = GetBool(table, "deprecated") ?? false,
             Condition = condition,
             Children = children,

@@ -451,6 +451,10 @@ final class TomlSchemaValidator {
                 add("pattern", path,
                         "does not match pattern " + definition.pattern().pattern());
             }
+            if (definition.format() != null && !definition.format().isValid(stringValue)) {
+                add("format", path,
+                        "does not match format " + definition.format().schemaName());
+            }
         }
     }
 
@@ -615,7 +619,7 @@ final class TomlSchemaValidator {
 
     private SchemaDefinition builtIn(String name, SchemaType type) {
         return new SchemaDefinition(name, type, null, null, null, List.of(), false,
-                List.of(), null, null, null, null, null, null, List.of(), List.of(),
+                List.of(), null, null, null, null, null, null, null, List.of(), List.of(),
                 null, null, null, List.of(), Map.of(), List.of(), List.of(), null,
                 false, null, false, Map.of());
     }

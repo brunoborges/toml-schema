@@ -14,6 +14,7 @@ record SchemaDefinition(
         boolean optional,
         List<Object> allowedValues,
         Pattern pattern,
+        SchemaStringFormat format,
         Pattern keyPattern,
         Object min,
         Object max,

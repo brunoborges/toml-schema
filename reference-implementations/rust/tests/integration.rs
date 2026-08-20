@@ -3345,6 +3345,95 @@ fn cli_reports_unknown_command() {
     assert!(stderr.contains("Unknown command"));
 }
 
+#[test]
+fn validates_string_formats() {
+    let directory = tempfile_dir("string-formats");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.email]
+type = "string"
+format = "email"
+[elements.uuid]
+type = "string"
+format = "uuid"
+[elements.uri]
+type = "string"
+format = "uri"
+[elements.hostname]
+type = "string"
+format = "hostname"
+[elements.ipv4]
+type = "string"
+format = "ipv4"
+[elements.ipv6]
+type = "string"
+format = "ipv6"
+"#,
+    );
+    let schema = Schema::load(schema_path).expect("load format schema");
+    let valid: toml::Table = toml::from_str(
+        r#"
+email = '"quoted@local"@[IPv6:2001:db8::1]'
+uuid = "01234567-89ab-cdef-ABCD-0123456789ab"
+uri = "urn:example:a%20b"
+hostname = "www.example.com."
+ipv4 = "192.0.2.1"
+ipv6 = "::ffff:192.0.2.128"
+"#,
+    )
+    .unwrap();
+    assert!(schema.validate(&valid).valid());
+
+    let invalid: toml::Table = toml::from_str(
+        r#"
+email = "a..b@example.com"
+uuid = "01234567-89ab-cdef-abcd-0123456789ag"
+uri = "relative/%20path"
+hostname = "-bad.example"
+ipv4 = "192.168.001.1"
+ipv6 = "2001:db8:::1"
+"#,
+    )
+    .unwrap();
+    let result = schema.validate(&invalid);
+    for path in ["$.email", "$.uuid", "$.uri", "$.hostname", "$.ipv4", "$.ipv6"] {
+        assert!(has_path(&result, path), "expected format error at {path}");
+    }
+}
+
+#[test]
+fn rejects_unknown_or_incompatible_string_formats() {
+    let directory = tempfile_dir("invalid-string-formats");
+    for (name, definition) in [
+        ("unknown", "type = \"string\"\nformat = \"date\""),
+        ("integer", "type = \"integer\"\nformat = \"uuid\""),
+        ("reference", "type = \"types.text\"\nformat = \"email\""),
+        ("union", "oneof = [\"string\"]\nformat = \"email\""),
+    ] {
+        let schema_path = write_file(
+            &directory,
+            &format!("{name}.tosd"),
+            &format!(
+                "[toml-schema]\nversion = \"1.0.0\"\n[types.text]\ntype = \"string\"\n[elements.value]\n{definition}\n"
+            ),
+        );
+        let error = Schema::load(schema_path).expect_err("format misuse must fail schema loading");
+        assert!(error.contains("format"), "unexpected error: {error}");
+    }
+
+    let allowed_path = write_file(
+        &directory,
+        "allowed.tosd",
+        "[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\ntype = \"string\"\nformat = \"ipv4\"\nallowedvalues = [\"01.2.3.4\"]\n",
+    );
+    Schema::load(allowed_path).expect_err("invalid formatted allowed value must be rejected");
+}
+
 fn tempfile_dir(name: &str) -> PathBuf {
     let directory = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("target")

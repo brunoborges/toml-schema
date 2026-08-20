@@ -362,8 +362,8 @@ Every reference implementation should:
 1. Validate `toml-schema.tosd` against itself.
 1. Keep supported schema vocabulary aligned with `toml-schema.abnf` and `toml-schema.tosd`.
 1. Implement the TOML Schema 1.0 semantic vocabulary, including sibling
-   presence rules, conjunctive composition, array uniqueness, defaults, and
-   deprecation warnings.
+   presence rules, conjunctive composition, array uniqueness, standardized
+   string formats, defaults, and deprecation warnings.
 1. Keep validation non-mutating and expose warnings separately from errors;
    warning-only validation remains valid.
 
@@ -409,5 +409,5 @@ TOML document path. Every implementation should include:
 
 1. Tests for the checked-in example, self-schema validation, schema-location
    lookup, unions, composition, arrays, collections, sibling rules,
-   annotations, diagnostics, and key-escaping behavior.
+   string formats, annotations, diagnostics, and key-escaping behavior.
 1. A vocabulary conformance check against `toml-schema.abnf` or an equivalent generated/derived assertion.

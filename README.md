@@ -55,6 +55,7 @@ TOML document:
 title = "TOML Example"
 
 [database]
+server = "192.0.2.10"
 enabled = true
 ports = [8000, 8001, 8002]
 ```
@@ -70,6 +71,10 @@ type = "string"
 
 [elements.database]
 type = "table"
+
+    [elements.database.server]
+    type = "string"
+    format = "ipv4"
 
     [elements.database.enabled]
     type = "boolean"

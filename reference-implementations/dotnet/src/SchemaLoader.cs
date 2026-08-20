@@ -9,7 +9,7 @@ internal class SchemaLoader
 {
     public static readonly HashSet<string> DefinitionKeys = new()
     {
-        "type", "description", "itemtype", "items", "allowedvalues", "pattern", "keypattern",
+        "type", "description", "itemtype", "items", "allowedvalues", "pattern", "format", "keypattern",
         "optional", "min", "max", "minlength", "maxlength", "oneof", "anyof", "allof",
         "dependentrequired", "mutuallyexclusive", "exactlyone", "uniqueitems", "default",
         "deprecated", "if", "then", "else"
@@ -112,6 +112,17 @@ internal class SchemaLoader
         if (table.TryGetValue("pattern", out var pat) && pat is string patStr)
             def.Pattern = patStr;
 
+        if (table.TryGetValue("format", out var formatValue))
+        {
+            if (formatValue is not string format)
+                throw new InvalidOperationException("format must be a string");
+            if (table["type"] is not string localType || localType != "string")
+                throw new InvalidOperationException("format is valid only with a locally selected built-in string type");
+            if (!StringFormatValidator.IsSupported(format))
+                throw new InvalidOperationException($"unknown string format: {format}");
+            def.Format = format;
+        }
+
         if (table.TryGetValue("keypattern", out var keyPat) && keyPat is string keyPatStr)
             def.KeyPattern = keyPatStr;
 
@@ -137,6 +148,24 @@ internal class SchemaLoader
         if (table.TryGetValue("allowedvalues", out var allowedVals) && allowedVals is TomlArray allowedArray)
         {
             def.AllowedValues = new List<object>(allowedArray.Cast<object>().Where(x => x != null));
+        }
+        if (def.Format != null)
+        {
+            if (def.AllowedValues != null
+                && def.AllowedValues.Any(value =>
+                    value is not string text || !StringFormatValidator.IsValid(def.Format, text)))
+                throw new InvalidOperationException(
+                    $"allowedvalues contains a value that does not satisfy format {def.Format}");
+            if (table.ContainsKey("default")
+                && (def.DefaultValue is not string defaultText
+                    || !StringFormatValidator.IsValid(def.Format, defaultText)))
+                throw new InvalidOperationException(
+                    $"default does not satisfy format {def.Format}");
+            if (def.DefaultValue is string formattedDefault
+                && def.AllowedValues != null
+                && !def.AllowedValues.OfType<string>().Contains(formattedDefault, StringComparer.Ordinal))
+                throw new InvalidOperationException(
+                    "default is not included in allowedvalues");
         }
 
         // Union/composition

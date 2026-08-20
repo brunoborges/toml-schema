@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from ._compare import IncomparableError, compare, is_type, type_name_of, values_equal
 from ._definition import Condition, Definition
 from ._errors import SchemaError
+from ._formats import matches_format
 from ._types import Diagnostic, Severity, SchemaType, normalize_reference, parse_schema_type
 
 _PLAIN_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
@@ -577,6 +578,8 @@ class Validator:
             self.validate_length(path, len(value), definition)
             if definition.pattern is not None and not definition.pattern.search(value):
                 self.add(path, f"does not match pattern {definition.pattern.pattern}")
+            if definition.format and not matches_format(value, definition.format):
+                self.add(path, f"does not match format {definition.format}")
 
     def validate_allowed_values(self, path: str, value: Any, definition: Definition) -> None:
         if not definition.allowed_values:

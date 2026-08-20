@@ -37,6 +37,7 @@ command.
   - [Quoted and Special Keys](#quoted-and-special-keys)
   - [Scalar and Unconstrained Built-in Types](#scalar-and-unconstrained-built-in-types)
     - [Allowed Values - `allowedvalues`](#allowed-values---allowedvalues)
+    - [String Format - `format`](#string-format---format)
   - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
   - [Length - `minlength` and `maxlength`](#length---minlength-and-maxlength)
   - [Container Types](#container-types)
@@ -111,7 +112,7 @@ type="table"
 
     [types.serverType.ip]
     type="string"
-    pattern='^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$'
+    format="ipv4"
     [types.serverType.role]
     type="string"
 
@@ -340,6 +341,7 @@ because each recursive step consumes a nested document value.
 [types.<typename>]
 type = "<type-reference>"
 description = "<human-readable description>"
+format = "<email|uuid|uri|hostname|ipv4|ipv6>"
 itemtype = "<type-reference>"
 items = [ "<type-reference>", ... ]
 oneof = [ "<type-reference>", ... ]
@@ -374,6 +376,7 @@ detailed sections below remain authoritative.
 | `if`, `then`, `else` | Exhaustively select one of two named table-like definitions from a direct child's parsed value |
 | `allof` | Conjunctively applies one or more compatible type references in addition to the local definition |
 | `description`, `optional`, `default`, `deprecated` | Any definition, including a named reference or alternative selector |
+| `format` | A definition with built-in `type = "string"` |
 | `itemtype` | A definition with built-in `type = "array"` or `type = "collection"` |
 | `items` | A definition with built-in `type = "array"`; mutually exclusive with `itemtype`, `allowedvalues`, `min`, `max`, `minlength`, and `maxlength` |
 | `allowedvalues` | A scalar or unconstrained built-in type, or the items of a non-tuple `array` |
@@ -471,7 +474,7 @@ equality between integers and floats does not make their TOML kinds
 interchangeable for this schema-load check. A malformed enumeration MUST be
 rejected at schema-load time.
 
-For a non-array definition, when `allowedvalues` is combined with `pattern`,
+For a non-array definition, when `allowedvalues` is combined with `pattern`, `format`,
 `min`, `max`, `minlength`, or `maxlength`, every entry in `allowedvalues` MUST
 satisfy every applicable constraint. A schema containing an entry that violates
 one of those constraints is malformed, and schema loaders MUST reject it at
@@ -493,6 +496,70 @@ Example:
 [types.colorType]
 type="string"
 allowedvalues=[ "red", "black", "blue" ]
+```
+
+#### String Format - `format`
+
+`format` applies a standardized semantic assertion to a parsed TOML string.
+It MUST be one of the following case-sensitive names:
+
+| Format | Required syntax |
+| --- | --- |
+| `email` | An ASCII SMTP `Mailbox` as defined by [RFC 5321, section 4.1.2](https://www.rfc-editor.org/rfc/rfc5321#section-4.1.2), with the length limits from section 4.5.3.1 |
+| `uuid` | The hexadecimal-and-dash UUID representation defined by [RFC 9562, section 4](https://www.rfc-editor.org/rfc/rfc9562#section-4) |
+| `uri` | An absolute `URI` as defined by [RFC 3986](https://www.rfc-editor.org/rfc/rfc3986), including a scheme |
+| `hostname` | The preferred ASCII host-name syntax from [RFC 1123, section 2.1](https://www.rfc-editor.org/rfc/rfc1123#section-2.1) |
+| `ipv4` | IPv4 dotted-decimal notation |
+| `ipv6` | IPv6 text representation as defined by [RFC 4291, section 2.2](https://www.rfc-editor.org/rfc/rfc4291#section-2.2) |
+
+The formats use the following portable rules:
+
+- `email` accepts the RFC 5321 dot-string and quoted-string local-part forms.
+  It is not an internationalized mailbox format: every character MUST be ASCII.
+  The local-part MUST be at most 64 octets and the complete mailbox MUST be at
+  most 254 octets. The domain MUST be an RFC 1123 host name or an RFC 5321
+  `address-literal` as defined by RFC 5321, including IPv4, IPv6, and registered
+  General-address-literal forms. Validators MUST parse these structures and
+  MUST NOT substitute a simplified `text@text` regular expression.
+- `uuid` consists of exactly 32 hexadecimal digits, case-insensitive, displayed
+  in groups of 8, 4, 4, 4, and 12 digits separated by hyphens.
+- `uri` MUST match the RFC 3986 `URI` production rather than `relative-ref`.
+  It is ASCII; non-ASCII components must be percent-encoded. Every percent
+  escape MUST contain exactly two hexadecimal digits.
+- `hostname` is ASCII and case-insensitive. After excluding one optional final
+  root dot, its total length MUST be from 1 through 253 characters. Each
+  dot-separated label MUST contain 1 through 63 ASCII letters, digits, or
+  hyphens, MUST begin and end with a letter or digit, and MAY be entirely
+  numeric.
+- `ipv4` contains exactly four decimal octets from 0 through 255 separated by
+  dots. An octet MUST NOT contain a leading zero unless the octet is exactly
+  `0`.
+- `ipv6` accepts the compressed and IPv4-embedded forms defined by RFC 4291.
+  It does not accept a URI host's brackets or a zone identifier. An embedded
+  IPv4 suffix follows the `ipv4` rules above.
+
+`format` is valid only on a definition whose selected type is the built-in
+`string`. It cannot be attached to another built-in type, an alternative
+selector, or a named type reference. A schema loader MUST reject an unsupported
+format name or incompatible use at schema-load time rather than ignoring it.
+
+When `format` is combined with `allowedvalues`, every allowed string MUST
+satisfy the format at schema-load time. `format` is independent of `pattern`,
+`minlength`, and `maxlength`; a document string MUST satisfy every declared
+constraint.
+
+```toml
+[elements.contact]
+type = "string"
+format = "email"
+
+[elements.endpoint]
+type = "string"
+format = "uri"
+
+[elements.instance-id]
+type = "string"
+format = "uuid"
 ```
 
 ### Minimum Value / Maximum Value - `min` and `max`
@@ -1515,6 +1582,8 @@ patterns used by major configuration formats, including:
   `anyof`;
 - table shapes selected from a direct child's value with `if`, `then`, and
   `else`;
+- standardized email, UUID, URI, host-name, and IP-address strings with
+  `format`;
 - single-table-or-array-of-table representations through named container
   alternatives;
 - fixed-length heterogeneous arrays with `items`; and
