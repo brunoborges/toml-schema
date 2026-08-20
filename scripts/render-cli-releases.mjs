@@ -162,7 +162,7 @@ const heroContent = latest
             <span class="badge">${latest.release.prerelease ? "Prerelease" : "Latest"}</span>
           </div>
           <pre><code>curl --proto '=https' --tlsv1.2 -sSfL \\
-  https://toml-schema.org/cli/releases/${escapeHtml(latest.release.tag_name)}/install-tosd.sh |
+  https://tomlschema.org/cli/releases/${escapeHtml(latest.release.tag_name)}/install-tosd.sh |
   bash -s -- --version ${escapeHtml(latest.version)}</code></pre>
         </div>`
   : `<div class="card install-panel">
@@ -175,7 +175,7 @@ const page = `<!doctype html>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="description" content="Download versioned tosd CLI binaries for Linux, macOS, and Windows.">
-  <link rel="canonical" href="https://toml-schema.org/cli/releases/">
+  <link rel="canonical" href="https://tomlschema.org/cli/releases/">
   <title>tosd CLI releases — TOML Schema</title>
   <script>
     (() => {
