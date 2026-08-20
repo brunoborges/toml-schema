@@ -1844,6 +1844,43 @@ location = "ignored.tosd"
 	}
 }
 
+func TestValidatesRangeBoundariesAtSchemaLoadTime(t *testing.T) {
+	dir := t.TempDir()
+	load := func(name, definition string) error {
+		path := write(t, dir, name+".tosd",
+			"[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\n"+definition+"\n")
+		_, err := LoadSchema(path)
+		return err
+	}
+
+	if err := load("valid", "type = \"float\"\nmin = -inf\nmax = inf"); err != nil {
+		t.Fatalf("float infinities and ordered bounds must load: %v", err)
+	}
+	if err := load("ordered", "type = \"integer\"\nmin = 1\nmax = 10"); err != nil {
+		t.Fatalf("ordered integer bounds must load: %v", err)
+	}
+	for name, definition := range map[string]string{
+		"numeric":         "type = \"integer\"\nmin = 10\nmax = 1",
+		"mixed-precision": "type = \"integer\"\nmin = 9007199254740993\nmax = 9007199254740992.0",
+		"offset":          "type = \"offset-date-time\"\nmin = 2024-01-02T00:00:00Z\nmax = 2024-01-01T23:00:00Z",
+		"local-date-time": "type = \"local-date-time\"\nmin = 2024-01-02T00:00:00\nmax = 2024-01-01T23:00:00",
+		"local-date":      "type = \"local-date\"\nmin = 2024-01-02\nmax = 2024-01-01",
+		"local-time":      "type = \"local-time\"\nmin = 12:00:01\nmax = 12:00:00",
+		"array":           "type = \"array\"\nitemtype = \"integer\"\nmin = 10\nmax = 1",
+	} {
+		if err := load(name, definition); err == nil ||
+			!strings.Contains(err.Error(), "min must not be greater than max") {
+			t.Fatalf("%s: expected load-time reversed-range error, got %v", name, err)
+		}
+	}
+	for name, boundary := range map[string]string{"infinite-min": "min = -inf", "infinite-max": "max = inf"} {
+		if err := load(name, "type = \"integer\"\n"+boundary); err == nil ||
+			!strings.Contains(err.Error(), "when comparable kind is integer") {
+			t.Fatalf("%s: expected load-time integer-infinity error, got %v", name, err)
+		}
+	}
+}
+
 func write(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)

@@ -10,7 +10,6 @@ import { SchemaError } from "./errors.js";
 import { isValidStringFormat } from "./formats.js";
 import { appendPath } from "./paths.js";
 import {
-  effectiveFixedChildren,
   effectiveKind,
   resolveItemKind,
   type SchemaData,
@@ -341,7 +340,7 @@ export class DocumentValidator {
     for (const union of parts.unions) {
       let alternativeKeys: Set<string>;
       try {
-        alternativeKeys = effectiveFixedChildren(this.#data, union, new Set());
+        alternativeKeys = this.effectiveClosureKeys(union, value, new Set());
       } catch (cause) {
         this.add(path, errorMessage(cause));
         continue;
@@ -357,7 +356,7 @@ export class DocumentValidator {
     for (const conditional of parts.conditionals) {
       let branchKeys: Set<string>;
       try {
-        branchKeys = effectiveFixedChildren(this.#data, conditional, new Set());
+        branchKeys = this.effectiveClosureKeys(conditional, value, new Set());
       } catch (cause) {
         this.add(path, errorMessage(cause));
         continue;
@@ -456,6 +455,39 @@ export class DocumentValidator {
     for (const conditional of conditionals) {
       if (conditional.deprecated) this.warn(path, "deprecated", "value is deprecated");
     }
+  }
+
+  private effectiveClosureKeys(
+    definition: RawDefinition,
+    value: TomlValue,
+    visiting: Set<string>,
+  ): Set<string> {
+    const keys = new Set<string>(Object.keys(definition.children));
+    const mergeReference = (reference: string): void => {
+      if (parseSchemaType(reference) !== undefined) return;
+      if (visiting.has(reference)) {
+        throw new SchemaError(`cyclic composition reference: ${reference}`);
+      }
+      visiting.add(reference);
+      try {
+        const target = this.resolveReference(reference, new Set());
+        for (const name of this.effectiveClosureKeys(target, value, visiting)) keys.add(name);
+      } finally {
+        visiting.delete(reference);
+      }
+    };
+    if (definition.reference) mergeReference(definition.reference);
+    for (const reference of definition.allOf ?? []) mergeReference(reference);
+    const alternatives = definition.oneOf?.length ? definition.oneOf : (definition.anyOf ?? []);
+    for (const reference of alternatives) mergeReference(reference);
+    if (definition.condition) {
+      let reference = definition.elseReference ?? "";
+      if (isTomlTable(value) && conditionMatches(value, definition.condition)) {
+        reference = definition.thenReference ?? "";
+      }
+      mergeReference(reference);
+    }
+    return keys;
   }
 
   /**

@@ -66,7 +66,7 @@ final class TomlSchemaValidator {
 
     private void validateNode(String path, Object value, SchemaDefinition definition) {
         validateComposedNode(path, value, definition, new HashSet<>(),
-                collectFixedChildren(definition, new HashSet<>()),
+                collectEffectiveClosureChildren(definition, value, new HashSet<>()),
                 !resolvesToUnionSelector(definition, new HashSet<>()), warnings);
     }
 
@@ -162,7 +162,7 @@ final class TomlSchemaValidator {
                     case TABLE -> validateTableContributor(path, (TomlTable) value, definition);
                     case COLLECTION -> validateCollectionContributor(
                             path, (TomlTable) value, definition,
-                            nodeChildren(definition, externalChildren, visiting));
+                            nodeChildren(definition, value, externalChildren, visiting));
                     case ARRAY -> validateArray(path, (TomlArray) value, definition);
                     default -> {
                     }
@@ -199,37 +199,27 @@ final class TomlSchemaValidator {
                 continue;
             }
             Set<String> scope = new HashSet<>(visiting);
-            result.addAll(collectFixedChildren(reference(component, scope), scope));
+            result.addAll(collectDeterminateReferenceChildren(component, scope));
         }
         return result;
     }
 
     private Set<String> primaryChildren(SchemaDefinition definition, Set<String> visiting) {
         if (definition.reference() != null) {
-            Set<String> scope = new HashSet<>(visiting);
-            return collectFixedChildren(reference(definition.reference(), scope), scope);
+            return collectDeterminateReferenceChildren(
+                    definition.reference(), new HashSet<>(visiting));
         }
-        Set<String> result = new HashSet<>();
-        if (definition.condition() != null) {
-            for (String branch : List.of(definition.thenReference(), definition.elseReference())) {
-                Set<String> scope = new HashSet<>(visiting);
-                result.addAll(collectFixedChildren(reference(branch, scope), scope));
-            }
-        }
-        for (String alternative : alternatives(definition)) {
-            Set<String> scope = new HashSet<>(visiting);
-            result.addAll(collectFixedChildren(reference(alternative, scope), scope));
-        }
-        return result;
+        return Set.of();
     }
 
     private Set<String> nodeChildren(
             SchemaDefinition definition,
+            Object value,
             Set<String> externalChildren,
             Set<String> visiting
     ) {
         Set<String> result = new HashSet<>(externalChildren);
-        result.addAll(collectFixedChildren(definition, new HashSet<>(visiting)));
+        result.addAll(collectEffectiveClosureChildren(definition, value, new HashSet<>(visiting)));
         return result;
     }
 
@@ -272,8 +262,8 @@ final class TomlSchemaValidator {
         TomlSchemaValidator branch = new TomlSchemaValidator(schema);
         branch.suppressWarnings = suppressWarnings;
         SchemaDefinition selectedDefinition = branch.reference(selected, new HashSet<>());
-        Set<String> branchClosure = branch.collectFixedChildren(
-                selectedDefinition, new HashSet<>());
+        Set<String> branchClosure = branch.collectEffectiveClosureChildren(
+                selectedDefinition, value, new HashSet<>());
         branchClosure.addAll(sharedChildren);
         LinkedHashSet<ValidationWarning> branchNodeWarnings = new LinkedHashSet<>();
         branch.validateComposedNode(path, value, selectedDefinition,
@@ -299,7 +289,7 @@ final class TomlSchemaValidator {
             branch.suppressWarnings = suppressWarnings;
             SchemaDefinition alternativeDefinition = branch.reference(alternative, new HashSet<>());
             Set<String> alternativeChildren =
-                    branch.collectFixedChildren(alternativeDefinition, new HashSet<>());
+                    branch.collectEffectiveClosureChildren(alternativeDefinition, value, new HashSet<>());
             Set<String> branchClosure = new HashSet<>(alternativeChildren);
             branchClosure.addAll(sharedChildren);
             LinkedHashSet<ValidationWarning> branchNodeWarnings = new LinkedHashSet<>();
@@ -511,27 +501,56 @@ final class TomlSchemaValidator {
         return value instanceof Comparable<?> && value.getClass().isInstance(boundary);
     }
 
-    private Set<String> collectFixedChildren(SchemaDefinition definition, Set<String> visiting) {
+    private Set<String> collectDeterminateFixedChildren(
+            SchemaDefinition definition,
+            Set<String> visiting
+    ) {
         Set<String> result = new HashSet<>(definition.children().keySet());
         if (definition.reference() != null) {
-            result.addAll(collectFixedChildren(reference(definition.reference(), visiting),
-                    new HashSet<>(visiting)));
-        }
-        if (definition.condition() != null) {
-            for (String branch : List.of(definition.thenReference(), definition.elseReference())) {
-                Set<String> scope = new HashSet<>(visiting);
-                result.addAll(collectFixedChildren(reference(branch, scope), scope));
-            }
-        }
-        List<String> alternatives = definition.oneOf().isEmpty()
-                ? definition.anyOf() : definition.oneOf();
-        for (String alternative : alternatives) {
-            result.addAll(collectFixedChildren(reference(alternative, visiting),
-                    new HashSet<>(visiting)));
+            result.addAll(collectDeterminateReferenceChildren(
+                    definition.reference(), new HashSet<>(visiting)));
         }
         for (String component : definition.allOf()) {
-            result.addAll(collectFixedChildren(reference(component, visiting),
-                    new HashSet<>(visiting)));
+            result.addAll(collectDeterminateReferenceChildren(
+                    component, new HashSet<>(visiting)));
+        }
+        return result;
+    }
+
+    private Set<String> collectDeterminateReferenceChildren(String reference, Set<String> visiting) {
+        SchemaDefinition target = reference(reference, visiting);
+        return collectDeterminateFixedChildren(target, new HashSet<>(visiting));
+    }
+
+    private Set<String> collectEffectiveClosureChildren(
+            SchemaDefinition definition,
+            Object value,
+            Set<String> visiting
+    ) {
+        Set<String> result = collectDeterminateFixedChildren(definition, new HashSet<>(visiting));
+        if (definition.reference() != null) {
+            SchemaDefinition target = reference(definition.reference(), visiting);
+            result.addAll(collectEffectiveClosureChildren(target, value, new HashSet<>(visiting)));
+        }
+        for (String component : definition.allOf()) {
+            SchemaDefinition target = reference(component, visiting);
+            result.addAll(collectEffectiveClosureChildren(target, value, new HashSet<>(visiting)));
+        }
+        for (String alternative : alternatives(definition)) {
+            SchemaDefinition target = reference(alternative, visiting);
+            result.addAll(collectEffectiveClosureChildren(target, value, new HashSet<>(visiting)));
+        }
+        if (definition.condition() != null && value instanceof TomlTable table) {
+            SchemaCondition condition = definition.condition();
+            Object discriminator = table.get(List.of(condition.key()));
+            boolean matches = discriminator != null
+                    && (condition.usesEquals()
+                    ? ValueSemantics.valuesEqual(discriminator, condition.equalsValue())
+                    : condition.inValues().stream()
+                    .anyMatch(candidate -> ValueSemantics.valuesEqual(discriminator, candidate)));
+            String selected = matches ? definition.thenReference() : definition.elseReference();
+            SchemaDefinition target = reference(selected, visiting);
+            result.addAll(collectEffectiveClosureChildren(target, value, new HashSet<>(visiting)));
         }
         return result;
     }

@@ -437,11 +437,18 @@ final class SchemaLoader {
     }
 
     private void validateAlternativeReferences(String name, String property, List<String> references) {
+        Map<String, String> seen = new LinkedHashMap<>();
         for (String reference : references) {
             String normalizedReference = normalizeReference(reference);
             rejectBareCollectionReference(name, property, normalizedReference);
             if (SchemaType.ANY.schemaName().equals(normalizedReference)) {
                 throw new SchemaException(name + " cannot use any directly in " + property);
+            }
+            String first = seen.putIfAbsent(normalizedReference, reference);
+            if (first != null) {
+                throw new SchemaException(name + " " + property
+                        + " contains duplicate type references \"" + first + "\" and \"" + reference
+                        + "\"; both resolve to " + normalizedReference);
             }
         }
     }
@@ -702,6 +709,21 @@ final class SchemaLoader {
         if (type != null) {
             validateBoundaryMatchesType(name, "min", min, type);
             validateBoundaryMatchesType(name, "max", max, type);
+            validateOrderedRange(name, min, max, type);
+        }
+    }
+
+    private void validateOrderedRange(String name, Object min, Object max, SchemaType comparableKind) {
+        if (comparableKind == SchemaType.INTEGER) {
+            if (min instanceof Double value && value.isInfinite()) {
+                throw new SchemaException(name + " cannot use infinity as min when comparable kind is integer");
+            }
+            if (max instanceof Double value && value.isInfinite()) {
+                throw new SchemaException(name + " cannot use infinity as max when comparable kind is integer");
+            }
+        }
+        if (min != null && max != null && ValueSemantics.compare(min, max) > 0) {
+            throw new SchemaException(name + " min must not be greater than max");
         }
     }
 
@@ -719,6 +741,7 @@ final class SchemaLoader {
                 SchemaType itemType = itemTypes.iterator().next();
                 validateBoundaryMatchesType(definition.name(), "min", definition.min(), itemType);
                 validateBoundaryMatchesType(definition.name(), "max", definition.max(), itemType);
+                validateOrderedRange(definition.name(), definition.min(), definition.max(), itemType);
             }
             validateArrayRangeConstraints(types, definition.children());
         }
@@ -959,7 +982,7 @@ final class SchemaLoader {
                         + " effective collection must define at least one itemtype");
             }
             if (hasPresenceRules) {
-                Set<String> fixedChildren = effectiveFixedChildren(definition, types, new HashSet<>());
+                Set<String> fixedChildren = determinateFixedChildren(definition, types, new HashSet<>());
                 validateRuleNames(definition, fixedChildren);
             }
             validateDefinitionSemantics(types, definition.children());
@@ -1013,34 +1036,31 @@ final class SchemaLoader {
         return localKinds;
     }
 
-    private Set<String> effectiveFixedChildren(
+    private Set<String> determinateFixedChildren(
             SchemaDefinition definition,
             Map<String, SchemaDefinition> types,
             Set<String> visiting
     ) {
         Set<String> children = new HashSet<>(definition.children().keySet());
         if (definition.reference() != null) {
-            children.addAll(effectiveFixedChildren(referenceDefinition(definition.reference(), types), types,
-                    addVisit(definition.reference(), visiting)));
-        }
-        if (definition.condition() != null) {
-            children.addAll(effectiveFixedChildren(
-                    referenceDefinition(definition.thenReference(), types), types,
-                    addVisit(definition.thenReference(), visiting)));
-            children.addAll(effectiveFixedChildren(
-                    referenceDefinition(definition.elseReference(), types), types,
-                    addVisit(definition.elseReference(), visiting)));
-        }
-        List<String> alternatives = definition.oneOf().isEmpty() ? definition.anyOf() : definition.oneOf();
-        for (String alternative : alternatives) {
-            children.addAll(effectiveFixedChildren(referenceDefinition(alternative, types), types,
-                    addVisit(alternative, visiting)));
+            children.addAll(determinateReferenceFixedChildren(definition.reference(), types, visiting));
         }
         for (String component : definition.allOf()) {
-            children.addAll(effectiveFixedChildren(referenceDefinition(component, types), types,
-                    addVisit(component, visiting)));
+            children.addAll(determinateReferenceFixedChildren(component, types, visiting));
         }
         return children;
+    }
+
+    private Set<String> determinateReferenceFixedChildren(
+            String reference,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting
+    ) {
+        if (SchemaType.fromSchemaNameOptional(reference).isPresent()) {
+            return Set.of();
+        }
+        SchemaDefinition target = referenceDefinition(reference, types);
+        return determinateFixedChildren(target, types, addVisit(reference, visiting));
     }
 
     private boolean hasCollectionItemConstraint(
@@ -1048,34 +1068,23 @@ final class SchemaLoader {
             Map<String, SchemaDefinition> types,
             Set<String> visiting
     ) {
+        if (definition.condition() != null || !definition.oneOf().isEmpty() || !definition.anyOf().isEmpty()) {
+            return true;
+        }
         if (definition.itemReference() != null) {
             return true;
         }
-        if (definition.reference() != null
-                && hasCollectionItemConstraint(
-                referenceDefinition(definition.reference(), types), types,
-                addVisit(definition.reference(), visiting))) {
-            return true;
-        }
-        if (definition.condition() != null) {
-            return hasCollectionItemConstraint(
-                    referenceDefinition(definition.thenReference(), types), types,
-                    addVisit(definition.thenReference(), visiting))
-                    && hasCollectionItemConstraint(
-                    referenceDefinition(definition.elseReference(), types), types,
-                    addVisit(definition.elseReference(), visiting));
-        }
-        List<String> alternatives = definition.oneOf().isEmpty()
-                ? definition.anyOf() : definition.oneOf();
-        for (String alternative : alternatives) {
-            if (hasCollectionItemConstraint(referenceDefinition(alternative, types), types,
-                    addVisit(alternative, visiting))) {
+        if (definition.reference() != null) {
+            SchemaDefinition target = referenceDefinition(definition.reference(), types);
+            if (hasCollectionItemConstraint(
+                    target, types, addVisit(definition.reference(), visiting))) {
                 return true;
             }
         }
         for (String component : definition.allOf()) {
-            if (hasCollectionItemConstraint(referenceDefinition(component, types), types,
-                    addVisit(component, visiting))) {
+            SchemaDefinition target = referenceDefinition(component, types);
+            if (target.condition() == null && target.oneOf().isEmpty() && target.anyOf().isEmpty()
+                    && hasCollectionItemConstraint(target, types, addVisit(component, visiting))) {
                 return true;
             }
         }

@@ -60,6 +60,49 @@ type = "types.settings"
 	}
 }
 
+func TestSiblingRulesUseOnlyDeterminateEffectiveFixedChildren(t *testing.T) {
+	unionOnly := `
+[types.left]
+type = "table"
+[types.left.first]
+type = "string"
+optional = true
+[types.right]
+type = "table"
+[types.right.second]
+type = "string"
+optional = true
+[types.choice]
+oneof = ["types.left", "types.right"]
+[elements.value]
+type = "table"
+allof = ["types.choice"]
+exactlyone = [["first", "second"]]
+`
+	path := write(t, t.TempDir(), "union-operands.tosd",
+		"[toml-schema]\nversion = \"1.0.0\"\n"+unionOnly)
+	if _, err := LoadSchema(path); err == nil || !strings.Contains(err.Error(), "unknown fixed child") {
+		t.Fatalf("expected union-only operands to be rejected, got %v", err)
+	}
+
+	loadSemanticsSchema(t, `
+[types.base]
+type = "table"
+[types.base.first]
+type = "string"
+optional = true
+[types.base.second]
+type = "string"
+optional = true
+[types.indirect]
+type = "types.base"
+[elements.value]
+type = "table"
+allof = ["types.indirect"]
+exactlyone = [["first", "second"]]
+`)
+}
+
 func TestAllOfIsAdditiveAndComputesTableClosure(t *testing.T) {
 	schema := loadSemanticsSchema(t, `
 [types.base]

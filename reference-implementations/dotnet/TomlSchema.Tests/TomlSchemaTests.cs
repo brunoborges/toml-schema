@@ -5,6 +5,42 @@ using Xunit;
 public class TomlSchemaTests : TestBase
 {
     [Fact]
+    public void ValidatesRangeBoundariesAtSchemaLoadTime()
+    {
+        TomlSchema.Load(RangeSchema("valid-range.tosd", "type = \"float\"\nmin = -inf\nmax = inf"));
+        TomlSchema.Load(RangeSchema("ordered-range.tosd", "type = \"integer\"\nmin = 1\nmax = 10"));
+        var reversed = new Dictionary<string, string>
+        {
+            ["numeric"] = "type = \"integer\"\nmin = 10\nmax = 1",
+            ["mixed-precision"] = "type = \"integer\"\nmin = 9007199254740993\nmax = 9007199254740992.0",
+            ["offset"] = "type = \"offset-date-time\"\nmin = 2024-01-02T00:00:00Z\nmax = 2024-01-01T23:00:00Z",
+            ["local-date-time"] = "type = \"local-date-time\"\nmin = 2024-01-02T00:00:00\nmax = 2024-01-01T23:00:00",
+            ["local-date"] = "type = \"local-date\"\nmin = 2024-01-02\nmax = 2024-01-01",
+            ["local-time"] = "type = \"local-time\"\nmin = 12:00:01\nmax = 12:00:00",
+            ["array"] = "type = \"array\"\nitemtype = \"integer\"\nmin = 10\nmax = 1"
+        };
+        foreach (var (name, definition) in reversed)
+        {
+            var error = Assert.ThrowsAny<Exception>(
+                () => TomlSchema.Load(RangeSchema(name + ".tosd", definition)));
+            Assert.Contains("min must not be greater than max", error.Message);
+        }
+        foreach (var (name, boundary) in new[]
+        {
+            ("infinite-min", "min = -inf"),
+            ("infinite-max", "max = inf")
+        })
+        {
+            var error = Assert.ThrowsAny<Exception>(() => TomlSchema.Load(
+                RangeSchema(name + ".tosd", "type = \"integer\"\n" + boundary)));
+            Assert.Contains("when comparable kind is integer", error.Message);
+        }
+    }
+
+    private static string RangeSchema(string name, string definition) =>
+        Write(name, "[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\n" + definition + "\n");
+
+    [Fact]
     public void ValidatesCheckedInExample()
     {
         var schema = TomlSchema.Load(Fixture("config.tosd"));

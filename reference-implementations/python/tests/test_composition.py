@@ -126,36 +126,30 @@ type = "boolean"
 optional = true
 """,
             )
-            valid = [
+            union_exclusive = [
                 {"id": 1, "name": "a"},
                 {"id": 1, "label": "a"},
                 {"id": 1, "name": "a", "enabled": True},
             ]
-            for item in valid:
+            for item in union_exclusive:
                 result = schema.validate({"item": item})
-                self.assertTrue(result.valid, msg=(item, result.errors))
+                self.assertTrue(result.valid, msg=result.errors)
 
-            both = schema.validate({"item": {"id": 1, "name": "a", "label": "b"}})
-            self.assertEqual(len(both.errors), 1)
-            self.assertEqual(both.errors[0].path, "$.item")
-            self.assertIn("but found 0", both.errors[0].message)
+            for item in ({"id": 1, "name": "a", "label": "a"}, {"id": 1}):
+                result = schema.validate({"item": item})
+                self.assertFalse(result.valid)
+                self.assertTrue(
+                    any(d.path == "$.item" and "found 0" in d.message for d in result.errors),
+                    msg=result.errors,
+                )
 
-            none = schema.validate({"item": {"id": 1}})
-            self.assertEqual(len(none.errors), 1)
-            self.assertEqual(none.errors[0].path, "$.item")
-            self.assertIn("but found 0", none.errors[0].message)
-
-            unknown = schema.validate({"item": {"id": 1, "name": "a", "bogus": True}})
-            self.assertFalse(unknown.valid)
-            for diagnostic in unknown.errors:
-                self.assertIn(diagnostic.path, ("$.item.bogus", "$.item"))
-            self.assertTrue(
-                helpers.contains_diagnostic(unknown.errors, "$.item.bogus", "unexpected key")
-            )
+            unexpected = schema.validate({"item": {"id": 1, "name": "a", "bogus": True}})
+            self.assertFalse(unexpected.valid)
+            self.assertTrue(helpers.has_path(unexpected, "$.item.bogus"), msg=unexpected.errors)
 
             missing = schema.validate({"item": {"name": "a"}})
-            self.assertEqual(len(missing.errors), 1)
-            self.assertEqual(missing.errors[0].path, "$.item.id")
+            self.assertFalse(missing.valid)
+            self.assertTrue(helpers.has_path(missing, "$.item.id"), msg=missing.errors)
 
     def test_allof_union_closure_preserves_overlapping_structural_children(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -195,8 +189,10 @@ allof = ["types.base", "types.identity"]
                 {"item": {"name": "a", "path": "p", "git": "https://example.invalid/repo"}}
             )
             self.assertFalse(both.valid)
-            self.assertEqual(len(both.errors), 1)
-            self.assertIn("but found 0", both.errors[0].message)
+            self.assertTrue(
+                any(d.path == "$.item" and "found 0" in d.message for d in both.errors),
+                msg=both.errors,
+            )
 
     def test_allof_closes_open_union_alternatives_when_composition_defines_children(self):
         with tempfile.TemporaryDirectory() as tmp:

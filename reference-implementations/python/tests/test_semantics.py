@@ -58,6 +58,7 @@ type = "types.settings"
             result = schema.validate(valid)
             self.assertTrue(result.valid, msg=result.errors)
 
+
             cases = {
                 "dependency": {"branch": "main", "file": "README.md"},
                 "transitive": {"git": "repo", "file": "README.md"},
@@ -110,6 +111,101 @@ type = "types.settings"
 
             result = schema.validate({"settings": {"c": "z"}})
             self.assertTrue(result.valid, msg=result.errors)
+
+    def test_rules_use_only_determinate_effective_fixed_children(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            union_only = helpers.write_file(
+                tmp,
+                "union-operands.tosd",
+                """
+[toml-schema]
+version = "1.0.0"
+[types.left]
+type = "table"
+[types.left.first]
+type = "string"
+optional = true
+[types.right]
+type = "table"
+[types.right.second]
+type = "string"
+optional = true
+[types.choice]
+oneof = ["types.left", "types.right"]
+[elements.value]
+type = "table"
+allof = ["types.choice"]
+exactlyone = [["first", "second"]]
+""",
+            )
+            with self.assertRaisesRegex(SchemaError, "unknown fixed child"):
+                load_schema(union_only)
+
+            helpers.load_semantics_schema(
+                tmp,
+                """
+[types.base]
+type = "table"
+[types.base.first]
+type = "string"
+optional = true
+[types.base.second]
+type = "string"
+optional = true
+[types.indirect]
+type = "types.base"
+[elements.value]
+type = "table"
+allof = ["types.indirect"]
+exactlyone = [["first", "second"]]
+""",
+            )
+
+class RangeBoundaryLoadTests(unittest.TestCase):
+    def test_validates_ranges_during_schema_loading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            def load(name, definition):
+                path = helpers.write_file(
+                    tmp,
+                    name + ".tosd",
+                    '[toml-schema]\nversion = "1.0.0"\n[elements.value]\n'
+                    + definition
+                    + "\n",
+                )
+                return load_schema(path)
+
+            load("valid", 'type = "float"\nmin = -inf\nmax = inf')
+            load("ordered", 'type = "integer"\nmin = 1\nmax = 10')
+            reversed_ranges = {
+                "numeric": 'type = "integer"\nmin = 10\nmax = 1',
+                "mixed-precision": (
+                    'type = "integer"\n'
+                    "min = 9007199254740993\nmax = 9007199254740992.0"
+                ),
+                "offset": (
+                    'type = "offset-date-time"\n'
+                    "min = 2024-01-02T00:00:00Z\nmax = 2024-01-01T23:00:00Z"
+                ),
+                "local-date-time": (
+                    'type = "local-date-time"\n'
+                    "min = 2024-01-02T00:00:00\nmax = 2024-01-01T23:00:00"
+                ),
+                "local-date": 'type = "local-date"\nmin = 2024-01-02\nmax = 2024-01-01',
+                "local-time": 'type = "local-time"\nmin = 12:00:01\nmax = 12:00:00',
+                "array": 'type = "array"\nitemtype = "integer"\nmin = 10\nmax = 1',
+            }
+            for name, definition in reversed_ranges.items():
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(
+                        SchemaError, "min must not be greater than max"
+                    ):
+                        load(name, definition)
+            for name, boundary in (("infinite-min", "min = -inf"), ("infinite-max", "max = inf")):
+                with self.subTest(name=name):
+                    with self.assertRaisesRegex(
+                        SchemaError, "when comparable kind is integer"
+                    ):
+                        load(name, 'type = "integer"\n' + boundary)
 
 
 class AllOfCompositionTests(unittest.TestCase):

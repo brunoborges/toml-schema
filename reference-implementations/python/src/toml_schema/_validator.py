@@ -275,7 +275,7 @@ class Validator:
         union_keys: List[Set[str]] = []
         for union in parts.unions:
             try:
-                alternative_keys = self.schema.effective_fixed_children(union, set())
+                alternative_keys = self.effective_closure_keys(union, value, set())
             except SchemaError as exc:
                 self.add(path, str(exc))
                 continue
@@ -288,7 +288,7 @@ class Validator:
         conditional_keys: List[Set[str]] = []
         for conditional in parts.conditionals:
             try:
-                branch_keys = self.schema.effective_fixed_children(conditional, set())
+                branch_keys = self.effective_closure_keys(conditional, value, set())
             except SchemaError as exc:
                 self.add(path, str(exc))
                 continue
@@ -370,6 +370,37 @@ class Validator:
         for conditional in conditionals:
             if conditional.deprecated:
                 self.warn(path, "deprecated", "value is deprecated")
+
+    def effective_closure_keys(
+        self, definition: Definition, value: Any, visiting: Set[str]
+    ) -> Set[str]:
+        keys = set(definition.children.keys())
+
+        def merge_reference(reference: str) -> None:
+            if parse_schema_type(reference) is not None:
+                return
+            if reference in visiting:
+                raise SchemaError(f"cyclic composition reference: {reference}")
+            visiting.add(reference)
+            try:
+                target = self.resolve_reference(reference, set())
+                keys.update(self.effective_closure_keys(target, value, visiting))
+            finally:
+                visiting.discard(reference)
+
+        if definition.reference:
+            merge_reference(definition.reference)
+        for reference in definition.all_of:
+            merge_reference(reference)
+        alternatives = definition.one_of if definition.one_of else definition.any_of
+        for reference in alternatives:
+            merge_reference(reference)
+        if definition.condition is not None:
+            reference = definition.else_reference
+            if isinstance(value, dict) and _condition_matches(value, definition.condition):
+                reference = definition.then_reference
+            merge_reference(reference)
+        return keys
 
     def validate_composed_union(
         self,

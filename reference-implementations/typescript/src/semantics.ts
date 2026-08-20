@@ -1,6 +1,7 @@
 import { isRangeComparable, normalizeReference, parseSchemaType, type SchemaType } from "./builtins.js";
 import { cloneDefinition, emptyRecord, type RawDefinition } from "./definition.js";
 import { SchemaError } from "./errors.js";
+import { validateOrderedRange } from "./schemaParser.js";
 import {
   boundaryMatchesType,
   isType,
@@ -112,7 +113,7 @@ export function effectiveKind(
   return { kind: result.kind, resolved: true };
 }
 
-export function effectiveFixedChildren(
+export function determinateFixedChildren(
   data: SchemaData,
   definition: RawDefinition,
   visiting: Set<string>,
@@ -121,50 +122,63 @@ export function effectiveFixedChildren(
   const references: string[] = [
     ...(definition.allOf ?? []),
     ...(definition.reference ? [definition.reference] : []),
-    ...(definition.oneOf ?? []),
-    ...(definition.anyOf ?? []),
-    ...(definition.condition ? [definition.thenReference ?? "", definition.elseReference ?? ""] : []),
   ];
   for (const reference of references) {
-    if (isBuiltIn(reference)) continue;
-    if (visiting.has(reference)) throw new SchemaError(`cyclic composition reference: ${reference}`);
-    const target = data.types[reference];
-    if (!target) throw new SchemaError(`unknown type reference: ${reference}`);
-    visiting.add(reference);
-    let targetFixed: Set<string>;
-    try {
-      targetFixed = effectiveFixedChildren(data, target, visiting);
-    } finally {
-      visiting.delete(reference);
-    }
+    const targetFixed = determinateReferenceFixedChildren(data, reference, visiting);
     for (const name of targetFixed) fixed.add(name);
   }
   return fixed;
 }
 
+function determinateReferenceFixedChildren(
+  data: SchemaData,
+  reference: string,
+  visiting: Set<string>,
+): Set<string> {
+  if (isBuiltIn(reference)) return new Set();
+  if (visiting.has(reference)) throw new SchemaError(`cyclic composition reference: ${reference}`);
+  const target = data.types[reference];
+  if (!target) throw new SchemaError(`unknown type reference: ${reference}`);
+  visiting.add(reference);
+  try {
+    return determinateFixedChildren(data, target, visiting);
+  } finally {
+    visiting.delete(reference);
+  }
+}
+
 /**
  * Reports whether a dynamic-entry constraint is supplied by this definition,
- * by the definition it references, by a union alternative, a conditional
- * branch, or an allof component.
+ * by the definition it references, or by a structurally contributing allof
+ * component.
  */
 export function hasCollectionItemConstraint(
   data: SchemaData,
   definition: RawDefinition,
   visiting: Set<string>,
 ): boolean {
+  if ((definition.oneOf?.length ?? 0) > 0 || (definition.anyOf?.length ?? 0) > 0 || definition.condition) {
+    return true;
+  }
   if (definition.itemReference) return true;
-  const references: string[] = [
-    ...(definition.reference ? [definition.reference] : []),
-    ...(definition.oneOf ?? []),
-    ...(definition.anyOf ?? []),
-    ...(definition.condition ? [definition.thenReference ?? "", definition.elseReference ?? ""] : []),
-    ...(definition.allOf ?? []),
-  ];
-  for (const reference of references) {
+  if (definition.reference) {
+    const target = data.types[definition.reference];
+    if (!target) throw new SchemaError(`unknown type reference: ${definition.reference}`);
+    visiting.add(definition.reference);
+    try {
+      if (hasCollectionItemConstraint(data, target, visiting)) return true;
+    } finally {
+      visiting.delete(definition.reference);
+    }
+  }
+  for (const reference of definition.allOf ?? []) {
     if (isBuiltIn(reference)) continue;
     if (visiting.has(reference)) throw new SchemaError(`cyclic composition reference: ${reference}`);
     const target = data.types[reference];
     if (!target) throw new SchemaError(`unknown type reference: ${reference}`);
+    if ((target.oneOf?.length ?? 0) > 0 || (target.anyOf?.length ?? 0) > 0 || target.condition) {
+      continue;
+    }
     visiting.add(reference);
     let found: boolean;
     try {
@@ -291,7 +305,7 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
     }
     let fixed: Set<string>;
     try {
-      fixed = effectiveFixedChildren(data, definition, new Set());
+      fixed = determinateFixedChildren(data, definition, new Set());
     } catch (cause) {
       throw new SchemaError(`${definition.name}: ${errorMessage(cause)}`);
     }
@@ -418,6 +432,7 @@ export function validateArrayRanges(data: SchemaData): void {
       if (definition.max !== undefined && !boundaryMatchesType(definition.max, itemType)) {
         throw new SchemaError(`${definition.name} max must be comparable with ${itemType}`);
       }
+      validateOrderedRange(definition.name, definition.min, definition.max, itemType);
     }
     for (const child of Object.values(definition.children)) validateDefinition(child);
   };

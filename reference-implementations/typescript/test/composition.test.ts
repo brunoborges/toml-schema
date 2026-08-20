@@ -127,6 +127,81 @@ allof = ["types.union", "types.b"]
   assert.equal(schema.validate({ value: 500n }).valid, false);
 });
 
+test("allof uses the selected union alternative's effective closure", () => {
+  const schema = loadSchemaFromSource(
+    "allof-table-union.tosd",
+    `
+[toml-schema]
+version = "1.0.0"
+[types.base]
+type = "table"
+[types.base.id]
+type = "integer"
+[types.named]
+type = "table"
+[types.named.name]
+type = "string"
+[types.labelled]
+type = "table"
+[types.labelled.label]
+type = "string"
+[types.identity]
+oneof = ["types.named", "types.labelled"]
+[elements.item]
+type = "table"
+allof = ["types.base", "types.identity"]
+[elements.item.enabled]
+type = "boolean"
+optional = true
+`,
+  );
+  for (const item of [
+    { id: 1n, name: "a" },
+    { id: 1n, label: "a" },
+    { id: 1n, name: "a", enabled: true },
+  ]) {
+    const result = schema.validate({ item });
+    assert.equal(result.valid, true, JSON.stringify(result.errors));
+  }
+  for (const item of [{ id: 1n, name: "a", label: "a" }, { id: 1n }]) {
+    const result = schema.validate({ item });
+    assert.equal(result.valid, false);
+    assert(result.errors.some((error) => error.path === "$.item" && error.message.includes("found 0")));
+  }
+  const unexpected = schema.validate({ item: { id: 1n, name: "a", bogus: true } });
+  assert(unexpected.errors.some((error) => error.path === "$.item.bogus"));
+  const missing = schema.validate({ item: { name: "a" } });
+  assert(missing.errors.some((error) => error.path === "$.item.id"));
+});
+
+test("an open union alternative cannot reopen a composed closed table", () => {
+  const schema = loadSchemaFromSource(
+    "allof-open-union.tosd",
+    `
+[toml-schema]
+version = "1.0.0"
+[types.base]
+type = "table"
+[types.base.name]
+type = "string"
+[types.open]
+type = "table"
+[types.closed]
+type = "table"
+[types.closed.known]
+type = "string"
+[types.identity]
+oneof = ["types.open", "types.closed"]
+[elements.item]
+type = "table"
+allof = ["types.base", "types.identity"]
+`,
+  );
+  assert.equal(schema.validate({ item: { name: "a", known: "x" } }).valid, true);
+  const invalid = schema.validate({ item: { name: "a", arbitrary: true } });
+  assert(invalid.errors.some((error) => error.path === "$.item" && error.message.includes("found 0")));
+});
+
 test("allof rejects components whose effective kind conflicts", async () => {
   await assert.rejects(async () => {
     loadSchemaFromSource(
@@ -147,4 +222,56 @@ allof = ["types.a", "types.b"]
 `,
     );
   }, /incompatible/);
+});
+
+test("sibling rules use only determinate effective fixed children", () => {
+  assert.throws(
+    () =>
+      loadSchemaFromSource(
+        "union-operands.tosd",
+        `
+[toml-schema]
+version = "1.0.0"
+[types.left]
+type = "table"
+[types.left.first]
+type = "string"
+optional = true
+[types.right]
+type = "table"
+[types.right.second]
+type = "string"
+optional = true
+[types.choice]
+oneof = ["types.left", "types.right"]
+[elements.value]
+type = "table"
+allof = ["types.choice"]
+exactlyone = [["first", "second"]]
+`,
+      ),
+    /unknown fixed child/,
+  );
+
+  loadSchemaFromSource(
+    "type-selected-operands.tosd",
+    `
+[toml-schema]
+version = "1.0.0"
+[types.base]
+type = "table"
+[types.base.first]
+type = "string"
+optional = true
+[types.base.second]
+type = "string"
+optional = true
+[types.indirect]
+type = "types.base"
+[elements.value]
+type = "table"
+allof = ["types.indirect"]
+exactlyone = [["first", "second"]]
+`,
+  );
 });

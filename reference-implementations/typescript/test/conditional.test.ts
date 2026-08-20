@@ -119,6 +119,44 @@ test("a conditional discriminator key remains a legal direct child even when not
   assert.equal(result.valid, true, JSON.stringify(result.errors));
 });
 
+test("a conditional selector composed with allof contributes the selected branch closure", () => {
+  const schema = loadSchemaFromSource(
+    "conditional-allof.tosd",
+    `
+[toml-schema]
+version = "1.0.0"
+[types.common]
+type = "table"
+[types.common.id]
+type = "integer"
+[types.sqlite]
+type = "table"
+[types.sqlite.engine]
+type = "string"
+[types.sqlite.file]
+type = "string"
+[types.server]
+type = "table"
+[types.server.engine]
+type = "string"
+[types.server.host]
+type = "string"
+[types.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqlite"
+else = "types.server"
+allof = ["types.common"]
+[elements.composed]
+type = "table"
+allof = ["types.database"]
+`,
+  );
+  const result = schema.validate({
+    composed: { id: 2n, engine: "postgresql", host: "db.internal" },
+  });
+  assert.equal(result.valid, true, JSON.stringify(result.errors));
+});
+
 test("rejects a conditional selector that names more than one key", async () => {
   await assert.rejects(async () => {
     loadSchemaFromSource(
