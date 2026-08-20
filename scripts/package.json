@@ -2,7 +2,7 @@
   "name": "toml-schema-site-build",
   "private": true,
   "type": "module",
-  "description": "Build tooling for the toml-schema.org static documentation pages.",
+  "description": "Build tooling for the tomlschema.org static documentation pages.",
   "scripts": {
     "render-docs": "node render-docs.mjs"
   },

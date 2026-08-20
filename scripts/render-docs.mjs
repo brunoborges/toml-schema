@@ -24,7 +24,7 @@ const pages = [
     output: join("spec", "index.html"),
     description:
       "The TOML Schema specification: a TOML-native schema language for validating TOML configuration documents.",
-    canonical: "https://toml-schema.org/spec/",
+    canonical: "https://tomlschema.org/spec/",
     activeNav: "spec",
   },
   {
@@ -32,7 +32,7 @@ const pages = [
     output: join("implementations", "index.html"),
     description:
       "Build and use the Java, Go, .NET, Python, Rust, and Node.js/TypeScript TOML Schema reference libraries and the canonical Rust command-line interface.",
-    canonical: "https://toml-schema.org/implementations/",
+    canonical: "https://tomlschema.org/implementations/",
     activeNav: "implementations",
   },
 ];

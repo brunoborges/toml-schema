@@ -85,7 +85,7 @@ jobs:
           {
             echo "### Documentation publication"
             echo
-            echo "- Canonical: https://toml-schema.org/"
-            echo "- Alias: https://tomlschema.org/"
-            echo "- Alias publisher: https://github.com/brunoborges/tomlschema.org"
+            echo "- Canonical: https://tomlschema.org/"
+            echo "- Legacy mirror: https://toml-schema.org/"
+            echo "- Legacy mirror publisher: https://github.com/brunoborges/tomlschema.org"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -16,11 +16,11 @@ TOML Schema is a TOML-based schema language for describing and validating the st
 A TOML Schema document is itself a valid TOML document. Validators can use it to catch misconfiguration before production and tooling can use it for editor validation, completion, and hints.
 
 The documentation site is published canonically at
-[toml-schema.org](https://toml-schema.org/) and mirrored at
-[tomlschema.org](https://tomlschema.org/) by the
+[tomlschema.org](https://tomlschema.org/). The legacy
+[toml-schema.org](https://toml-schema.org/) domain is mirrored by the
 [`brunoborges/tomlschema.org`](https://github.com/brunoborges/tomlschema.org)
-GitHub Pages repository. Canonical metadata continues to identify
-`toml-schema.org`.
+GitHub Pages repository until permanent redirects are configured. The source
+repository remains `brunoborges/toml-schema`.
 
 ## Documentation
 
