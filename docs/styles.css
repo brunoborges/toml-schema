@@ -24,6 +24,11 @@
   --cp-panel-strong: rgba(255, 255, 255, 0.96);
   --cp-sheen: rgba(255, 255, 255, 0.55);
   --cp-highlight: rgba(177, 31, 75, 0.12);
+  --syntax-comment: #656d76;
+  --syntax-key: #005ea8;
+  --syntax-literal: #754800;
+  --syntax-section: #9a1a41;
+  --syntax-string: #0f6b35;
   --toml-logo-red: #9c4221;
 }
 html[data-theme="dark"] {
@@ -52,6 +57,11 @@ html[data-theme="dark"] {
   --cp-panel-strong: rgba(41, 41, 41, 0.96);
   --cp-sheen: rgba(255, 255, 255, 0.04);
   --cp-highlight: rgba(253, 142, 161, 0.12);
+  --syntax-comment: #b0b0b0;
+  --syntax-key: #79b8ff;
+  --syntax-literal: #fbbf24;
+  --syntax-section: #fd8ea1;
+  --syntax-string: #7ee787;
   --toml-logo-red: #9c4221;
 }
 * {
@@ -79,6 +89,24 @@ a:focus-visible {
 code,
 pre {
   font-family: Consolas, "Courier New", Courier, monospace;
+}
+.hljs-comment {
+  color: var(--syntax-comment);
+  font-style: italic;
+}
+.hljs-attr {
+  color: var(--syntax-key);
+}
+.hljs-literal,
+.hljs-number {
+  color: var(--syntax-literal);
+}
+.hljs-section {
+  color: var(--syntax-section);
+  font-weight: 700;
+}
+.hljs-string {
+  color: var(--syntax-string);
 }
 .page {
   margin: 0 auto;

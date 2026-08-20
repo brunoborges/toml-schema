@@ -2,6 +2,7 @@ target/
 docs/spec/
 docs/implementations/
 docs/cli/releases/
+docs/assets/highlight.min.js
 scripts/node_modules/
 reference-implementations/dotnet/**/bin/
 reference-implementations/dotnet/**/obj/
