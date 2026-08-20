@@ -445,6 +445,14 @@ export function parseDefinitions(
   return definitions;
 }
 
+function isSelectorBearingChild(
+  table: TomlTable,
+  path: readonly string[],
+  source: SchemaSource,
+): boolean {
+  return ["type", "oneof", "anyof", "if"].some((key) => source.isProperty(table, path, key));
+}
+
 export function parseDefinition(
   name: string,
   path: readonly string[],
@@ -546,7 +554,37 @@ export function parseDefinition(
   }
 
   const children = emptyRecord<RawDefinition>();
+  const escapedChildren = table["children"];
+  const hasEscapeNamespace =
+    isTomlTable(escapedChildren) &&
+    !isSelectorBearingChild(escapedChildren, [...path, "children"], source);
+  if (hasEscapeNamespace) {
+    const entries = Object.entries(escapedChildren);
+    if (entries.length === 0) {
+      throw new SchemaError(`${name} children escape namespace must not be empty`);
+    }
+    for (const [key, value] of entries) {
+      if (!(DEFINITION_KEYS as readonly string[]).includes(key) && key !== "children") {
+        throw new SchemaError(
+          `${name} children escape namespace contains non-conflicting child: ${key}`,
+        );
+      }
+      if (!isTomlTable(value)) {
+        throw new SchemaError(`${name}.children.${key} must be a child definition table`);
+      }
+      children[key] = parseDefinition(
+        `${name}.${key}`,
+        [...path, "children", key],
+        value,
+        source,
+      );
+    }
+  }
+
   for (const [key, value] of Object.entries(table)) {
+    if (key === "children" && hasEscapeNamespace) {
+      continue;
+    }
     if ((DEFINITION_KEYS as readonly string[]).includes(key) && source.isProperty(table, path, key)) {
       continue;
     }

@@ -29,6 +29,57 @@ class TomlSchemaTest {
     }
 
     @Test
+    void supportsChildrenEscapeHatchForSchemaKeyConflicts() throws IOException {
+        Path schemaPath = write("escaped-children.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.plugin]
+                type = "table"
+
+                [elements.plugin.children.type]
+                type = "string"
+
+                [elements.plugin.children.optional]
+                type = "boolean"
+
+                [elements.plugin.name]
+                type = "string"
+                """);
+        Path documentPath = write("escaped-children.toml", """
+                [plugin]
+                type = "npm"
+                optional = true
+                name = "example"
+                """);
+        Path invalidEscape = write("invalid-escaped-child.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.plugin]
+                type = "table"
+
+                [elements.plugin.children.name]
+                type = "string"
+                """);
+        Path emptyEscape = write("empty-escaped-children.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.plugin]
+                type = "table"
+
+                [elements.plugin.children]
+                """);
+
+        ValidationResult result = TomlSchema.load(schemaPath).validate(documentPath);
+
+        assertTrue(result.isValid(), () -> result.errors().toString());
+        assertThrows(SchemaException.class, () -> TomlSchema.load(invalidEscape));
+        assertThrows(SchemaException.class, () -> TomlSchema.load(emptyEscape));
+    }
+
+    @Test
     void loadsCheckedInExamples() {
         for (String schema : List.of(
                 "examples/cargo.tosd",
@@ -90,11 +141,101 @@ class TomlSchemaTest {
 
                 [elements]
                 """);
+        Path invalidPropertyType = write("invalid-property-type.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.name]
+                type = "string"
+                optional = "yes"
+                """);
+        Path unknownProperty = write("unknown-property.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.name]
+                type = "string"
+                optonal = true
+                """);
+        Path invalidEscape = write("invalid-escape.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.parent]
+                type = "table"
+
+                [elements.parent.children.name]
+                type = "string"
+                """);
+        Path literalChildren = write("literal-children.tosd", """
+                [toml-schema]
+                version = "1.0.0"
+
+                [elements.parent]
+                type = "table"
+
+                [elements.parent.children]
+                type = "array"
+                itemtype = "string"
+                """);
+        List<Path> invalidSemantics = List.of(
+                write("incomplete-conditional.tosd", """
+                        [toml-schema]
+                        version = "1.0.0"
+
+                        [elements.value]
+                        if = { key = "kind", equals = "a" }
+                        then = "types.branch"
+                        """),
+                write("competing-selectors.tosd", """
+                        [toml-schema]
+                        version = "1.0.0"
+
+                        [elements.value]
+                        type = "string"
+                        oneof = [ "string" ]
+                        """),
+                write("inapplicable-property.tosd", """
+                        [toml-schema]
+                        version = "1.0.0"
+
+                        [elements.value]
+                        type = "integer"
+                        pattern = "^[0-9]+$"
+                        """),
+                write("tuple-conflict.tosd", """
+                        [toml-schema]
+                        version = "1.0.0"
+
+                        [elements.value]
+                        type = "array"
+                        items = [ "string" ]
+                        minlength = 1
+                        """),
+                write("scalar-child.tosd", """
+                        [toml-schema]
+                        version = "1.0.0"
+
+                        [elements.value]
+                        type = "string"
+
+                        [elements.value.child]
+                        type = "string"
+                        """)
+        );
 
         assertTrue(schemaSchema.validate(fixture("config.tosd")).isValid());
         assertTrue(schemaSchema.validate(fixture("toml-schema.tosd")).isValid());
         assertTrue(schemaSchema.validate(emptyElementsSchema).isValid());
+        assertFalse(schemaSchema.validate(invalidPropertyType).isValid());
+        assertFalse(schemaSchema.validate(unknownProperty).isValid());
+        assertFalse(schemaSchema.validate(invalidEscape).isValid());
+        assertTrue(schemaSchema.validate(literalChildren).isValid());
+        for (Path invalidSemantic : invalidSemantics) {
+            assertFalse(schemaSchema.validate(invalidSemantic).isValid(), invalidSemantic.toString());
+        }
         for (String schema : List.of(
+                "examples/database-conditional.tosd",
                 "examples/cargo.tosd",
                 "examples/gitlab-runner.tosd",
                 "examples/hugo.tosd",

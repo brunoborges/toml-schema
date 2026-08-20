@@ -442,6 +442,13 @@ def parse_definitions(
     return definitions
 
 
+def _is_selector_bearing_child(table: dict, path: Path, source: SchemaSource) -> bool:
+    return any(
+        source.is_property(table, path, key)
+        for key in ("type", "oneof", "anyof", "if")
+    )
+
+
 def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -> Definition:
     type_selector = _get_string(table, "type")
     if _property_value(table, "type") is not None and type_selector == "":
@@ -529,7 +536,28 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
         raise SchemaError(f"{name} cannot define more than one of type, oneof, anyof, and if")
 
     children: Dict[str, Definition] = {}
+    escaped_children = table.get("children")
+    has_escape_namespace = (
+        isinstance(escaped_children, dict)
+        and not _is_selector_bearing_child(escaped_children, path + ("children",), source)
+    )
+    if has_escape_namespace:
+        if not escaped_children:
+            raise SchemaError(f"{name} children escape namespace must not be empty")
+        for key, value in escaped_children.items():
+            if key not in DEFINITION_KEYS and key != "children":
+                raise SchemaError(
+                    f"{name} children escape namespace contains non-conflicting child: {key}"
+                )
+            if not isinstance(value, dict):
+                raise SchemaError(f"{name}.children.{key} must be a child definition table")
+            children[key] = parse_definition(
+                f"{name}.{key}", path + ("children", key), value, source
+            )
+
     for key, value in table.items():
+        if key == "children" and has_escape_namespace:
+            continue
         if key in DEFINITION_KEYS and source.is_property(table, path, key):
             continue
         if isinstance(value, dict):

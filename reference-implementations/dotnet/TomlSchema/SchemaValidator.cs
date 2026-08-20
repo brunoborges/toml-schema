@@ -326,15 +326,27 @@ internal class SchemaValidator
 
     private void ValidateCollection(TomlTable table, SchemaDefinition schema, string path)
     {
-        // Collections allow any string keys matching keypattern
         var keyPattern = schema.KeyPattern;
         var valueSchema = !string.IsNullOrEmpty(schema.ItemType)
             ? ResolveItemType(schema.ItemType)
                 ?? throw new InvalidOperationException($"Undefined item type: {schema.ItemType}")
             : null;
 
+        foreach (var (key, childSchema) in schema.Children)
+        {
+            if (table.TryGetValue(key, out var childValue))
+                ValidateElement(key, childValue, childSchema, path);
+            else if (!childSchema.Optional)
+                _errors.Add(new ValidationError(AppendPath(path, key), "required value is missing", "required"));
+        }
+
+        ValidatePresenceRules(table, schema, path);
+
         foreach (var (key, value) in table)
         {
+            if (schema.Children.ContainsKey(key))
+                continue;
+
             var keyPath = AppendPath(path, key);
 
             // Validate key pattern

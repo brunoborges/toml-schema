@@ -171,5 +171,98 @@ description = 42
                 load_schema(invalid_schema)
 
 
+class ChildrenEscapeTests(unittest.TestCase):
+    def test_selective_children_escape_and_literal_children(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            schema_path = helpers.write_file(
+                tmp,
+                "children-escape.tosd",
+                """
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children.type]
+type = "string"
+
+[elements.plugin.children.children]
+type = "boolean"
+""",
+            )
+            document_path = helpers.write_file(
+                tmp,
+                "children-escape.toml",
+                """
+[plugin]
+type = "npm"
+children = true
+""",
+            )
+            schema = load_schema(schema_path)
+            result = schema.validate_file(document_path)
+            self.assertTrue(result.valid, msg=result.errors)
+
+            literal_schema_path = helpers.write_file(
+                tmp,
+                "literal-children.tosd",
+                """
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children]
+type = "string"
+""",
+            )
+            literal_document_path = helpers.write_file(
+                tmp,
+                "literal-children.toml",
+                """
+[plugin]
+children = "ordinary child"
+""",
+            )
+            literal_schema = load_schema(literal_schema_path)
+            literal_result = literal_schema.validate_file(literal_document_path)
+            self.assertTrue(literal_result.valid, msg=literal_result.errors)
+
+    def test_rejects_invalid_children_escape_namespaces(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            for name, body in (
+                ("empty", "[elements.plugin.children]"),
+                (
+                    "non-conflicting",
+                    """
+[elements.plugin.children.name]
+type = "string"
+""",
+                ),
+            ):
+                with self.subTest(name=name):
+                    schema_path = helpers.write_file(
+                        tmp,
+                        f"{name}.tosd",
+                        f"""
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+{body}
+""",
+                    )
+                    with self.assertRaises(SchemaError):
+                        load_schema(schema_path)
+
+
 if __name__ == "__main__":
     unittest.main()

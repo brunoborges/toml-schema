@@ -197,8 +197,31 @@ final class SchemaLoader {
         }
 
         Map<String, SchemaDefinition> children = new LinkedHashMap<>();
+        TomlTable escapedChildren = table.getTable("children");
+        boolean hasEscapedChildren = escapedChildren != null
+                && !isProperty(table, "children")
+                && !hasDefinitionMarker(escapedChildren);
+        if (hasEscapedChildren) {
+            if (escapedChildren.keySet().isEmpty()) {
+                throw new SchemaException(name + ".children must contain at least one escaped child");
+            }
+            for (String key : escapedChildren.keySet()) {
+                if (!DEFINITION_KEYS.contains(key) && !key.equals("children")) {
+                    throw new SchemaException(
+                            name + ".children may only contain schema-key conflicts, found: " + key);
+                }
+                Object value = escapedChildren.get(List.of(key));
+                if (!(value instanceof TomlTable childTable)) {
+                    throw new SchemaException(name + ".children." + key + " must be a table");
+                }
+                children.put(key, parseDefinition(name + "." + key, childTable));
+            }
+        }
         for (String key : table.keySet()) {
             Object value = table.get(List.of(key));
+            if (key.equals("children") && hasEscapedChildren) {
+                continue;
+            }
             if (DEFINITION_KEYS.contains(key)
                     && isProperty(table, key)) {
                 continue;
@@ -900,6 +923,13 @@ final class SchemaLoader {
             valueStart++;
         }
         return valueStart < line.length() && line.charAt(valueStart) == '{';
+    }
+
+    private boolean hasDefinitionMarker(TomlTable table) {
+        return isProperty(table, "type")
+                || isProperty(table, "oneof")
+                || isProperty(table, "anyof")
+                || isProperty(table, "if");
     }
 
     private void validateDefinitionSemantics(
