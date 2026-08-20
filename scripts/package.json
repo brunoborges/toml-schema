@@ -8,6 +8,7 @@
     "render-cli-releases": "node render-cli-releases.mjs"
   },
   "dependencies": {
+    "@highlightjs/cdn-assets": "^11.12.0",
     "github-slugger": "^2.0.0",
     "marked": "^12.0.2"
   }

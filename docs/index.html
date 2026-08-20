@@ -15,6 +15,8 @@
     })();
   </script>
   <link rel="stylesheet" href="./styles.css">
+  <script defer src="/assets/highlight.min.js"></script>
+  <script defer src="/highlight-toml.js"></script>
 </head>
 <body>
   <div class="page">
@@ -61,7 +63,7 @@
             <strong>config.tosd</strong>
             <span class="dots" aria-hidden="true"><span class="dot"></span><span class="dot"></span><span class="dot"></span></span>
           </div>
-          <pre><code>[toml-schema]
+          <pre><code class="language-toml">[toml-schema]
 version = "1.0.0"
 
 [elements.title]
@@ -168,12 +170,12 @@ tosd validate config.tosd config.toml</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[toml-schema]
+                <pre><code class="language-toml">[toml-schema]
 version = "1.0.0"</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>[toml-schema]
+                <pre class="toml-example"><code class="language-toml">[toml-schema]
 location = "config.tosd"
 version = "1.0.0"</code></pre>
               </div>
@@ -188,7 +190,7 @@ version = "1.0.0"</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[elements.title]
+                <pre><code class="language-toml">[elements.title]
 type = "string"
 
 [elements.database]
@@ -199,7 +201,7 @@ type = "boolean"</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>title = "Example"
+                <pre class="toml-example"><code class="language-toml">title = "Example"
 
 [database]
 enabled = true</code></pre>
@@ -215,14 +217,14 @@ enabled = true</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[elements.database.ports]
+                <pre><code class="language-toml">[elements.database.ports]
 type = "array"
 itemtype = "integer"
 minlength = 1</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>[database]
+                <pre class="toml-example"><code class="language-toml">[database]
 ports = [8000, 8001]</code></pre>
               </div>
             </div>
@@ -236,7 +238,7 @@ ports = [8000, 8001]</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[types.server]
+                <pre><code class="language-toml">[types.server]
 type = "table"
 
 [types.server.ip]
@@ -248,7 +250,7 @@ type = "string"</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>[servers.primary]
+                <pre class="toml-example"><code class="language-toml">[servers.primary]
 ip = "10.0.0.1"
 role = "frontend"</code></pre>
               </div>
@@ -263,7 +265,7 @@ role = "frontend"</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[types.sqliteDatabase]
+                <pre><code class="language-toml">[types.sqliteDatabase]
 type = "table"
 
 [types.sqliteDatabase.engine]
@@ -295,7 +297,7 @@ optional = true</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>[storage]
+                <pre class="toml-example"><code class="language-toml">[storage]
 engine = "postgresql"
 host = "db.internal"
 port = 5432</code></pre>
@@ -311,14 +313,14 @@ port = 5432</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[elements.servers]
+                <pre><code class="language-toml">[elements.servers]
 type = "collection"
 itemtype = "types.server"
 minlength = 1</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>[servers.primary]
+                <pre class="toml-example"><code class="language-toml">[servers.primary]
 ip = "10.0.0.1"
 role = "frontend"
 
@@ -337,7 +339,7 @@ role = "backend"</code></pre>
             <div class="tour-examples">
               <div>
                 <span class="tour-code-label">Schema (.tosd)</span>
-                <pre><code>[elements.environment]
+                <pre><code class="language-toml">[elements.environment]
 type = "string"
 allowedvalues = ["dev", "stage", "prod"]
 
@@ -348,7 +350,7 @@ max = 10</code></pre>
               </div>
               <div>
                 <span class="tour-code-label">TOML</span>
-                <pre class="toml-example"><code>environment = "prod"
+                <pre class="toml-example"><code class="language-toml">environment = "prod"
 retries = 3</code></pre>
               </div>
             </div>

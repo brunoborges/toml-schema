@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Render the long-form Markdown documentation into styled on-site pages.
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { copyFile, readFile, writeFile, mkdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { marked } from "marked";
@@ -10,6 +10,12 @@ import GithubSlugger from "github-slugger";
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(here, "..");
 const repositoryUrl = "https://github.com/brunoborges/toml-schema";
+const highlightAssets = join(
+  here,
+  "node_modules",
+  "@highlightjs",
+  "cdn-assets",
+);
 const repositoryDirectories = new Set([
   "reference-implementations/java",
   "reference-implementations/go",
@@ -80,6 +86,16 @@ const renderMarkdown = (markdown) => {
     return `<a href="${escapeHtml(resolvedHref)}"${titleAttribute}>${text}</a>`;
   };
 
+  renderer.code = (code, infoString = "") => {
+    const requestedLanguage = infoString.trim().split(/\s+/, 1)[0].toLowerCase();
+    const language =
+      requestedLanguage === "tosd" ? "toml" : requestedLanguage;
+    const languageClass = language
+      ? ` class="language-${escapeHtml(language)}"`
+      : "";
+    return `<pre><code${languageClass}>${escapeHtml(code)}</code></pre>\n`;
+  };
+
   return marked.parse(markdown, {
     renderer,
     gfm: true,
@@ -87,6 +103,15 @@ const renderMarkdown = (markdown) => {
     mangle: false,
   });
 };
+
+const assetsDirectory = join(repoRoot, "docs", "assets");
+await mkdir(assetsDirectory, { recursive: true });
+await Promise.all([
+  copyFile(
+    join(highlightAssets, "highlight.min.js"),
+    join(assetsDirectory, "highlight.min.js"),
+  ),
+]);
 
 for (const pageConfig of pages) {
   const sourcePath = join(repoRoot, pageConfig.source);
@@ -115,6 +140,8 @@ for (const pageConfig of pages) {
     })();
   </script>
   <link rel="stylesheet" href="../styles.css">
+  <script defer src="/assets/highlight.min.js"></script>
+  <script defer src="/highlight-toml.js"></script>
 </head>
 <body>
   <div class="page">
