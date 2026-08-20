@@ -1,6 +1,10 @@
 # Site build scripts
 
-Tooling for the [toml-schema.org](https://toml-schema.org) static site published from `docs/`.
+Tooling for the [toml-schema.org](https://toml-schema.org) static site published
+from `docs/`. The [`brunoborges/tomlschema.org`](https://github.com/brunoborges/tomlschema.org)
+repository also builds this canonical repository's `main` branch and publishes
+the same site at [tomlschema.org](https://tomlschema.org/). Canonical links and
+metadata intentionally continue to use `toml-schema.org`.
 
 ## `render-docs.mjs`
 
