@@ -4,7 +4,8 @@
   "type": "module",
   "description": "Build tooling for the tomlschema.org static documentation pages.",
   "scripts": {
-    "render-docs": "node render-docs.mjs"
+    "render-docs": "node render-docs.mjs",
+    "render-cli-releases": "node render-cli-releases.mjs"
   },
   "dependencies": {
     "github-slugger": "^2.0.0",

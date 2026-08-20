@@ -271,6 +271,37 @@ pre {
   margin: 12px 0 0;
   max-width: 760px;
 }
+.install-panel {
+  margin-top: 28px;
+  max-width: 820px;
+}
+.release {
+  border-top: 1px solid var(--cp-border);
+}
+.release-heading,
+.release-badges {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+.release-badges {
+  justify-content: flex-end;
+}
+.table-scroll {
+  overflow-x: auto;
+}
+.release table {
+  border-collapse: collapse;
+  margin-top: 24px;
+  width: 100%;
+}
+.release th,
+.release td {
+  border-bottom: 1px solid var(--cp-border);
+  padding: 12px;
+  text-align: left;
+}
 .grid {
   display: grid;
   gap: 16px;
