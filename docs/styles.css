@@ -368,9 +368,8 @@ pre {
   border: 1px solid var(--cp-border);
   border-radius: 16px;
   display: grid;
-  gap: 20px;
-  grid-template-columns: minmax(220px, 0.8fr) minmax(0, 1.2fr);
-  padding: 22px;
+  gap: 24px;
+  padding: 28px;
 }
 .tour-step > *,
 .tour-examples > div {
@@ -385,8 +384,8 @@ pre {
 }
 .tour-examples {
   display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.65fr);
   min-width: 0;
 }
 .tour-code-label {
@@ -1080,7 +1079,6 @@ footer {
     margin-top: 28px;
   }
   .grid,
-  .tour-step,
   .tour-examples,
   .implementations,
   .spec-list {
