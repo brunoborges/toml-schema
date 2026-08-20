@@ -12,6 +12,7 @@ public class SchemaDefinition
     public object? DefaultValue { get; set; }
     public bool Deprecated { get; set; }
     public string? Pattern { get; set; }
+    public string? Format { get; set; }
     public string? KeyPattern { get; set; }
     public long? Min { get; set; }
     public long? Max { get; set; }

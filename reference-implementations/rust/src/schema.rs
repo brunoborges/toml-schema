@@ -8,7 +8,9 @@
 use std::collections::{BTreeMap, HashSet};
 use std::fmt;
 use std::fs;
+use std::net::{Ipv4Addr, Ipv6Addr};
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 
 use regex::Regex;
 use toml::de::{DeTable, DeValue};
@@ -98,6 +100,7 @@ pub const DEFINITION_KEYS: &[&str] = &[
     "items",
     "allowedvalues",
     "pattern",
+    "format",
     "keypattern",
     "optional",
     "min",
@@ -151,6 +154,7 @@ pub struct Definition {
     optional: bool,
     allowed_values: Vec<Value>,
     pattern: Option<Regex>,
+    string_format: Option<StringFormat>,
     key_pattern: Option<Regex>,
     min: Option<Value>,
     max: Option<Value>,
@@ -167,6 +171,52 @@ pub struct Definition {
     default_value: Option<Value>,
     deprecated: bool,
     children: BTreeMap<String, Definition>,
+}
+
+#[derive(Debug, Clone, Copy)]
+enum StringFormat {
+    Email,
+    Uuid,
+    Uri,
+    Hostname,
+    Ipv4,
+    Ipv6,
+}
+
+impl StringFormat {
+    fn parse(name: &str, value: &str) -> Result<Self, String> {
+        match value {
+            "email" => Ok(Self::Email),
+            "uuid" => Ok(Self::Uuid),
+            "uri" => Ok(Self::Uri),
+            "hostname" => Ok(Self::Hostname),
+            "ipv4" => Ok(Self::Ipv4),
+            "ipv6" => Ok(Self::Ipv6),
+            _ => Err(format!("{name} has unknown format: {value}")),
+        }
+    }
+
+    fn name(self) -> &'static str {
+        match self {
+            Self::Email => "email",
+            Self::Uuid => "uuid",
+            Self::Uri => "uri",
+            Self::Hostname => "hostname",
+            Self::Ipv4 => "ipv4",
+            Self::Ipv6 => "ipv6",
+        }
+    }
+
+    fn matches(self, value: &str) -> bool {
+        match self {
+            Self::Email => is_email(value),
+            Self::Uuid => is_uuid(value),
+            Self::Uri => is_absolute_uri(value),
+            Self::Hostname => is_hostname(value),
+            Self::Ipv4 => is_ipv4(value),
+            Self::Ipv6 => Ipv6Addr::from_str(value).is_ok(),
+        }
+    }
 }
 
 impl Definition {
@@ -1247,6 +1297,9 @@ fn parse_definition(
     }
     let optional = get_bool(name, table, "optional")?.unwrap_or(false);
     let pattern = get_pattern(name, table)?;
+    let string_format = get_string(name, table, "format")?
+        .map(|value| StringFormat::parse(name, &value))
+        .transpose()?;
     let key_pattern = get_pattern_key(name, table, "keypattern")?;
     let min_length = get_unsigned_integer(name, table, "minlength")?;
     let max_length = get_unsigned_integer(name, table, "maxlength")?;
@@ -1427,6 +1480,11 @@ fn parse_definition(
             "{name} can only define pattern when type is string"
         ));
     }
+    if string_format.is_some() && type_name != Some(SchemaType::String) {
+        return Err(format!(
+            "{name} can only define format when type is string"
+        ));
+    }
     if has_allowed_values && matches!(type_name, Some(SchemaType::Table | SchemaType::Collection)) {
         return Err(format!(
             "{name} can only define allowedvalues for scalar, unconstrained, or array types"
@@ -1462,6 +1520,7 @@ fn parse_definition(
         type_name,
         &allowed_values,
         pattern.as_ref(),
+        string_format,
         min.as_ref(),
         max.as_ref(),
         min_length,
@@ -1477,6 +1536,7 @@ fn parse_definition(
         optional,
         allowed_values,
         pattern,
+        string_format,
         key_pattern,
         min,
         max,
@@ -1786,6 +1846,7 @@ fn validate_allowed_values_constraints(
     type_name: Option<SchemaType>,
     allowed_values: &[Value],
     pattern: Option<&Regex>,
+    string_format: Option<StringFormat>,
     min: Option<&Value>,
     max: Option<&Value>,
     min_length: Option<i64>,
@@ -1802,6 +1863,14 @@ fn validate_allowed_values_constraints(
             };
             if !matches_pattern(pattern, string_value) {
                 return Err(format!("{entry} does not satisfy pattern"));
+            }
+        }
+        if let Some(string_format) = string_format {
+            let Some(string_value) = allowed.as_str() else {
+                return Err(format!("{entry} does not satisfy format {}", string_format.name()));
+            };
+            if !string_format.matches(string_value) {
+                return Err(format!("{entry} does not satisfy format {}", string_format.name()));
             }
         }
         if (min.is_some() || max.is_some()) && is_nan(Some(allowed)) {
@@ -2261,6 +2330,14 @@ impl<'schema> Validator<'schema> {
                     self.add(
                         path,
                         &format!("does not match pattern {}", pattern.as_str()),
+                    );
+                }
+            }
+            if let Some(string_format) = definition.string_format {
+                if !string_format.matches(string_value) {
+                    self.add(
+                        path,
+                        &format!("does not satisfy format {}", string_format.name()),
                     );
                 }
             }
@@ -2744,6 +2821,219 @@ fn matches_pattern(pattern: &Regex, value: &str) -> bool {
     pattern.is_match(value)
 }
 
+fn is_uuid(value: &str) -> bool {
+    value.len() == 36
+        && value.bytes().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => byte == b'-',
+            _ => byte.is_ascii_hexdigit(),
+        })
+}
+
+fn is_ipv4(value: &str) -> bool {
+    let mut count = 0;
+    for part in value.split('.') {
+        count += 1;
+        if part.is_empty()
+            || (part.len() > 1 && part.starts_with('0'))
+            || !part.bytes().all(|byte| byte.is_ascii_digit())
+            || part.parse::<u8>().is_err()
+        {
+            return false;
+        }
+    }
+    count == 4 && Ipv4Addr::from_str(value).is_ok()
+}
+
+fn is_hostname(value: &str) -> bool {
+    if !value.is_ascii() {
+        return false;
+    }
+    let hostname = value.strip_suffix('.').unwrap_or(value);
+    if hostname.is_empty() || hostname.len() > 253 {
+        return false;
+    }
+    hostname.split('.').all(|label| {
+        (1..=63).contains(&label.len())
+            && label.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+            && label
+                .as_bytes()
+                .first()
+                .is_some_and(u8::is_ascii_alphanumeric)
+            && label
+                .as_bytes()
+                .last()
+                .is_some_and(u8::is_ascii_alphanumeric)
+    })
+}
+
+fn is_absolute_uri(value: &str) -> bool {
+    if !value.is_ascii()
+        || value.bytes().filter(|byte| *byte == b'#').count() > 1
+        || value.bytes().any(|byte| {
+            !(byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'-' | b'.' | b'_' | b'~' | b':' | b'/' | b'?' | b'#' | b'[' | b']'
+                        | b'@' | b'!' | b'$' | b'&' | b'\'' | b'(' | b')' | b'*' | b'+'
+                        | b',' | b';' | b'=' | b'%'
+                ))
+        })
+    {
+        return false;
+    }
+    let bytes = value.as_bytes();
+    for index in 0..bytes.len() {
+        if bytes[index] == b'%'
+            && (index + 2 >= bytes.len()
+                || !bytes[index + 1].is_ascii_hexdigit()
+                || !bytes[index + 2].is_ascii_hexdigit())
+        {
+            return false;
+        }
+    }
+    let Some((scheme, _)) = value.split_once(':') else {
+        return false;
+    };
+    !scheme.is_empty()
+        && scheme.as_bytes()[0].is_ascii_alphabetic()
+        && scheme
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'+' | b'-' | b'.'))
+        && (Url::parse(value).is_ok()
+            || normalized_ipvfuture_uri(value).is_some_and(|uri| Url::parse(&uri).is_ok()))
+}
+
+fn normalized_ipvfuture_uri(value: &str) -> Option<String> {
+    let (_, remainder) = value.split_once(':')?;
+    let authority = remainder.strip_prefix("//")?;
+    let authority_end = authority.find(['/', '?', '#']).unwrap_or(authority.len());
+    let authority = &authority[..authority_end];
+    let host_port = authority.rsplit_once('@').map_or(authority, |(_, host)| host);
+    let literal_start = host_port.find('[')?;
+    let literal_end = host_port[literal_start + 1..].find(']')? + literal_start + 1;
+    let literal = &host_port[literal_start + 1..literal_end];
+    if !is_ipvfuture(literal) {
+        return None;
+    }
+    let absolute_start = value.find(host_port)? + literal_start + 1;
+    let absolute_end = absolute_start + literal.len();
+    Some(format!("{}::1{}", &value[..absolute_start], &value[absolute_end..]))
+}
+
+fn is_ipvfuture(value: &str) -> bool {
+    let bytes = value.as_bytes();
+    if bytes.first().is_none_or(|byte| !matches!(byte, b'v' | b'V')) {
+        return false;
+    }
+    let Some(dot) = value.find('.') else {
+        return false;
+    };
+    dot > 1
+        && dot < value.len() - 1
+        && value[1..dot].bytes().all(|byte| byte.is_ascii_hexdigit())
+        && value[dot + 1..].bytes().all(|byte| {
+            byte.is_ascii_alphanumeric()
+                || matches!(
+                    byte,
+                    b'-' | b'.' | b'_' | b'~' | b'!' | b'$' | b'&' | b'\'' | b'('
+                        | b')' | b'*' | b'+' | b',' | b';' | b'=' | b':'
+                )
+        })
+}
+
+fn is_email(value: &str) -> bool {
+    if !value.is_ascii() || value.len() > 254 {
+        return false;
+    }
+    let separator = if value.starts_with('"') {
+        quoted_local_end(value).filter(|index| value.as_bytes().get(index + 1) == Some(&b'@'))
+            .map(|index| index + 1)
+    } else {
+        let mut separators = value.match_indices('@');
+        let first = separators.next().map(|(index, _)| index);
+        if separators.next().is_some() { None } else { first }
+    };
+    let Some(separator) = separator else {
+        return false;
+    };
+    let local = &value[..separator];
+    let domain = &value[separator + 1..];
+    if local.len() > 64 || local.is_empty() || domain.is_empty() {
+        return false;
+    }
+    let valid_local = if local.starts_with('"') {
+        quoted_local_end(local) == Some(local.len() - 1)
+    } else {
+        local.split('.').all(|atom| {
+            !atom.is_empty()
+                && atom.bytes().all(|byte| {
+                    byte.is_ascii_alphanumeric()
+                        || matches!(
+                            byte,
+                            b'!' | b'#' | b'$' | b'%' | b'&' | b'\'' | b'*' | b'+'
+                                | b'-' | b'/' | b'=' | b'?' | b'^' | b'_' | b'`'
+                                | b'{' | b'|' | b'}' | b'~'
+                        )
+                })
+        })
+    };
+    valid_local && is_email_domain(domain)
+}
+
+fn quoted_local_end(value: &str) -> Option<usize> {
+    let bytes = value.as_bytes();
+    if bytes.first() != Some(&b'"') {
+        return None;
+    }
+    let mut index = 1;
+    while index < bytes.len() {
+        match bytes[index] {
+            b'"' => return Some(index),
+            b'\\' => {
+                index += 1;
+                if index >= bytes.len() || !(32..=126).contains(&bytes[index]) {
+                    return None;
+                }
+            }
+            byte if (32..=33).contains(&byte)
+                || (35..=91).contains(&byte)
+                || (93..=126).contains(&byte) => {}
+            _ => return None,
+        }
+        index += 1;
+    }
+    None
+}
+
+fn is_email_domain(domain: &str) -> bool {
+    if !(domain.starts_with('[') && domain.ends_with(']')) {
+        return !domain.ends_with('.') && is_hostname(domain);
+    }
+    let literal = &domain[1..domain.len() - 1];
+    if is_ipv4(literal) {
+        return true;
+    }
+    if let Some(address) = literal
+        .get(..5)
+        .filter(|prefix| prefix.eq_ignore_ascii_case("IPv6:"))
+        .and_then(|_| literal.get(5..))
+    {
+        return Ipv6Addr::from_str(address).is_ok();
+    }
+    let Some((tag, content)) = literal.split_once(':') else {
+        return false;
+    };
+    !tag.is_empty()
+        && tag.as_bytes()[0].is_ascii_alphabetic()
+        && tag
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        && !content.is_empty()
+        && content.bytes().all(|byte| {
+            (33..=90).contains(&byte) || (94..=126).contains(&byte)
+        })
+}
+
 fn append_path(path: &str, key: &str) -> String {
     format!("{path}.{}", encode_path_key(key))
 }
@@ -2862,4 +3152,60 @@ fn get_string_array_values(name: &str, table: &Table, key: &str) -> Result<Vec<S
         }
     }
     Ok(result)
+}
+
+#[cfg(test)]
+mod string_format_tests {
+    use super::{is_absolute_uri, is_email, is_hostname, is_ipv4, is_uuid};
+
+    #[test]
+    fn validates_difficult_rfc_5321_mailboxes() {
+        for valid in [
+            "simple@example.com",
+            "customer/department=shipping@example.com",
+            "$A12345@example.com",
+            "!def!xyz%abc@example.com",
+            "_somename@example.com",
+            "\"Fred Bloggs\"@example.com",
+            "\"Joe\\\\Blow\"@example.com",
+            "\"Abc@def\"@[192.0.2.1]",
+            "user@[IPv6:2001:db8::1]",
+            "user@[TAG:printable-data]",
+        ] {
+            assert!(is_email(valid), "expected valid mailbox: {valid}");
+        }
+        for invalid in [
+            "a..b@example.com",
+            ".leading@example.com",
+            "trailing.@example.com",
+            "unquoted space@example.com",
+            "\"unterminated@example.com",
+            "\"bad\ncontrol\"@example.com",
+            "user@example.com.",
+            "user@[IPv6:2001:db8:::1]",
+            "user@[bad literal]",
+            "ü@example.com",
+        ] {
+            assert!(!is_email(invalid), "expected invalid mailbox: {invalid}");
+        }
+        assert!(is_email(&format!("{}@example.com", "a".repeat(64))));
+        assert!(!is_email(&format!("{}@example.com", "a".repeat(65))));
+    }
+
+    #[test]
+    fn validates_other_string_formats() {
+        assert!(is_uuid("01234567-89ab-cdef-ABCD-0123456789ab"));
+        assert!(!is_uuid("0123456789ab-cdef-abcd-0123456789ab"));
+        assert!(is_absolute_uri("https://example.com/a%20b?x=1#part"));
+        assert!(is_absolute_uri("urn:isbn:0451450523"));
+        assert!(is_absolute_uri("scheme:"));
+        assert!(is_absolute_uri("http://[v1.fe]/"));
+        assert!(!is_absolute_uri("/relative/path"));
+        assert!(!is_absolute_uri("https://example.com/%xy"));
+        assert!(!is_absolute_uri("http://example.com/#first#second"));
+        assert!(is_hostname("example.com."));
+        assert!(!is_hostname("bad-.example"));
+        assert!(is_ipv4("0.0.0.0"));
+        assert!(!is_ipv4("127.00.0.1"));
+    }
 }

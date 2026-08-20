@@ -10,6 +10,7 @@ version = "1.0.0"
 
         [types.databaseType.server]
         type = "string"
+        format = "ipv4"
 
         [types.databaseType.ports]
         type = "array"
@@ -26,6 +27,7 @@ version = "1.0.0"
 
         [types.serverType.ip]
         type = "string"
+        format = "ipv4"
 
         [types.serverType.dc]
         type = "string"

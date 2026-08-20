@@ -7,6 +7,7 @@ import {
   type RawDefinition,
 } from "./definition.js";
 import { SchemaError } from "./errors.js";
+import { isValidStringFormat } from "./formats.js";
 import { appendPath } from "./paths.js";
 import {
   effectiveFixedChildren,
@@ -703,6 +704,9 @@ export class DocumentValidator {
       this.validateLength(path, scalarLength(value), definition);
       if (definition.pattern && !definition.pattern.test(value)) {
         this.add(path, `does not match pattern ${definition.patternSource}`);
+      }
+      if (definition.format && !isValidStringFormat(definition.format, value)) {
+        this.add(path, `is not a valid ${definition.format}`);
       }
     }
   }

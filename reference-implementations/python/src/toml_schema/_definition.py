@@ -39,6 +39,7 @@ class Definition:
     optional: bool = False
     allowed_values: Tuple[Any, ...] = ()
     pattern: Optional[Pattern[str]] = None
+    format: str = ""
     key_pattern: Optional[Pattern[str]] = None
     min: Any = None
     max: Any = None

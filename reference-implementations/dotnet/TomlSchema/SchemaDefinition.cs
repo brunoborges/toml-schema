@@ -26,6 +26,9 @@ public record SchemaDefinition
     /// <summary>Regex pattern for string validation</summary>
     public string? Pattern { get; init; }
 
+    /// <summary>Well-known format for string validation</summary>
+    public string? Format { get; init; }
+
     /// <summary>Regex pattern for collection dynamic key validation</summary>
     public string? KeyPattern { get; init; }
 

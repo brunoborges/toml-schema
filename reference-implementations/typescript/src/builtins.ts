@@ -33,6 +33,7 @@ export const DEFINITION_KEYS = [
   "items",
   "allowedvalues",
   "pattern",
+  "format",
   "keypattern",
   "optional",
   "min",

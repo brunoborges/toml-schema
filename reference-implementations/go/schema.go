@@ -36,7 +36,7 @@ const (
 
 var definitionKeys = map[string]bool{
 	"type": true, "description": true, "itemtype": true, "items": true,
-	"allowedvalues": true, "pattern": true, "keypattern": true, "optional": true, "min": true,
+	"allowedvalues": true, "pattern": true, "format": true, "keypattern": true, "optional": true, "min": true,
 	"max": true, "minlength": true, "maxlength": true,
 	"oneof": true, "anyof": true, "dependentrequired": true, "mutuallyexclusive": true,
 	"exactlyone": true, "allof": true, "uniqueitems": true, "default": true, "deprecated": true,
@@ -112,6 +112,7 @@ type Definition struct {
 	optional          bool
 	allowedValues     []any
 	pattern           *regexp.Regexp
+	format            string
 	keyPattern        *regexp.Regexp
 	min               any
 	max               any
@@ -838,6 +839,15 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	if err != nil {
 		return Definition{}, err
 	}
+	format, err := getString(table, "format")
+	if err != nil {
+		return Definition{}, err
+	}
+	if propertyValue(table, "format") != nil {
+		if !supportedStringFormats[format] {
+			return Definition{}, fmt.Errorf("%s contains unknown string format: %q", name, format)
+		}
+	}
 	keyPattern, err := getPatternKey(name, table, "keypattern")
 	if err != nil {
 		return Definition{}, err
@@ -1002,6 +1012,9 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	if pattern != nil && typeName != TypeString {
 		return Definition{}, fmt.Errorf("%s can only define pattern when type is string", name)
 	}
+	if format != "" && typeName != TypeString {
+		return Definition{}, fmt.Errorf("%s can only define format when type is string", name)
+	}
 	if hasAllowedValues && (typeName == TypeTable || typeName == TypeCollection) {
 		return Definition{}, fmt.Errorf("%s can only define allowedvalues for scalar, unconstrained, or array types", name)
 	}
@@ -1018,7 +1031,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	if err := validateRangeConstraints(name, typeName, min, max); err != nil {
 		return Definition{}, err
 	}
-	if err := validateAllowedValuesConstraints(name, typeName, allowedValues, pattern, min, max, minLength, maxLength); err != nil {
+	if err := validateAllowedValuesConstraints(name, typeName, allowedValues, pattern, format, min, max, minLength, maxLength); err != nil {
 		return Definition{}, err
 	}
 	dependentRequired, err := getDependentRequired(name, path, table, source)
@@ -1050,7 +1063,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		name: name, typeName: typeName, reference: reference, description: description,
 		itemReference: normalizeReference(itemReference), optional: optional,
 		items:         normalizeReferences(items),
-		allowedValues: allowedValues, pattern: pattern, keyPattern: keyPattern, min: min, max: max,
+		allowedValues: allowedValues, pattern: pattern, format: format, keyPattern: keyPattern, min: min, max: max,
 		minLength: minLength, maxLength: maxLength, oneOf: normalizeReferences(oneOf), anyOf: normalizeReferences(anyOf),
 		condition: condition, thenReference: normalizeReference(thenReference), elseReference: normalizeReference(elseReference),
 		allOf: normalizeReferences(allOf), dependentRequired: dependentRequired,
@@ -1432,6 +1445,7 @@ func validateAllowedValuesConstraints(
 	typeName SchemaType,
 	allowedValues []any,
 	pattern *regexp.Regexp,
+	format string,
 	min, max any,
 	minLength, maxLength *int,
 ) error {
@@ -1444,6 +1458,12 @@ func validateAllowedValuesConstraints(
 			stringValue, ok := allowed.(string)
 			if !ok || !matchesPattern(pattern, stringValue) {
 				return fmt.Errorf("%s does not satisfy pattern", entry)
+			}
+		}
+		if format != "" {
+			stringValue, ok := allowed.(string)
+			if !ok || !validateStringFormat(format, stringValue) {
+				return fmt.Errorf("%s does not satisfy format %s", entry, format)
 			}
 		}
 		if (min != nil || max != nil) && isNaN(allowed) {
@@ -2156,6 +2176,9 @@ func (v *validator) validateCommonConstraints(path string, value any, definition
 		v.validateLength(path, utf8.RuneCountInString(stringValue), definition)
 		if definition.pattern != nil && !matchesPattern(definition.pattern, stringValue) {
 			v.add(path, "does not match pattern "+definition.pattern.String())
+		}
+		if definition.format != "" && !validateStringFormat(definition.format, stringValue) {
+			v.add(path, "invalid string for format "+definition.format)
 		}
 	}
 }

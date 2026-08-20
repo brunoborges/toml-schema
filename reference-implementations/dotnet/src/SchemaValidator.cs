@@ -138,6 +138,10 @@ internal class SchemaValidator
                     _errors.Add(new ValidationError(path, $"Invalid regex pattern: {ex.Message}", "pattern-error"));
                 }
             }
+
+            if (schema.Format != null && !StringFormatValidator.IsValid(schema.Format, strVal))
+                _errors.Add(new ValidationError(path,
+                    $"String is not a valid {schema.Format}", "format"));
         }
 
         // Numeric constraints

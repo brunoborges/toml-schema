@@ -10,6 +10,7 @@ import {
 } from "./builtins.js";
 import { emptyRecord, type Condition, type RawDefinition } from "./definition.js";
 import { SchemaError } from "./errors.js";
+import { isValidStringFormat, parseStringFormat, type StringFormat } from "./formats.js";
 import { SchemaSource } from "./tomlSource.js";
 import {
   compareValues,
@@ -203,6 +204,7 @@ function validateAllowedValuesConstraints(
   typeName: SchemaType | undefined,
   allowedValues: readonly TomlValue[],
   pattern: RegExp | undefined,
+  format: StringFormat | undefined,
   min: TomlValue | undefined,
   max: TomlValue | undefined,
   minLength: number | undefined,
@@ -214,6 +216,11 @@ function validateAllowedValuesConstraints(
     if (pattern !== undefined) {
       if (typeof allowed !== "string" || !pattern.test(allowed)) {
         throw new SchemaError(`${entry} does not satisfy pattern`);
+      }
+    }
+    if (format !== undefined) {
+      if (typeof allowed !== "string" || !isValidStringFormat(format, allowed)) {
+        throw new SchemaError(`${entry} does not satisfy format ${format}`);
       }
     }
     if ((min !== undefined || max !== undefined) && isNaNValue(allowed)) {
@@ -476,6 +483,14 @@ export function parseDefinition(
   }
   const optional = getBoolProp(table, "optional", name);
   const patternResult = getPatternProp(table, "pattern", name);
+  const formatValue = propertyValue(table, "format");
+  if (formatValue !== undefined && typeof formatValue !== "string") {
+    throw new SchemaError(`expected format to be a string (${name})`);
+  }
+  const format = typeof formatValue === "string" ? parseStringFormat(formatValue) : undefined;
+  if (typeof formatValue === "string" && format === undefined) {
+    throw new SchemaError(`${name} has unknown string format: ${formatValue}`);
+  }
   const keyPatternResult = getPatternProp(table, "keypattern", name);
   const minLength = getIntegerProp(table, "minlength", name);
   const maxLength = getIntegerProp(table, "maxlength", name);
@@ -602,6 +617,9 @@ export function parseDefinition(
   if (patternResult !== undefined && typeName !== "string") {
     throw new SchemaError(`${name} can only define pattern when type is string`);
   }
+  if (format !== undefined && typeName !== "string") {
+    throw new SchemaError(`${name} can only define format when type is string`);
+  }
   if (hasAllowedValues && (typeName === "table" || typeName === "collection")) {
     throw new SchemaError(`${name} can only define allowedvalues for scalar, unconstrained, or array types`);
   }
@@ -624,6 +642,7 @@ export function parseDefinition(
     typeName,
     allowedValues,
     patternResult?.regex,
+    format,
     min,
     max,
     minLength,
@@ -649,6 +668,7 @@ export function parseDefinition(
     ...(patternResult !== undefined
       ? { pattern: patternResult.regex, patternSource: patternResult.source }
       : {}),
+    ...(format !== undefined ? { format } : {}),
     ...(keyPatternResult !== undefined
       ? { keyPattern: keyPatternResult.regex, keyPatternSource: keyPatternResult.source }
       : {}),

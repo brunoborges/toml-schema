@@ -59,11 +59,11 @@ enabled = true
 		  		[serverGroups.group1.servers.beta.replicas]
 
 		  			[serverGroups.group1.servers.beta.replicas.rp1]
-		  			ip = "..."
+					ip = "10.0.1.1"
 		  			dc = "..."
 
 		  			[serverGroups.group1.servers.beta.replicas.rp2]
-		  			ip = "..."
+					ip = "10.0.1.2"
 		  			dc = "..."
 
 [clients]

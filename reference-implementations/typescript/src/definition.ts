@@ -1,4 +1,5 @@
 import type { SchemaType } from "./builtins.js";
+import type { StringFormat } from "./formats.js";
 import type { TomlValue } from "./values.js";
 
 /** A parsed `if` selector: `{ key = "...", equals = ... }` or `{ key = "...", in = [...] }`. */
@@ -27,6 +28,7 @@ export interface RawDefinition {
   allowedValues?: readonly TomlValue[] | undefined;
   pattern?: RegExp | undefined;
   patternSource?: string | undefined;
+  format?: StringFormat | undefined;
   keyPattern?: RegExp | undefined;
   keyPatternSource?: string | undefined;
   min?: TomlValue | undefined;
