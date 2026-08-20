@@ -161,9 +161,7 @@ const heroContent = latest
             <strong>Install ${escapeHtml(latest.version)}</strong>
             <span class="badge">${latest.release.prerelease ? "Prerelease" : "Latest"}</span>
           </div>
-          <pre><code>curl --proto '=https' --tlsv1.2 -sSfL \\
-  https://tomlschema.org/cli/releases/${escapeHtml(latest.release.tag_name)}/install-tosd.sh |
-  bash -s -- --version ${escapeHtml(latest.version)}</code></pre>
+          <pre><code>curl -fsSL https://tomlschema.org/cli/releases/${escapeHtml(latest.release.tag_name)}/install-tosd.sh | bash</code></pre>
         </div>`
   : `<div class="card install-panel">
           <h2>Downloads are coming soon</h2>

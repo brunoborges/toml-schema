@@ -91,9 +91,7 @@ status, CLI usage, schema extraction, and conformance expectations.
 Install the `1.0.0-rc.2` CLI on Linux or Apple Silicon macOS:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSfL \
-  https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
-  bash -s -- --version 1.0.0-rc.2
+curl -fsSL https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh | bash
 ```
 
 The installer verifies the release checksum and writes to `$HOME/.local/bin`
