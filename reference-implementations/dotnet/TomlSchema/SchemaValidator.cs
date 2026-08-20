@@ -69,7 +69,7 @@ internal class SchemaValidator
         ValidateType(value, schema, elemPath);
     }
 
-    private void ValidateType(object? value, SchemaDefinition schema, string path)
+    private void ValidateType(object? value, SchemaDefinition schema, string path, bool enforceClosure = true)
     {
         // Handle null
         if (value == null)
@@ -156,7 +156,7 @@ internal class SchemaValidator
             {
                 var allOfSchema = _schema.ResolveType(typeRef)
                     ?? throw new InvalidOperationException($"Undefined type in allof: {typeRef}");
-                ValidateType(value, allOfSchema, path);
+                ValidateType(value, allOfSchema, path, enforceClosure: false);
             }
         }
 
@@ -218,7 +218,7 @@ internal class SchemaValidator
 
         // Table validation
         if (effectiveSchema.Type == SchemaType.Table && value is TomlTable tableValue)
-            ValidateTable(tableValue, effectiveSchema, path);
+            ValidateTable(tableValue, effectiveSchema, path, enforceClosure);
 
         // Array validation
         if (effectiveSchema.Type == SchemaType.Array && value is TomlArray array)
@@ -229,7 +229,7 @@ internal class SchemaValidator
             ValidateCollection(collTable, effectiveSchema, path);
     }
 
-    private void ValidateTable(TomlTable table, SchemaDefinition schema, string path)
+    private void ValidateTable(TomlTable table, SchemaDefinition schema, string path, bool enforceClosure = true)
     {
         // Validate fixed children
         foreach (var (key, childSchema) in schema.Children)
@@ -244,9 +244,56 @@ internal class SchemaValidator
             }
         }
 
-        // Validate unexpected keys (nested)
+        // Validate unexpected keys (nested). A table with a non-empty fixed-child
+        // set is closed: every key that is not a fixed child is an error. A table
+        // with no fixed children is open and accepts any keys.
+        if (enforceClosure)
+        {
+            var knownKeys = CollectFixedChildKeys(schema, new HashSet<string>());
+            if (knownKeys.Count > 0)
+            {
+                foreach (var key in table.Keys)
+                {
+                    if (!knownKeys.Contains(key))
+                        _errors.Add(new ValidationError(AppendPath(path, key), "unexpected key", "unexpected-key"));
+                }
+            }
+        }
+
         // Sibling rules
         ValidatePresenceRules(table, schema, path);
+    }
+
+    /// <summary>
+    /// Collects the fixed-child key set contributed by a definition, following
+    /// named references and <c>allof</c> composition so that a composed table is
+    /// closed over the union of every contributor's children.
+    /// </summary>
+    private HashSet<string> CollectFixedChildKeys(SchemaDefinition schema, HashSet<string> visited)
+    {
+        var keys = new HashSet<string>(schema.Children.Keys);
+
+        if (!string.IsNullOrEmpty(schema.Reference) && visited.Add(schema.Reference))
+        {
+            var referenced = _schema.ResolveType(schema.Reference);
+            if (referenced != null)
+                keys.UnionWith(CollectFixedChildKeys(referenced, visited));
+        }
+
+        if (schema.AllOf != null)
+        {
+            foreach (var typeRef in schema.AllOf)
+            {
+                if (!visited.Add(typeRef))
+                    continue;
+
+                var component = _schema.ResolveType(typeRef);
+                if (component != null)
+                    keys.UnionWith(CollectFixedChildKeys(component, visited));
+            }
+        }
+
+        return keys;
     }
 
     private void ValidatePresenceRules(TomlTable table, SchemaDefinition schema, string path)

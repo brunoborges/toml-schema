@@ -1,10 +1,10 @@
 # TOML Schema Specification
 
-TOML Schema is a set of TOML-based constructs that define the structure, the names, and the types of configuration data on a TOML file.
+TOML Schema is a set of TOML-based constructs that define the structure, the names, and the types of configuration data in a TOML file.
 
 TOML Schema validates the parsed input of a TOML file to:
 
-1. Eliminate or reduce misconfiguration that could potentially damage if only validated during production evaluation,
+1. Eliminate or reduce misconfiguration that could cause damage if it were only detected when the configuration is evaluated in production,
 1. Be leveraged by editors and other tools to provide and enrich auto-completion and code hints for validation on the fly.
 
 The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document.
@@ -34,6 +34,7 @@ command.
   - [Schema Versioning](#schema-versioning)
 - [Elements table - `[elements]`](#elements-table---elements)
 - [Types table - `[types]`](#types-table---types)
+  - [Schema Definition Properties](#schema-definition-properties)
   - [Quoted and Special Keys](#quoted-and-special-keys)
   - [Scalar and Unconstrained Built-in Types](#scalar-and-unconstrained-built-in-types)
     - [Allowed Values - `allowedvalues`](#allowed-values---allowedvalues)
@@ -63,6 +64,7 @@ command.
   - [Parsed Value Equality](#parsed-value-equality)
   - [Validation Diagnostics](#validation-diagnostics)
   - [Expressiveness and Validation Scope](#expressiveness-and-validation-scope)
+- [Schema Self-Validation](#schema-self-validation)
 - [Filename Extension](#filename-extension)
 - [MIME Type](#mime-type)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
@@ -170,7 +172,7 @@ A TOML Schema file has the following structure:
  - `[elements]`: table with the overall structure of the TOML document, its tables, properties, and conditions.
    - **Required**
 
-No other top-level table or key-value pair MAY appear in a TOML Schema document.
+Any other top-level table or key-value pair MUST NOT appear in a TOML Schema document.
 
 ## Metadata Table - `[toml-schema]`
 
@@ -195,7 +197,7 @@ version = "1.0.0"
 
  - `version`: the TOML Schema language version used by this schema document. **Type:** string.
    - **Required**.
- - `toml-schema.meta`: table reserved for any custom user-provided metadata.
+ - `meta`: subtable reserved for any custom user-provided metadata. **Type:** table.
    - **Optional**.
 
 Custom properties and tables MUST NOT appear directly under `toml-schema`; they
@@ -218,6 +220,14 @@ version = "1.0.0"
 Schema loaders MUST reject schema documents whose `version` is missing, is not a string, or is not a valid SemVer value. Shorthand values such as `"1"` and `"1.0"` are invalid.
 
 An implementation that supports TOML Schema version `MAJOR.MINOR.PATCH` MUST accept schema documents with the same major version and a minor version less than or equal to the implementation's supported minor version. Patch versions, pre-release identifiers, and build metadata do not add schema-language features and do not affect compatibility. Schema loaders MUST reject schema documents with an unsupported major version or a greater minor version. Support for schema documents from an earlier major version is implementation-defined; an implementation MUST NOT treat support for a later major version as implicit support for an earlier one.
+
+That compatibility rule assumes a non-zero major version. Semantic Versioning
+2.0.0 gives `0.y.z` no stability guarantee and permits a minor increment to
+change the language incompatibly, so the rule's "same major version" test would
+not be sound there. This specification therefore defines no major-version-zero
+language version: the first TOML Schema language version is `1.0.0`. A `0.y.z`
+value is well-formed Semantic Versioning but is not a TOML Schema language
+version, and a schema loader MUST reject it as an unsupported major version.
 
 ## Elements table - `[elements]`
 
@@ -254,28 +264,6 @@ enabled = true
 ```
 
 Use `[elements]` for document-specific keys. Use `[types]` for reusable definitions that can be referenced from `[elements]` or from other reusable types. Elements follow the same structure and validation rules as types, except that elements cannot reference other elements. To reuse conditions and structures, define them under `[types]` and reference them from `[elements]`.
-
-The companion [`toml-schema.tosd`](toml-schema.tosd) recursively validates
-schema-definition tables, including the schema document itself. It models
-schema properties as fixed children and ordinary target child definitions as
-dynamic collection entries. The `children` namespace described below resolves
-the remaining TOML key collision when one definition needs both a schema
-property and a target child with the same name.
-
-The self-schema validates property value shapes, selector exclusivity,
-conditional completeness, tuple-versus-homogeneous array structure, nested
-child applicability, string formats, sibling-rule structures, annotations, and
-the selective `children` namespace. Rules that require resolving the schema's
-reference graph remain schema-load semantics: reference existence and cycles,
-effective `allof` compatibility, conditional branch kinds, collection
-`itemtype` inherited through composition, defaults against effective types,
-allowed values against resolved constraints, and sibling-rule operands against
-the effective fixed-child set. Schema loading also preserves source-form
-information that the parsed TOML value model erases, so inline-table properties
-such as `default` and `dependentrequired` can be distinguished from direct child
-tables with those names and the latter can be validated recursively. A
-conforming implementation MUST apply both the self-schema validation and these
-reference-aware and source-aware schema-load checks.
 
 ## Types table - `[types]`
 
@@ -361,6 +349,7 @@ items = [ "<type-reference>", ... ]
 oneof = [ "<type-reference>", ... ]
 anyof = [ "<type-reference>", ... ]
 if = { key = "<direct-child-name>", equals = <toml-value> }
+# or: if = { key = "<direct-child-name>", in = [ <toml-value>, ... ] }
 then = "types.<typename>"
 else = "types.<typename>"
 allof = [ "<type-reference>", ... ]
@@ -380,7 +369,7 @@ default = <toml-value>
 deprecated = true|false
 ```
 
-#### Schema Definition Properties
+### Schema Definition Properties
 
 The following matrix summarizes where definition properties apply. The
 detailed sections below remain authoritative.
@@ -431,10 +420,22 @@ under the reserved `children` table. The segment immediately following
 path.
 
 The `children` table is a selective escape hatch, not a general alternative
-child syntax. Every direct entry below it MUST be named either `children` or one
-of the [schema-definition properties](#schema-definition-properties) listed
-above. Schema loaders MUST reject non-conflicting names there. Ordinary,
-quoted, dotted, and empty child keys continue to use direct TOML table paths.
+child syntax. The restriction is categorical rather than per-definition: every
+direct entry below `children` MUST be named either `children` or one of the
+[schema-definition properties](#schema-definition-properties) listed above, and
+schema loaders MUST reject any other name there. A loader does not additionally
+require that the surrounding definition actually declare a property of that
+name. Ordinary, quoted, dotted, and empty child keys continue to use direct TOML
+table paths.
+
+Consequently, when a definition does not declare the property in question, a
+child whose target key is a property name has two valid spellings: the direct
+table path and the `children` path. Both denote the same target key and validate
+identically. Authors SHOULD prefer the direct form and reserve `children` for
+definitions in which TOML makes the direct form impossible; a schema generator
+MAY instead emit the `children` form uniformly for property-named children. When
+a definition does declare that property as a key/value pair, TOML permits only
+the `children` form, so exactly one spelling is available.
 
 A table named `children` whose own definition declares a `type`, `oneof`,
 `anyof`, or `if` selector property is an ordinary target child definition
@@ -558,8 +559,6 @@ value is valid when it is a member of `allowedvalues` according to
 re-evaluate the other constraints for that document value because every
 enumerated value has already been checked against them while loading the schema.
 
-The rules for applying `allowedvalues` to array items are defined separately under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
-
 Example:
 ```toml
 [types.colorType]
@@ -642,10 +641,13 @@ These properties define inclusive value ranges. They may only be used for:
 
 For arrays, `min` and `max` apply to each item. `itemtype` MUST resolve to one
 comparable built-in kind: `integer`, `float`, `offset-date-time`,
-`local-date-time`, `local-date`, or `local-time`. All alternatives of a
-referenced `oneof` or `anyof` definition MUST resolve to that same kind.
+`local-date-time`, `local-date`, or `local-time`. Named references and aliases
+are resolved before this rule is checked, and all alternatives of a referenced
+`oneof` or `anyof` definition MUST resolve to that same kind.
 Schema loaders MUST reject array range constraints when the item schema can resolve to
-different kinds or to a non-comparable kind.
+different kinds or to a non-comparable kind. The interaction between array range
+boundaries and `allowedvalues` is defined under
+[Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
 
 A `min` or `max` boundary MUST be a TOML value that is comparable with the schema type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
 
@@ -699,16 +701,38 @@ built-in type.
 
 #### Tables
 
-A `table` may have a set of properties, or none at all. If a table has a
-definition of properties, the validator MUST require the input to match exactly
-the rules of the table and its children.
+A definition whose effective type is `table` matches a parsed TOML table value.
+Table headers and inline tables produce the same value kind and are validated
+identically.
 
 If a schema definition has nested child definitions but does not declare a
 selector, schema loaders MUST treat it as if it declared `type = "table"`.
 
-If a property of type `table` has no defined children, the validator MUST
-accept any TOML table value without validating its contents. This is useful for
-representing custom data payloads.
+The **fixed children** of a table are the union of its own nested child
+definitions and those contributed by every `allof` component, as defined under
+[Conjunctive Composition](#conjunctive-composition---allof).
+
+A table with at least one fixed child is **closed**. Validators MUST apply all
+of the following rules to it:
+
+ - every fixed child that is not optional MUST be present in the document table;
+ - every present fixed child's value MUST validate against its definition; and
+ - every document key that is not a fixed child MUST be reported as an
+   unknown-key error.
+
+The third rule is what makes a closed table reject misspelled and undeclared
+keys. It is the same rule the root applies under
+[Elements table](#elements-table---elements).
+
+A table with no fixed children is **open**. Validators MUST accept any TOML
+table value without validating its contents, including its keys. This is useful
+for representing custom data payloads. Openness is a property of the effective
+definition, so a table is open only when neither the local definition nor any
+`allof` component contributes a fixed child.
+
+An open table is not the same as an empty root `[elements]` table. An open table
+accepts any keys; an empty `[elements]` table accepts no application data at
+all, as described under [Elements table](#elements-table---elements).
 
 #### Arrays
 
@@ -739,19 +763,17 @@ colors=[ "red", "yellow", "green" ]
 
 ##### Observations on Conditions to Arrays
 
-The `min` and `max` conditions set an inclusive range for every array item. They
-MUST be used only when `itemtype` resolves to one comparable built-in kind:
-`integer`, `float`, or one of the four date/time types. When `itemtype`
-references a named definition, aliases and alternatives are resolved before
-this rule is checked.
-
-Temporal values use the ordering rules defined under
+The `min` and `max` conditions set an inclusive range for every array item.
+Their applicability rule, including how a named `itemtype` and its alternatives
+are resolved, and the ordering rules used for numeric and temporal items, are
+defined under
 [Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max).
 
 When `allowedvalues` is present on an array, every array item MUST be a member
 of that enumeration. The enumeration does not have to be sorted. If `min` or
 `max` is also present, every enumerated value MUST satisfy the applicable
-inclusive boundary; an enumerated value need not equal either boundary.
+inclusive boundary, and a schema loader MUST reject an enumerated value that
+violates one; an enumerated value need not equal either boundary.
 
 When the array declares `itemtype`, every enumerated value MUST have a TOML
 kind permitted by the effective item type. Named references, aliases, and
@@ -761,8 +783,7 @@ schema-load check verifies the permitted TOML kind; constraints inside a named
 item definition still apply normally when a document array is validated.
 
 `minlength` and `maxlength` constrain the document array's item count, not the
-number of entries in `allowedvalues`. The schema loader MUST reject an
-enumerated value that violates `min` or `max`.
+number of entries in `allowedvalues`.
 
 If neither `itemtype` nor `items` is defined, array items default to `any`, so
 items of different TOML types may be mixed.
@@ -858,7 +879,8 @@ Semantics:
 
  - `items` is ordered, and each index validates against the corresponding referenced type.
  - `items` MUST contain at least one type reference. A schema loader MUST reject
-   `items = []`; use `maxlength = 0` to require an empty array.
+   `items = []`; to require an empty array, omit `items` and declare
+   `maxlength = 0` instead.
  - When `items` is present, the array MUST have exactly the same number of items.
  - `items` is mutually exclusive with `itemtype`.
  - `items` is also mutually exclusive with `min` and `max`.
@@ -908,14 +930,26 @@ its own `itemtype` and reference that named definition instead.
 
 When collection values may have alternative types, define those alternatives in a reusable `[types]` definition with `oneof` or `anyof`, then reference that definition with `itemtype`. This keeps `oneof` and `anyof` consistently scoped to the current node rather than changing their meaning on a container.
 
+Unlike a `table`, a `collection` is never closed. Validators MUST classify every
+key of the document table as either a fixed child or a dynamic entry. A key that
+names a fixed child definition is validated by that definition. Every other key
+is a dynamic entry: its name MUST satisfy every applicable `keypattern` and its
+value MUST validate against every applicable `itemtype`. A collection therefore
+never produces an unknown-key error; an undeclared key that is not acceptable is
+reported as a `keypattern` or `itemtype` failure instead. Fixed children that
+are not optional remain required, exactly as in a closed table.
+
+This difference in unknown-key semantics is why `table` and `collection` are not
+interchangeable for `allof` composition.
+
 A `collection` may additionally constrain the **keys** (entry names) of its dynamic children with `keypattern`. See [Key Pattern - `keypattern`](#key-pattern---keypattern).
 
-Fixed child definitions take precedence over the collection's dynamic-entry
-rule. This permits a collection to validate known keys precisely while applying
-`itemtype` only to all other keys. For example, `itemtype = "any"` makes unknown
-keys forward-compatible while fixed children still receive their declared
-validation. Authors choosing this pattern trade typo detection on unknown keys
-for extensibility; use a plain `table` when undeclared keys must be rejected.
+This precedence is what lets a collection validate known keys precisely while
+applying `itemtype` only to all other keys. For example, `itemtype = "any"`
+makes unknown keys forward-compatible while fixed children still receive their
+declared validation. Authors choosing this pattern trade typo detection on
+unknown keys for extensibility; use a closed `table` when undeclared keys must
+be rejected.
 
 This precedence also supports open extension namespaces with typed well-known
 entries. For example, a `pyproject.toml` schema can define `[tool]` as a
@@ -1136,7 +1170,7 @@ normally with `type`.
 
 An `allof` component may itself contain `oneof`, `anyof`, or another `allof`
 when its effective kind is unambiguous. A composed definition may be referenced
-from `type`, `itemtype`, `items`, `oneof`, `anyof`, `then`, or `else`. All composition
+from `type`, `itemtype`, `items`, `oneof`, `anyof`, `allof`, `then`, or `else`. All composition
 references MUST resolve at schema-load time, and composition/type-selection
 cycles are malformed. Structural recursion that consumes a child or container
 member remains valid.
@@ -1256,9 +1290,11 @@ else = "types.serverDatabase"
 `if` MUST be an inline table containing `key` and exactly one of `equals` or
 `in`. It MUST contain no other members.
 
-- `key` MUST be a string naming one direct child of the current node. It is a
-  decoded TOML key, not a dotted document path. An empty or literal dotted key
-  is permitted.
+- `key` MUST be a string naming one direct child key of the parsed table being
+  validated. It is a decoded TOML key, not a dotted document path, and it does
+  not have to name a schema-declared child, because a conditional definition has
+  no nested child definitions of its own. An empty or literal dotted key is
+  permitted.
 - `equals` accepts one TOML value. The condition succeeds when the child exists
   and is equal to that value according to [Parsed Value Equality](#parsed-value-equality).
 - `in` MUST be a non-empty array. The condition succeeds when the child exists
@@ -1318,7 +1354,9 @@ present, every listed child MUST also be present.
 Because `dependentrequired` is also a legal child key, a
 `dependentrequired = { ... }` key/value entry is always the sibling rule, while
 a table header such as `[types.example.dependentrequired]` is always a child
-definition named `dependentrequired`.
+definition named `dependentrequired`. A definition that needs both the rule and
+a child of that name writes the child through the `children` namespace, as
+described under [Quoted and Special Keys](#quoted-and-special-keys).
 
 ```toml
 [types.dependency]
@@ -1406,7 +1444,9 @@ Because `default` is also a legal child key, a `default = <value>` key/value
 entry is always the annotation, while a table header such as
 `[elements.options.default]` is always a child definition named `default`.
 Consequently, a table-valued default MUST use inline-table syntax, for example
-`default = { min = 1, max = 10 }`.
+`default = { min = 1, max = 10 }`. A definition that needs both the annotation
+and a child named `default` writes the child through the `children` namespace,
+as described under [Quoted and Special Keys](#quoted-and-special-keys).
 
 A default is not a validation assertion and never changes the document being
 validated. It does not insert a missing value, satisfy a required definition,
@@ -1696,6 +1736,41 @@ Validation applies to parsed keys and values, not to their lexical spelling.
 A schema cannot require dotted-key notation instead of table headers, an inline
 table instead of a regular table, or a particular quoting, whitespace, or
 comment style when those forms produce the same TOML value tree.
+
+## Schema Self-Validation
+
+The companion [`toml-schema.tosd`](toml-schema.tosd) is a TOML Schema document
+that recursively validates schema-definition tables, including the schema
+document itself. It models schema properties as fixed children and ordinary
+target child definitions as dynamic collection entries. The
+[`children`](#quoted-and-special-keys) namespace resolves the remaining TOML key
+collision when one definition needs both a schema property and a target child
+with the same name.
+
+The self-schema validates property value shapes, selector exclusivity,
+conditional completeness, tuple-versus-homogeneous array structure, nested child
+applicability, string formats, sibling-rule structures, annotations, and the
+selective `children` namespace.
+
+Rules that require resolving the schema's reference graph cannot be expressed
+that way and remain schema-load semantics:
+
+ - reference existence and cycles;
+ - effective `allof` compatibility;
+ - conditional branch kinds;
+ - collection `itemtype` inherited through composition;
+ - defaults against effective types;
+ - allowed values against resolved constraints; and
+ - sibling-rule operands against the effective fixed-child set.
+
+Schema loading also depends on the source-form information required under
+[Validation and Data Model](#validation-and-data-model). That information is what
+lets a loader distinguish the inline-table properties `default` and
+`dependentrequired` from direct child tables with those names, and validate the
+latter recursively.
+
+A conforming implementation MUST apply both the self-schema validation and these
+reference-aware and source-aware schema-load checks.
 
 ## Filename Extension
 
