@@ -1079,6 +1079,7 @@ itemtype = "any"
 
     [types.runner.url]
     type = "string"
+    format = "uri"
     optional = true
 
     [types.runner.token]
@@ -1154,6 +1155,7 @@ itemtype = "any"
 
     [types.runner.clone_url]
     type = "string"
+    format = "uri"
     optional = true
 
     [types.runner.debug_trace_disabled]

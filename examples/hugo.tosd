@@ -10,6 +10,10 @@ itemtype = "string"
 [types.numberValue]
 oneof = [ "integer", "float" ]
 
+[types.uri]
+type = "string"
+format = "uri"
+
 [types.stringOrStringArray]
 oneof = [ "string", "types.stringArray" ]
 
@@ -1004,7 +1008,7 @@ type = "collection"
 itemtype = "any"
 
     [types.language.baseURL]
-    type = "string"
+    type = "types.uri"
     optional = true
 
     [types.language.contentDir]
@@ -1079,7 +1083,7 @@ type = "string"
 optional = true
 
 [elements.baseURL]
-type = "string"
+type = "types.uri"
 optional = true
 
 [elements.build]

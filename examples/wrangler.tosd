@@ -18,6 +18,25 @@ itemtype = "types.numberValue"
 type = "collection"
 itemtype = "string"
 
+[types.email]
+type = "string"
+format = "email"
+
+[types.emailArray]
+type = "array"
+itemtype = "types.email"
+
+[types.ipv4]
+type = "string"
+format = "ipv4"
+
+[types.ipv6]
+type = "string"
+format = "ipv6"
+
+[types.ipAddress]
+oneof = [ "types.ipv4", "types.ipv6" ]
+
 [types.anyMap]
 type = "collection"
 itemtype = "any"
@@ -252,7 +271,7 @@ type = "table"
     optional = true
 
     [types.dev.ip]
-    type = "string"
+    type = "types.ipAddress"
     optional = true
 
     [types.dev.local_protocol]
@@ -518,12 +537,11 @@ type = "table"
     type = "string"
 
     [types.emailBinding.allowed_destination_addresses]
-    type = "array"
-    itemtype = "string"
+    type = "types.emailArray"
     optional = true
 
     [types.emailBinding.destination_address]
-    type = "string"
+    type = "types.email"
     optional = true
 
 [types.queueProducer]
