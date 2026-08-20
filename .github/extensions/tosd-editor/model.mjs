@@ -11,11 +11,12 @@
 // node = { name, props: { <prop>: <editorValue> }, children: [ node, ... ] }
 //
 // Editor value encoding per property:
-//   type/itemtype/description/pattern/keypattern : plain string
+//   type/itemtype/description/format/pattern/keypattern/then/else : plain string
 //   optional/uniqueitems/deprecated              : boolean
 //   minlength/maxlength                          : number
 //   items/oneof/anyof/allof                      : string[]
 //   allowedvalues                                : string[]  (TOML value tokens)
+//   if                                           : { key, equals } | { key, in[] }
 //   dependentrequired                            : { trigger: string[] }
 //   mutuallyexclusive/exactlyone                 : string[][]
 //   min/max/default                              : string    (TOML value token)
@@ -29,14 +30,19 @@ import {
     isPlainTable,
     tableCollisions,
 } from "./toml.mjs";
+import { isIP } from "node:net";
 
 export const PROP_ORDER = [
     "type",
     "description",
+    "format",
     "itemtype",
     "items",
     "oneof",
     "anyof",
+    "if",
+    "then",
+    "else",
     "allof",
     "allowedvalues",
     "pattern",
@@ -54,7 +60,7 @@ export const PROP_ORDER = [
     "optional",
 ];
 
-const STRING_PROPS = new Set(["type", "description", "itemtype", "pattern", "keypattern"]);
+const STRING_PROPS = new Set(["type", "description", "format", "itemtype", "pattern", "keypattern", "then", "else"]);
 const INT_PROPS = new Set(["minlength", "maxlength"]);
 const BOOL_PROPS = new Set(["optional", "uniqueitems", "deprecated"]);
 const REFLIST_PROPS = new Set(["items", "oneof", "anyof", "allof"]);
@@ -62,6 +68,7 @@ const GROUPLIST_PROPS = new Set(["mutuallyexclusive", "exactlyone"]);
 const MAPLIST_PROPS = new Set(["dependentrequired"]);
 const VALUELIST_PROPS = new Set(["allowedvalues"]);
 const VALUE_PROPS = new Set(["min", "max", "default"]);
+const CONDITIONAL_PROPS = new Set(["if"]);
 
 const ALL_PROPS = new Set(PROP_ORDER);
 
@@ -140,7 +147,23 @@ function tableToNode(name, table, path) {
     const node = { name, props: {}, children: [] };
     for (const [key, value] of Object.entries(table)) {
         if (isPlainTable(value)) {
-            node.children.push(tableToNode(key, value, `${path}.${key}`));
+            const escapedChildren = key === "children"
+                && !["type", "oneof", "anyof", "if"].some((selector) =>
+                    Object.prototype.hasOwnProperty.call(value, selector)
+                    && !isPlainTable(value[selector]));
+            if (escapedChildren) {
+                for (const [childName, childValue] of Object.entries(value)) {
+                    if (!ALL_PROPS.has(childName) && childName !== "children") {
+                        throw new TomlError(`${path}.children may escape only schema-property child names; found ${childName}.`);
+                    }
+                    if (!isPlainTable(childValue)) {
+                        throw new TomlError(`${path}.children.${childName} must be a schema definition table.`);
+                    }
+                    node.children.push(tableToNode(childName, childValue, `${path}.children.${childName}`));
+                }
+            } else {
+                node.children.push(tableToNode(key, value, `${path}.${key}`));
+            }
         } else if (ALL_PROPS.has(key)) {
             node.props[key] = decodeProp(key, value, path);
         } else {
@@ -195,8 +218,28 @@ function decodeProp(key, value, path) {
         if (!Array.isArray(value)) throw new TomlError(`${path}.${key} must be an array.`);
         return value.map(formatValue);
     }
+    if (CONDITIONAL_PROPS.has(key)) return decodeConditional(value, path);
     if (VALUE_PROPS.has(key)) return formatValue(value);
     return formatValue(value);
+}
+
+function decodeConditional(value, path) {
+    const inner = value && value.__inline ? value.value : value;
+    if (!isPlainTable(inner)) throw new TomlError(`${path}.if must be an inline table.`);
+    const keys = Object.keys(inner);
+    if (keys.some((key) => !["key", "equals", "in"].includes(key))) {
+        throw new TomlError(`${path}.if may contain only key and exactly one of equals or in.`);
+    }
+    if (typeof inner.key !== "string") throw new TomlError(`${path}.if.key must be a string.`);
+    const hasEquals = Object.prototype.hasOwnProperty.call(inner, "equals");
+    const hasIn = Object.prototype.hasOwnProperty.call(inner, "in");
+    if (hasEquals === hasIn) throw new TomlError(`${path}.if must define exactly one of equals or in.`);
+    if (hasIn && (!Array.isArray(inner.in) || inner.in.length === 0)) {
+        throw new TomlError(`${path}.if.in must be a non-empty array.`);
+    }
+    return hasEquals
+        ? { key: inner.key, equals: formatValue(inner.equals) }
+        : { key: inner.key, in: inner.in.map(formatValue) };
 }
 
 function decodeGroupList(value) {
@@ -264,7 +307,10 @@ function emitNode(node, parentPath, depth, lines) {
 
     for (const child of node.children || []) {
         lines.push("");
-        emitNode(child, path, depth + 1, lines);
+        const childParent = ALL_PROPS.has(child.name) || child.name === "children"
+            ? [...path, "children"]
+            : path;
+        emitNode(child, childParent, depth + 1, lines);
     }
 }
 
@@ -287,8 +333,23 @@ function encodeProp(key, raw) {
             .filter((v) => v !== undefined);
         return arr;
     }
+    if (CONDITIONAL_PROPS.has(key)) return encodeConditional(raw);
     if (VALUE_PROPS.has(key)) return parseTokenForEmit(raw);
     return parseTokenForEmit(raw);
+}
+
+function encodeConditional(raw) {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+    const key = String(raw.key ?? "");
+    if (Object.prototype.hasOwnProperty.call(raw, "equals")) {
+        const equals = parseTokenForEmit(raw.equals);
+        if (equals === undefined) return undefined;
+        return { __inline: true, value: { key, equals } };
+    }
+    const values = (Array.isArray(raw.in) ? raw.in : [])
+        .map((token) => parseTokenForEmit(token))
+        .filter((value) => value !== undefined);
+    return values.length ? { __inline: true, value: { key, in: values } } : undefined;
 }
 
 function encodeBoolean(raw) {
@@ -408,6 +469,10 @@ const SIMPLE_TYPES = new Set([
     "local-date",
     "local-time",
 ]);
+const STRING_FORMATS = new Set(["email", "uuid", "uri", "hostname", "ipv4", "ipv6"]);
+const URI_HEX = /^[0-9A-Fa-f]+$/;
+const URI_UNRESERVED = "A-Za-z0-9._~\\-";
+const URI_SUB_DELIMS = "!$&'()*+,;=";
 
 const SEMVER_RE =
     /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
@@ -465,6 +530,166 @@ function patternIssue(pattern) {
         return { level: "warning", message: "uses syntax outside the portable RE2 profile" };
     }
     return null;
+}
+
+function isAscii(value) {
+    return /^[\x00-\x7f]*$/.test(value);
+}
+
+function isIpv4(value) {
+    const parts = value.split(".");
+    return parts.length === 4 && parts.every((part) =>
+        /^(?:0|[1-9][0-9]{0,2})$/.test(part) && Number(part) <= 255);
+}
+
+function isIpv6(value) {
+    if (!isAscii(value) || value.includes("%") || isIP(value) !== 6) return false;
+    const dotted = value.lastIndexOf(":");
+    return !value.includes(".") || (dotted >= 0 && isIpv4(value.slice(dotted + 1)));
+}
+
+function isHostname(value, allowTrailingDot = true) {
+    if (!isAscii(value) || value.length === 0) return false;
+    const hostname = allowTrailingDot && value.endsWith(".") ? value.slice(0, -1) : value;
+    if (hostname.length === 0 || hostname.length > 253) return false;
+    return hostname.split(".").every((label) =>
+        label.length >= 1
+        && label.length <= 63
+        && /^[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?$/.test(label));
+}
+
+function isEmailLocal(local) {
+    if (local.startsWith("\"")) {
+        if (!local.endsWith("\"") || local.length < 2) return false;
+        for (let index = 1; index < local.length - 1; index += 1) {
+            const code = local.charCodeAt(index);
+            if (local[index] === "\\") {
+                index += 1;
+                if (index >= local.length - 1) return false;
+                const escaped = local.charCodeAt(index);
+                if (escaped < 32 || escaped > 126) return false;
+            } else if (code < 32 || code > 126 || code === 34 || code === 92) {
+                return false;
+            }
+        }
+        return true;
+    }
+    const atom = /^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~]+$/;
+    return local.split(".").every((part) => atom.test(part));
+}
+
+function isAddressLiteral(literal) {
+    if (isIpv4(literal)) return true;
+    if (literal.startsWith("IPv6:")) return isIpv6(literal.slice(5));
+    const colon = literal.indexOf(":");
+    if (colon <= 0) return false;
+    const tag = literal.slice(0, colon);
+    const content = literal.slice(colon + 1);
+    return /^[A-Za-z0-9-]*[A-Za-z0-9]$/.test(tag)
+        && content.length > 0
+        && /^[\x21-\x5a\x5e-\x7e]+$/.test(content);
+}
+
+function isEmail(value) {
+    if (!isAscii(value) || value.length > 254) return false;
+    let quoted = false;
+    let escaped = false;
+    let separator = -1;
+    for (let index = 0; index < value.length; index += 1) {
+        const code = value.charCodeAt(index);
+        const character = value[index];
+        if (quoted) {
+            if (escaped) {
+                if (code < 32 || code > 126) return false;
+                escaped = false;
+            } else if (character === "\\") {
+                escaped = true;
+            } else if (character === "\"") {
+                quoted = false;
+            }
+        } else if (character === "\"" && index === 0) {
+            quoted = true;
+        } else if (character === "@") {
+            if (separator !== -1) return false;
+            separator = index;
+        }
+    }
+    if (quoted || escaped || separator <= 0 || separator === value.length - 1) return false;
+    const local = value.slice(0, separator);
+    const domain = value.slice(separator + 1);
+    if (local.length > 64 || !isEmailLocal(local)) return false;
+    return domain.startsWith("[") && domain.endsWith("]")
+        ? isAddressLiteral(domain.slice(1, -1))
+        : isHostname(domain, false);
+}
+
+function validPercentEncoding(value) {
+    for (let index = value.indexOf("%"); index >= 0; index = value.indexOf("%", index + 3)) {
+        if (index + 2 >= value.length || !URI_HEX.test(value.slice(index + 1, index + 3))) return false;
+    }
+    return true;
+}
+
+function escapeClass(value) {
+    return value.replace(/[\\\]\-^]/g, "\\$&");
+}
+
+function matchesUriComponent(value, extra) {
+    if (!validPercentEncoding(value)) return false;
+    const withoutEscapes = value.replace(/%[0-9A-Fa-f]{2}/g, "");
+    return new RegExp(`^[${URI_UNRESERVED}${escapeClass(URI_SUB_DELIMS + extra)}]*$`).test(withoutEscapes);
+}
+
+function isAuthority(authority) {
+    const at = authority.lastIndexOf("@");
+    const hostPort = at < 0 ? authority : authority.slice(at + 1);
+    if (at >= 0 && !matchesUriComponent(authority.slice(0, at), ":")) return false;
+    if (hostPort.startsWith("[")) {
+        const close = hostPort.indexOf("]");
+        if (close < 0 || !/^(?::[0-9]*)?$/.test(hostPort.slice(close + 1))) return false;
+        const literal = hostPort.slice(1, close);
+        return isIpv6(literal)
+            || /^[vV][0-9A-Fa-f]+\.[A-Za-z0-9._~!$&'()*+,;=:-]+$/.test(literal);
+    }
+    const colon = hostPort.lastIndexOf(":");
+    if (colon >= 0 && (hostPort.indexOf(":") !== colon || !/^[0-9]*$/.test(hostPort.slice(colon + 1)))) {
+        return false;
+    }
+    const host = colon < 0 ? hostPort : hostPort.slice(0, colon);
+    return matchesUriComponent(host, "");
+}
+
+function isAbsoluteUri(value) {
+    if (!isAscii(value) || /[\x00-\x20\x7f]/.test(value)) return false;
+    const scheme = /^([A-Za-z][A-Za-z0-9+.-]*):(.*)$/.exec(value);
+    if (!scheme) return false;
+    let remainder = scheme[2];
+    const hash = remainder.indexOf("#");
+    const fragment = hash < 0 ? undefined : remainder.slice(hash + 1);
+    if (fragment !== undefined) remainder = remainder.slice(0, hash);
+    if (fragment?.includes("#") || (fragment !== undefined && !matchesUriComponent(fragment, ":@/?"))) return false;
+    const question = remainder.indexOf("?");
+    const query = question < 0 ? undefined : remainder.slice(question + 1);
+    if (query !== undefined) remainder = remainder.slice(0, question);
+    if (query !== undefined && !matchesUriComponent(query, ":@/?")) return false;
+    if (remainder.startsWith("//")) {
+        const slash = remainder.indexOf("/", 2);
+        const authority = slash < 0 ? remainder.slice(2) : remainder.slice(2, slash);
+        const path = slash < 0 ? "" : remainder.slice(slash);
+        return isAuthority(authority) && matchesUriComponent(path, ":@/");
+    }
+    if (remainder.startsWith("//") || !matchesUriComponent(remainder, ":@/")) return false;
+    return remainder === "" || remainder.startsWith("/") || matchesUriComponent(remainder[0], ":@");
+}
+
+function isValidStringFormat(format, value) {
+    if (format === "email") return isEmail(value);
+    if (format === "uuid") return /^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$/.test(value);
+    if (format === "uri") return isAbsoluteUri(value);
+    if (format === "hostname") return isHostname(value);
+    if (format === "ipv4") return isIpv4(value);
+    if (format === "ipv6") return isIpv6(value);
+    return false;
 }
 
 function numericValue(details) {
@@ -612,6 +837,10 @@ function alternativeRefs(props) {
     return Array.isArray(props?.anyof) ? props.anyof : [];
 }
 
+function conditionalRefs(props) {
+    return props?.if ? [props.then, props.else].filter(Boolean) : [];
+}
+
 // Mirrors the loader rule that a definition with children but no selector is a table.
 function builtinTypeOf(node) {
     const props = node.props || {};
@@ -744,6 +973,7 @@ function createDefaultChecker(typesByName) {
     const collectFixedChildren = (node, visiting) => {
         const result = new Set((node.children || []).map((child) => child.name));
         const props = node.props || {};
+        if (props.if && typeof props.if.key === "string") result.add(props.if.key);
         const merge = (ref) => {
             const scope = new Set(visiting);
             for (const name of collectFixedChildren(resolve(ref, scope), scope)) result.add(name);
@@ -751,6 +981,7 @@ function createDefaultChecker(typesByName) {
         const reference = namedTypeRef(props);
         if (reference) merge(reference);
         for (const alternative of alternativeRefs(props)) merge(alternative);
+        for (const branch of conditionalRefs(props)) merge(branch);
         for (const component of props.allof || []) merge(component);
         return result;
     };
@@ -768,6 +999,17 @@ function createDefaultChecker(typesByName) {
             for (const alternative of alternatives) {
                 const scope = new Set(visiting);
                 const candidate = effectiveKind(resolve(alternative, scope), scope);
+                if (kind === null) kind = candidate;
+                else if (kind !== candidate) return "any";
+            }
+            return kind === null ? "any" : kind;
+        }
+        const branches = conditionalRefs(props);
+        if (branches.length > 0) {
+            let kind = null;
+            for (const branch of branches) {
+                const scope = new Set(visiting);
+                const candidate = effectiveKind(resolve(branch, scope), scope);
                 if (kind === null) kind = candidate;
                 else if (kind !== candidate) return "any";
             }
@@ -802,6 +1044,20 @@ function createDefaultChecker(typesByName) {
     };
 
     const add = (errors, path, message) => errors.push({ path, message });
+
+    const conditionMatches = (value, condition) => {
+        if (!isTableValue(value) || !condition || typeof condition.key !== "string") return false;
+        if (!tableHasKey(value, condition.key)) return false;
+        const actual = tableGetKey(value, condition.key);
+        if (Object.prototype.hasOwnProperty.call(condition, "equals")) {
+            const expected = parseTokenForValidation(condition.equals);
+            return expected.ok && valuesEqual(actual, expected.value);
+        }
+        return (Array.isArray(condition.in) ? condition.in : []).some((token) => {
+            const expected = parseTokenForValidation(token);
+            return expected.ok && valuesEqual(actual, expected.value);
+        });
+    };
 
     // Keys allowed at this node by contributors other than the one being validated.
     const siblingChildren = (node, externalChildren, excludePrimary, excludedComponent, visiting) => {
@@ -851,6 +1107,7 @@ function createDefaultChecker(typesByName) {
         const props = node.props || {};
         const reference = namedTypeRef(props);
         const alternatives = alternativeRefs(props);
+        const branches = conditionalRefs(props);
         if (reference) {
             const scope = new Set(visiting);
             const target = resolve(reference, scope);
@@ -863,6 +1120,20 @@ function createDefaultChecker(typesByName) {
                 siblingChildren(node, externalChildren, true, null, visiting), errors);
             if (isTableValue(value)) validatePresenceRules(path, value, node, errors);
             if (Array.isArray(value) && props.uniqueitems === true) validateUniqueItems(path, value, errors);
+        } else if (branches.length > 0) {
+            const selected = conditionMatches(value, props.if) ? props.then : props.else;
+            const scope = new Set(visiting);
+            const target = resolve(selected, scope);
+            const sharedChildren = siblingChildren(node, externalChildren, true, null, visiting);
+            if (typeof props.if?.key === "string") sharedChildren.add(props.if.key);
+            validateContributor(path, value, target, sharedChildren, scope, errors);
+            if (effectiveKind(target, new Set(scope)) === "table" && isTableValue(value)) {
+                const closure = new Set(collectFixedChildren(target, new Set(scope)));
+                for (const name of sharedChildren) closure.add(name);
+                for (const key of tableKeys(value)) {
+                    if (!closure.has(key)) add(errors, `${path}.${key}`, "unexpected key");
+                }
+            }
         } else {
             const type = builtinTypeOf(node);
             if (!isValueOfType(value, type)) {
@@ -1028,6 +1299,9 @@ function createDefaultChecker(typesByName) {
             if (pattern && !pattern.test(value)) {
                 add(errors, path, `does not match pattern ${props.pattern}`);
             }
+            if (props.format && !isValidStringFormat(props.format, value)) {
+                add(errors, path, `is not a valid ${props.format}`);
+            }
         }
     };
 
@@ -1185,6 +1459,13 @@ export function validateModel(model) {
             }
             return kinds;
         }
+        if (props.if) {
+            const kinds = new Set();
+            for (const branch of [props.then, props.else]) {
+                for (const kind of resolvedKinds(branch, seen)) kinds.add(kind);
+            }
+            return kinds;
+        }
         if (node.children?.length) return new Set(["table"]);
         return new Set();
     };
@@ -1203,12 +1484,27 @@ export function validateModel(model) {
     const fixedChildrenForNode = (node, seen = new Set()) => {
         const fixed = new Set((node.children || []).map((child) => child.name));
         const props = node.props || {};
+        if (props.if && typeof props.if.key === "string") fixed.add(props.if.key);
         if (props.type && isNamedRef(props.type)) {
             const name = normalizeRef(props.type);
             if (!seen.has(name) && typesByName.has(name)) {
                 for (const childName of fixedChildrenForNode(typesByName.get(name), new Set(seen).add(name))) {
                     fixed.add(childName);
                 }
+            }
+        }
+        for (const ref of [...(props.oneof || []), ...(props.anyof || [])]) {
+            const name = normalizeRef(ref);
+            if (!name || BUILTIN_TYPES.includes(name) || seen.has(name) || !typesByName.has(name)) continue;
+            for (const childName of fixedChildrenForNode(typesByName.get(name), new Set(seen).add(name))) {
+                fixed.add(childName);
+            }
+        }
+        for (const ref of props.if ? [props.then, props.else] : []) {
+            const name = normalizeRef(ref);
+            if (!name || BUILTIN_TYPES.includes(name) || seen.has(name) || !typesByName.has(name)) continue;
+            for (const childName of fixedChildrenForNode(typesByName.get(name), new Set(seen).add(name))) {
+                fixed.add(childName);
             }
         }
         for (const ref of props.allof || []) {
@@ -1227,6 +1523,7 @@ export function validateModel(model) {
         const references = [];
         if (props.type && isNamedRef(props.type)) references.push(props.type);
         references.push(...(props.oneof || []), ...(props.anyof || []), ...(props.allof || []));
+        if (props.if) references.push(props.then, props.else);
         for (const ref of references) {
             const name = normalizeRef(ref);
             if (!name || BUILTIN_TYPES.includes(name) || seen.has(name) || !typesByName.has(name)) continue;
@@ -1342,14 +1639,18 @@ export function validateModel(model) {
         const fixedChildren = fixedChildrenForNode(node);
         let compiledPattern = null;
 
-        const exclusivity = ["type", "oneof", "anyof"].filter((key) => Object.prototype.hasOwnProperty.call(p, key));
+        const exclusivity = ["type", "oneof", "anyof", "if"].filter((key) => Object.prototype.hasOwnProperty.call(p, key));
+        const conditionalParts = ["if", "then", "else"].filter((key) => Object.prototype.hasOwnProperty.call(p, key));
+        if (conditionalParts.length > 0 && conditionalParts.length < 3) {
+            issues.push({ level: "error", path: label, message: "A conditional selector must define `if`, `then`, and `else` together." });
+        }
         for (const key of ["type", "itemtype"]) {
             if (Object.prototype.hasOwnProperty.call(p, key) && !String(p[key]).trim()) {
                 issues.push({ level: "error", path: label, message: `\`${key}\` must not be blank.` });
             }
         }
         if (exclusivity.length > 1) {
-            issues.push({ level: "error", path: label, message: "`type`, `oneof`, and `anyof` are mutually exclusive." });
+            issues.push({ level: "error", path: label, message: "`type`, `oneof`, `anyof`, and `if` are mutually exclusive." });
         }
         if (exclusivity.length === 0 && (!node.children || node.children.length === 0)) {
             issues.push({ level: "error", path: label, message: "A definition must select a type or contain child definitions." });
@@ -1368,6 +1669,58 @@ export function validateModel(model) {
                 if (!allowed.has(key)) {
                     issues.push({ level: "error", path: label, message: `A union cannot define \`${key}\`.` });
                 }
+            }
+        }
+
+        const isConditionalSelector = Object.prototype.hasOwnProperty.call(p, "if");
+        if (isConditionalSelector) {
+            const allowed = new Set(["if", "then", "else", "allof", "description", "optional", "default", "deprecated"]);
+            for (const key of Object.keys(p)) {
+                if (!allowed.has(key)) {
+                    issues.push({ level: "error", path: label, message: `A conditional selector cannot define \`${key}\`.` });
+                }
+            }
+            if ((node.children || []).length > 0) {
+                issues.push({ level: "error", path: label, message: "A conditional selector cannot define child definitions." });
+            }
+            if (!isNonArrayObject(p.if)) {
+                issues.push({ level: "error", path: label, message: "`if` must be an inline-table condition." });
+            } else {
+                const conditionKeys = Object.keys(p.if);
+                if (conditionKeys.some((key) => !["key", "equals", "in"].includes(key))) {
+                    issues.push({ level: "error", path: label, message: "`if` may contain only `key` and exactly one of `equals` or `in`." });
+                }
+                if (typeof p.if.key !== "string") {
+                    issues.push({ level: "error", path: label, message: "`if.key` must be a string." });
+                }
+                const hasEquals = Object.prototype.hasOwnProperty.call(p.if, "equals");
+                const hasIn = Object.prototype.hasOwnProperty.call(p.if, "in");
+                if (hasEquals === hasIn) {
+                    issues.push({ level: "error", path: label, message: "`if` must define exactly one of `equals` or `in`." });
+                } else if (hasEquals) {
+                    pushTokenIssue(label, "if.equals", p.if.equals);
+                } else if (!Array.isArray(p.if.in) || p.if.in.length === 0) {
+                    issues.push({ level: "error", path: label, message: "`if.in` must be a non-empty array of TOML values." });
+                } else {
+                    p.if.in.forEach((token) => pushTokenIssue(label, "if.in", token));
+                }
+            }
+            for (const key of ["then", "else"]) {
+                if (!String(p[key] || "").trim()) {
+                    issues.push({ level: "error", path: label, message: `\`${key}\` must be a non-blank named reusable type reference.` });
+                } else {
+                    validateRef(label, key, p[key], { disallowAny: true, disallowCollection: true });
+                    if (bareBuiltin(p[key])) {
+                        issues.push({ level: "error", path: label, message: `\`${key}\` must reference a named reusable type.` });
+                    }
+                }
+            }
+            const thenKinds = resolvedKinds(p.then);
+            const elseKinds = resolvedKinds(p.else);
+            const thenKind = thenKinds.size === 1 ? [...thenKinds][0] : null;
+            const elseKind = elseKinds.size === 1 ? [...elseKinds][0] : null;
+            if (!thenKind || !elseKind || thenKind !== elseKind || !["table", "collection"].includes(thenKind)) {
+                issues.push({ level: "error", path: label, message: "Conditional branches must resolve to the same table or collection kind." });
             }
         }
 
@@ -1462,6 +1815,14 @@ export function validateModel(model) {
             if (issue?.level !== "error") compiledPattern = new RegExp(p.pattern, "u");
         }
 
+        if (Object.prototype.hasOwnProperty.call(p, "format")) {
+            if (p.type !== "string") {
+                issues.push({ level: "error", path: label, message: "`format` requires the built-in type `string`." });
+            } else if (!STRING_FORMATS.has(p.format)) {
+                issues.push({ level: "error", path: label, message: `Unknown string format: \`${p.format}\`.` });
+            }
+        }
+
         if (Object.prototype.hasOwnProperty.call(p, "keypattern") && p.type !== "collection") {
             issues.push({ level: "error", path: label, message: "`keypattern` requires the built-in type `collection`." });
         } else if (p.keypattern) {
@@ -1541,6 +1902,9 @@ export function validateModel(model) {
                 if (compiledPattern && details.kind === "string" && !compiledPattern.test(details.value)) {
                     issues.push({ level: "error", path: label, message: `\`allowedvalues\` entry ${token} does not satisfy \`pattern\`.` });
                 }
+                if (p.format && details.kind === "string" && !isValidStringFormat(p.format, details.value)) {
+                    issues.push({ level: "error", path: label, message: `\`allowedvalues\` entry ${token} does not satisfy \`format\` ${p.format}.` });
+                }
                 if (p.type === "string" && details.kind === "string") {
                     const length = [...details.value].length;
                     if (p.minlength != null && length < p.minlength) {
@@ -1598,7 +1962,12 @@ export function validateModel(model) {
         const nextVisiting = new Set(visiting).add(name);
         const props = typesByName.get(name).props || {};
         if (props.type) visitSelector(props.type, nextVisiting);
-        for (const ref of [...(props.oneof || []), ...(props.anyof || []), ...(props.allof || [])]) {
+        for (const ref of [
+            ...(props.oneof || []),
+            ...(props.anyof || []),
+            ...(props.if ? [props.then, props.else] : []),
+            ...(props.allof || []),
+        ]) {
             visitSelector(ref, nextVisiting);
         }
         visited.add(name);

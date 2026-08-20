@@ -92,7 +92,9 @@ function buildGeneratePrompt(desc) {
         "- Describe the document's top-level structure under [elements]; use nested tables like [elements.<name>.<child>] for sub-tables.",
         '- Put reusable definitions under [types.<name>] and reference them with type = "types.<name>". Use itemtype = "types.<name>" for array and collection members.',
         "- Keep `type`, `oneof`, and `anyof` as mutually exclusive selectors. Use `allof` only as an additive list of compatible type references.",
-        "- Use only TOML Schema property keys: type (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, collection), optional, min, max, minlength, maxlength, pattern, keypattern, allowedvalues, itemtype, items, oneof, anyof, allof, uniqueitems, dependentrequired, mutuallyexclusive, exactlyone, default, deprecated, description.",
+        "- Use only TOML Schema property keys: type (any, string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, collection), optional, min, max, minlength, maxlength, pattern, format, keypattern, allowedvalues, itemtype, items, oneof, anyof, if, then, else, allof, uniqueitems, dependentrequired, mutuallyexclusive, exactlyone, default, deprecated, description.",
+        '- For standardized strings, use format = "email", "uuid", "uri", "hostname", "ipv4", or "ipv6" when appropriate.',
+        "- For a table shape selected by a direct child value, define reusable table or collection branches under [types], then use if = { key = \"...\", equals = ... } (or in = [ ... ]) together with named then and else references.",
         "- Mark fields that may be omitted with optional = true; everything is required by default.",
     ].join("\n");
 }
@@ -162,6 +164,19 @@ const INDEX_HTML = `<!doctype html>
 
 async function startServer(instanceId, entry) {
     const server = createServer(async (req, res) => {
+        const address = server.address();
+        const port = typeof address === "object" && address ? address.port : 0;
+        const expectedHost = `127.0.0.1:${port}`;
+        if (req.headers.host !== expectedHost) {
+            res.writeHead(403);
+            res.end("forbidden");
+            return;
+        }
+        if (req.method === "POST" && req.headers.origin !== `http://${expectedHost}`) {
+            res.writeHead(403);
+            res.end("forbidden");
+            return;
+        }
         const url = new URL(req.url, "http://127.0.0.1");
         const path = url.pathname;
         try {
@@ -178,7 +193,10 @@ async function startServer(instanceId, entry) {
             }
 
             if (req.method === "POST" && path === "/preview") {
-                const model = JSON.parse(await readBody(req));
+                const body = JSON.parse(await readBody(req));
+                const model = body.model || body;
+                const previewPath = resolvePath(body.path);
+                if (previewPath && entry.approvedPaths.has(previewPath)) entry.path = previewPath;
                 entry.model = model;
                 let toml = "";
                 let error = null;
@@ -200,6 +218,7 @@ async function startServer(instanceId, entry) {
                 try {
                     const text = await readFile(target, "utf8");
                     const model = parseDocument(text);
+                    entry.approvedPaths.add(target);
                     entry.path = target;
                     entry.model = model;
                     return sendJson(res, 200, { ok: true, path: target, model });
@@ -228,7 +247,7 @@ async function startServer(instanceId, entry) {
                         tomlText = await readFile(target, "utf8");
                     }
                     const model = inferModelFromToml(tomlText || "");
-                    return sendJson(res, 200, { model });
+                    return sendJson(res, 200, { model, tosd: serializeDocument(model) });
                 } catch (e) {
                     return sendJson(res, 200, { error: e.message });
                 }
@@ -245,9 +264,14 @@ async function startServer(instanceId, entry) {
             }
 
             if (req.method === "POST" && path === "/save") {
-                const model = JSON.parse(await readBody(req));
+                const body = JSON.parse(await readBody(req));
+                const model = body.model || body;
+                const requestedPath = resolvePath(body.path) || entry.path;
                 entry.model = model;
-                if (!entry.path) return sendJson(res, 200, { ok: false, error: "no file path for this schema" });
+                if (!requestedPath) return sendJson(res, 200, { ok: false, error: "no file path for this schema" });
+                if (!requestedPath.endsWith(".tosd") || !entry.approvedPaths.has(requestedPath)) {
+                    return sendJson(res, 403, { ok: false, error: "Saving is allowed only to a .tosd file opened by this editor." });
+                }
                 try {
                     const errors = validateModel(model).filter((issue) => issue.level === "error");
                     if (errors.length) {
@@ -257,7 +281,8 @@ async function startServer(instanceId, entry) {
                         });
                     }
                     const toml = serializeDocument(model);
-                    await writeFile(entry.path, toml, "utf8");
+                    await writeFile(requestedPath, toml, "utf8");
+                    entry.path = requestedPath;
                     return sendJson(res, 200, { ok: true, path: entry.path });
                 } catch (e) {
                     return sendJson(res, 200, { ok: false, error: e.message });
@@ -387,7 +412,7 @@ const canvas = createCanvas({
             const inputPath = ctx.input && ctx.input.path;
             const filePath = resolvePath(inputPath) || (await findDefaultTosd());
             const model = await loadModelForPath(filePath);
-            entry = { server: null, url: null, path: filePath, model };
+            entry = { server: null, url: null, path: filePath, model, approvedPaths: new Set([filePath]) };
             instances.set(ctx.instanceId, entry);
             await startServer(ctx.instanceId, entry);
             session.log(`tosd-editor: editing ${filePath}`, { level: "info", ephemeral: true });

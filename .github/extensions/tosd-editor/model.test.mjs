@@ -49,6 +49,10 @@ type = "string"
     assert.equal(parsed.types[0].children[0].name, "type");
     assert.equal(parsed.types[0].children[0].props.type, "string");
     assert.deepEqual(parseDocument(serializeDocument(parsed)), parsed);
+    assert.throws(
+        () => parseDocument('[toml-schema]\nversion = "1.0.0"\n[elements.parent]\ntype = "table"\n[elements.parent.children.arbitrary]\ntype = "string"\n'),
+        /may escape only schema-property child names/,
+    );
 });
 
 test("large TOML integers round-trip without precision loss", () => {
@@ -303,6 +307,97 @@ test("portable patterns use Unicode scalar-value semantics", () => {
         allowedvalues: ['"😀"'],
     })]);
     assert.deepEqual(errors(value), []);
+});
+
+test("string formats round-trip and validate allowed values and defaults", () => {
+    const source = `
+[toml-schema]
+version = "1.0.0"
+
+[elements.endpoint]
+type = "string"
+format = "uri"
+allowedvalues = [ "https://example.com/a%20b" ]
+default = "https://example.com/a%20b"
+`;
+    const parsed = parseDocument(source);
+    assert.equal(parsed.elements[0].props.format, "uri");
+    assert.deepEqual(errors(parsed), []);
+    assert.deepEqual(parseDocument(serializeDocument(parsed)), parsed);
+
+    for (const invalid of [
+        model([definition("x", { type: "integer", format: "uuid" })]),
+        model([definition("x", { type: "string", format: "date" })]),
+        model([definition("x", { type: "string", format: "email", allowedvalues: ['"not-an-email"'] })]),
+        model([definition("x", { type: "string", format: "ipv4", default: '"192.168.001.1"' })]),
+    ]) {
+        assert.ok(errors(invalid).length > 0);
+    }
+});
+
+test("conditional selectors round-trip and validate the selected default branch", () => {
+    const source = `
+[toml-schema]
+version = "1.0.0"
+
+[types.sqlite]
+type = "table"
+[types.sqlite.engine]
+type = "string"
+[types.sqlite.path]
+type = "string"
+
+[types.server]
+type = "table"
+[types.server.engine]
+type = "string"
+[types.server.host]
+type = "string"
+
+[elements.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqlite"
+else = "types.server"
+default = { engine = "sqlite", path = "data.db" }
+`;
+    const parsed = parseDocument(source);
+    assert.deepEqual(parsed.elements[0].props.if, { key: "engine", equals: "'sqlite'" });
+    assert.deepEqual(errors(parsed), []);
+    assert.deepEqual(parseDocument(serializeDocument(parsed)), parsed);
+
+    parsed.elements[0].props.default = '{ engine = "sqlite", host = "wrong-branch" }';
+    assert.ok(errors(parsed).some((issue) => issue.message.includes("`default`")));
+});
+
+test("conditional selector shape, branches, kinds, and cycles are validated", () => {
+    const tableBranch = definition("tableBranch", { type: "table" }, [
+        definition("engine", { type: "string" }),
+    ]);
+    const collectionBranch = definition("collectionBranch", { type: "collection", itemtype: "string" });
+
+    const malformed = [
+        model([definition("x", { if: { key: "engine", equals: '"x"' }, then: "types.a" })], [
+            definition("a", { type: "table" }),
+        ]),
+        model([definition("x", { if: { key: "engine", equals: '"x"', in: ['"x"'] }, then: "types.a", else: "types.a" })], [
+            definition("a", { type: "table" }),
+        ]),
+        model([definition("x", { if: { key: "engine", equals: '"x"' }, then: "table", else: "table" })]),
+        model([definition("x", { if: { key: "engine", equals: '"x"' }, then: "types.tableBranch", else: "types.collectionBranch" })], [
+            tableBranch,
+            collectionBranch,
+        ]),
+        model([], [
+            definition("first", { if: { key: "engine", equals: '"x"' }, then: "types.second", else: "types.fallback" }),
+            definition("second", { type: "types.first" }),
+            definition("fallback", { type: "table" }),
+        ]),
+        model([definition("x", { if: { key: "engine", equals: '"x"' }, then: "types.mixed", else: "types.tableBranch" })], [
+            definition("mixed", { oneof: ["table", "string"] }),
+            tableBranch,
+        ]),
+    ];
+    malformed.forEach((value, index) => assert.ok(errors(value).length > 0, `conditional malformed case ${index}`));
 });
 
 test("declared defaults are rejected when they violate the effective definition", () => {
