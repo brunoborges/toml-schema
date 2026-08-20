@@ -1681,7 +1681,7 @@ class TomlSchemaTest {
     @Test
     void validatesWebsiteExamples() throws IOException {
         String page = Files.readString(fixture("docs/index.html"), StandardCharsets.UTF_8);
-        Pattern codeBlock = Pattern.compile("<pre><code>(.*?)</code></pre>", Pattern.DOTALL);
+        Pattern codeBlock = Pattern.compile("<pre><code(?:\\s+[^>]*)?>(.*?)</code></pre>", Pattern.DOTALL);
 
         Matcher hero = Pattern.compile("<aside class=\"panel\".*?</aside>", Pattern.DOTALL).matcher(page);
         assertTrue(hero.find(), "Website hero example is missing");
