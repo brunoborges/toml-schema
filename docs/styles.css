@@ -871,7 +871,6 @@ footer {
   margin-top: 0;
 }
 .result-groups {
-  border-top: 1px solid var(--cp-border);
   margin-top: 32px;
 }
 .result-group {
