@@ -440,6 +440,47 @@ the escape namespace. This preserves the direct form for a target child
 literally named `children`. A selectorless table child with that name is written
 through the escape namespace as `[elements.parent.children.children]`.
 
+For example, this schema defines a scalar target key named `children` directly:
+
+```toml
+[elements.parent]
+type = "table"
+
+[elements.parent.children]
+type = "string"
+```
+
+It validates:
+
+```toml
+[parent]
+children = "value"
+```
+
+The `type` selector makes `[elements.parent.children]` an ordinary child
+definition. To define a selectorless target table named `children`, repeat the
+name through the escape namespace:
+
+```toml
+[elements.parent]
+type = "table"
+
+[elements.parent.children.children]
+
+[elements.parent.children.children.name]
+type = "string"
+```
+
+It validates:
+
+```toml
+[parent.children]
+name = "value"
+```
+
+The first `children` segment is the escape namespace. The second is the literal
+target key, and the selectorless definition is inferred as `type = "table"`.
+
 Example TOML document:
 
 ```toml
