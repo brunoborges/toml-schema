@@ -32,7 +32,18 @@ metadata-table    = toml-table-header-toml-schema-meta *metadata-member
 metadata-member   = toml-keyval / metadata-subtable
 metadata-subtable = toml-table-header-toml-schema-meta-descendant *metadata-member
 
-schema-definition = schema-definition-table *definition-property *schema-definition
+schema-definition = schema-definition-table
+                    *(definition-property / direct-child-definition / escaped-children-table)
+direct-child-definition = schema-definition
+; A direct child uses its target key as the next table-path segment.
+; If that name is also present as a definition-property on the same definition,
+; TOML cannot represent both values and the child instead uses the reserved
+; escaped-children-table namespace.
+escaped-children-table = schema-children-table 1*escaped-child-definition
+escaped-child-definition = schema-definition
+; Each escaped child name MUST be "children" or a schema-key. Non-conflicting
+; child names MUST use direct-child-definition instead. At most one
+; escaped-children-table is allowed per definition.
 
 ; Canonical definition-key inventory, also consumed by implementation
 ; conformance guards.
@@ -114,6 +125,7 @@ toml-table-header-elements         = <TOML 1.0 table header for [elements]>
 toml-table-header-toml-schema-meta = <TOML 1.0 table header under [toml-schema.meta]>
 toml-table-header-toml-schema-meta-descendant = <TOML 1.0 table header below [toml-schema.meta]>
 schema-definition-table            = <TOML 1.0 table header under [types] or [elements]; a key/value schema property and a child table of the same name cannot coexist>
+schema-children-table              = <TOML 1.0 table header named children directly below a schema definition>
 toml-keyval                        = <TOML 1.0 key/value pair>
 toml-key                           = <TOML 1.0 key>
 toml-value                         = <TOML 1.0 value>

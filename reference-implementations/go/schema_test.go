@@ -21,6 +21,65 @@ func TestValidatesCheckedInExample(t *testing.T) {
 	}
 }
 
+func TestSupportsChildrenEscapeHatchForSchemaKeyConflicts(t *testing.T) {
+	dir := t.TempDir()
+	schemaPath := write(t, dir, "escaped-children.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children.type]
+type = "string"
+
+[elements.plugin.children.optional]
+type = "boolean"
+
+[elements.plugin.name]
+type = "string"
+`)
+	documentPath := write(t, dir, "escaped-children.toml", `
+[plugin]
+type = "npm"
+optional = true
+name = "example"
+`)
+	invalidEscape := write(t, dir, "invalid-escaped-child.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children.name]
+type = "string"
+`)
+	emptyEscape := write(t, dir, "empty-escaped-children.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children]
+`)
+
+	schema, err := LoadSchema(schemaPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.ValidateFile(documentPath); !result.Valid() {
+		t.Fatalf("expected escaped schema-key children to validate, got %#v", result.Errors)
+	}
+	if _, err := LoadSchema(invalidEscape); err == nil {
+		t.Fatal("expected children escape hatch to reject a non-conflicting name")
+	}
+	if _, err := LoadSchema(emptyEscape); err == nil {
+		t.Fatal("expected children escape hatch to reject an empty namespace")
+	}
+}
+
 func TestLoadsCheckedInExamples(t *testing.T) {
 	for _, name := range []string{
 		"cargo.tosd",
@@ -35,6 +94,119 @@ func TestLoadsCheckedInExamples(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+func TestSelfSchemaValidatesSchemaDocuments(t *testing.T) {
+	dir := t.TempDir()
+	invalidPropertyType := write(t, dir, "invalid-property-type.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+type = "string"
+optional = "yes"
+`)
+	unknownProperty := write(t, dir, "unknown-property.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+type = "string"
+optonal = true
+`)
+	invalidEscape := write(t, dir, "invalid-escape.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.parent]
+type = "table"
+
+[elements.parent.children.name]
+type = "string"
+`)
+	literalChildren := write(t, dir, "literal-children.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.parent]
+type = "table"
+
+[elements.parent.children]
+type = "array"
+itemtype = "string"
+`)
+	invalidSemantics := []string{
+		write(t, dir, "incomplete-conditional.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+if = { key = "kind", equals = "a" }
+then = "types.branch"
+`),
+		write(t, dir, "competing-selectors.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+oneof = [ "string" ]
+`),
+		write(t, dir, "inapplicable-property.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+pattern = "^[0-9]+$"
+`),
+		write(t, dir, "tuple-conflict.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "array"
+items = [ "string" ]
+minlength = 1
+`),
+		write(t, dir, "scalar-child.tosd", `
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+
+[elements.value.child]
+type = "string"
+`),
+	}
+	schemaSchema, err := LoadSchema(fixture("toml-schema.tosd"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, schemaPath := range []string{
+		fixture("toml-schema.tosd"),
+		fixture("config.tosd"),
+		filepath.Join(fixture("examples"), "database-conditional.tosd"),
+	} {
+		if result := schemaSchema.ValidateFile(schemaPath); !result.Valid() {
+			t.Fatalf("expected self-schema to accept %s, got %#v", schemaPath, result.Errors)
+		}
+		if result := schemaSchema.ValidateFile(literalChildren); !result.Valid() {
+			t.Fatalf("expected self-schema to accept a literal children definition, got %#v", result.Errors)
+		}
+	}
+	for _, schemaPath := range []string{invalidPropertyType, unknownProperty, invalidEscape} {
+		if result := schemaSchema.ValidateFile(schemaPath); result.Valid() {
+			t.Fatalf("expected self-schema to reject %s", schemaPath)
+		}
+	}
+	for _, schemaPath := range invalidSemantics {
+		if result := schemaSchema.ValidateFile(schemaPath); result.Valid() {
+			t.Fatalf("expected self-schema to reject semantic violation in %s", schemaPath)
+		}
 	}
 }
 

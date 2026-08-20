@@ -255,13 +255,27 @@ enabled = true
 
 Use `[elements]` for document-specific keys. Use `[types]` for reusable definitions that can be referenced from `[elements]` or from other reusable types. Elements follow the same structure and validation rules as types, except that elements cannot reference other elements. To reuse conditions and structures, define them under `[types]` and reference them from `[elements]`.
 
-The companion [`toml-schema.tosd`](toml-schema.tosd) validates this top-level
-structure. It intentionally leaves individual schema-definition tables open:
-schema property names such as `type` and `itemtype` may also be target child
-keys, and TOML cannot represent both a key-value property and a child table with
-the same path in one self-schema definition. Schema loaders therefore enforce
-the vocabulary, property types, and conditional applicability rules specified
-below.
+The companion [`toml-schema.tosd`](toml-schema.tosd) recursively validates
+schema-definition tables, including the schema document itself. It models
+schema properties as fixed children and ordinary target child definitions as
+dynamic collection entries. The `children` namespace described below resolves
+the remaining TOML key collision when one definition needs both a schema
+property and a target child with the same name.
+
+The self-schema validates property value shapes, selector exclusivity,
+conditional completeness, tuple-versus-homogeneous array structure, nested
+child applicability, string formats, sibling-rule structures, annotations, and
+the selective `children` namespace. Rules that require resolving the schema's
+reference graph remain schema-load semantics: reference existence and cycles,
+effective `allof` compatibility, conditional branch kinds, collection
+`itemtype` inherited through composition, defaults against effective types,
+allowed values against resolved constraints, and sibling-rule operands against
+the effective fixed-child set. Schema loading also preserves source-form
+information that the parsed TOML value model erases, so inline-table properties
+such as `default` and `dependentrequired` can be distinguished from direct child
+tables with those names and the latter can be validated recursively. A
+conforming implementation MUST apply both the self-schema validation and these
+reference-aware and source-aware schema-load checks.
 
 ## Types table - `[types]`
 
@@ -400,47 +414,58 @@ Schema child definitions use TOML tables. When a target TOML key is empty or con
 Target keys may have the same names as TOML Schema properties, such as `type`,
 `itemtype`, `optional`, or `pattern`. A key/value pair directly inside a schema
 definition is a schema property, while a table-header path segment below that
-definition is a target child definition.
+definition is normally a target child definition.
 
 A schema definition with nested child definitions and no explicit selector is
 treated as `type = "table"`. This lets schemas describe target keys that would
-otherwise collide with schema properties.
+otherwise share a name with schema properties when the parent does not also use
+the property.
 
 TOML itself forbids one table from containing both a value and a subtable with
-the same key. Therefore, a definition cannot simultaneously use a schema
-property and define a target child with that property's name. For example, an
-implicit table can define `[elements.plugin.type]`, but the parent cannot also
-declare a `type = ...` property. Likewise, a definition cannot have both a
-`default = ...` annotation and a child table named `default`. Authors can
-sometimes avoid a collision by factoring structure through a reusable type or
-by choosing the implicit-table form. If the colliding schema property is still
-required on the same definition, TOML Schema 1.0 cannot express both meanings
-there. Quoting the child key does not remove this TOML data model restriction.
+the same key. When a definition must simultaneously use a schema property and
+define a target child with that property's name, place the child definition
+under the reserved `children` table. The segment immediately following
+`children` is the target key; `children` is not part of the target document
+path.
+
+The `children` table is a selective escape hatch, not a general alternative
+child syntax. Every direct entry below it MUST be named either `children` or one
+of the schema properties listed under [Supported Properties](#supported-properties).
+Schema loaders MUST reject non-conflicting names there. Ordinary, quoted,
+dotted, and empty child keys continue to use direct TOML table paths.
+
+A table named `children` that declares `type`, `oneof`, `anyof`, or the
+`if`/`then`/`else` selector is an ordinary target child definition rather than
+the escape namespace. This preserves the direct form for a target child
+literally named `children`. A selectorless table child with that name is written
+through the escape namespace as `[elements.parent.children.children]`.
 
 Example TOML document:
 
 ```toml
-"" = "blank"
-
-[site]
-"google.com" = true
-
 [plugin]
 type = "npm"
+name = "example"
 ```
 
 Schema:
 
 ```toml
-[elements.""]
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children.type]
 type = "string"
+allowedvalues = [ "npm", "local" ]
 
-[elements.site."google.com"]
-type = "boolean"
-
-[elements.plugin.type]
+[elements.plugin.name]
 type = "string"
 ```
+
+Here `elements.plugin.type = "table"` selects the parent type, while
+`[elements.plugin.children.type]` describes the target key `plugin.type`.
+Without the `children` segment, TOML would require `type` to be both a string
+and a table at the same path.
 
 ### Scalar and Unconstrained Built-in Types
 

@@ -85,6 +85,84 @@ fn validates_checked_in_example() {
 }
 
 #[test]
+fn supports_children_escape_hatch_for_schema_key_conflicts() {
+    let directory = tempfile_dir("escaped-children");
+    let schema_path = write_file(
+        &directory,
+        "escaped-children.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children.type]
+type = "string"
+
+[elements.plugin.children.optional]
+type = "boolean"
+
+[elements.plugin.name]
+type = "string"
+"#,
+    );
+    let document_path = write_file(
+        &directory,
+        "escaped-children.toml",
+        r#"
+[plugin]
+type = "npm"
+optional = true
+name = "example"
+"#,
+    );
+    let invalid_escape = write_file(
+        &directory,
+        "invalid-escaped-child.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children.name]
+type = "string"
+"#,
+    );
+    let empty_escape = write_file(
+        &directory,
+        "empty-escaped-children.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children]
+"#,
+    );
+
+    let schema = Schema::load(schema_path).expect("load escaped-children schema");
+    let result = schema.validate_file(document_path);
+    assert!(
+        result.valid(),
+        "expected escaped schema-key children to validate: {:?}",
+        result.errors
+    );
+    assert!(
+        Schema::load(invalid_escape).is_err(),
+        "children escape hatch must reject a non-conflicting name"
+    );
+    assert!(
+        Schema::load(empty_escape).is_err(),
+        "children escape hatch must reject an empty namespace"
+    );
+}
+
+#[test]
 fn loads_checked_in_examples() {
     for name in [
         "cargo.tosd",
@@ -274,6 +352,150 @@ fn validates_self_schema_against_itself() {
     assert!(
         result.valid(),
         "expected valid document, got {:#?}",
+        result.errors
+    );
+
+    let directory = tempfile_dir("invalid-self-schema-documents");
+    let invalid_property_type = write_file(
+        &directory,
+        "invalid-property-type.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+type = "string"
+optional = "yes"
+"#,
+    );
+    let unknown_property = write_file(
+        &directory,
+        "unknown-property.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.name]
+type = "string"
+optonal = true
+"#,
+    );
+    let invalid_escape = write_file(
+        &directory,
+        "invalid-escape.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.parent]
+type = "table"
+
+[elements.parent.children.name]
+type = "string"
+"#,
+    );
+    let literal_children = write_file(
+        &directory,
+        "literal-children.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.parent]
+type = "table"
+
+[elements.parent.children]
+type = "array"
+itemtype = "string"
+"#,
+    );
+    let invalid_semantics = [
+        (
+            "incomplete-conditional.tosd",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+if = { key = "kind", equals = "a" }
+then = "types.branch"
+"#,
+        ),
+        (
+            "competing-selectors.tosd",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+oneof = [ "string" ]
+"#,
+        ),
+        (
+            "inapplicable-property.tosd",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "integer"
+pattern = "^[0-9]+$"
+"#,
+        ),
+        (
+            "tuple-conflict.tosd",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "array"
+items = [ "string" ]
+minlength = 1
+"#,
+        ),
+        (
+            "scalar-child.tosd",
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "string"
+
+[elements.value.child]
+type = "string"
+"#,
+        ),
+    ];
+    for schema_path in [invalid_property_type, unknown_property, invalid_escape] {
+        let result = schema.validate_file(&schema_path);
+        assert!(
+            !result.valid(),
+            "expected self-schema to reject {}",
+            schema_path.display()
+        );
+    }
+    let result = schema.validate_file(&literal_children);
+    assert!(
+        result.valid(),
+        "expected self-schema to accept a literal children definition: {:?}",
+        result.errors
+    );
+    for (name, content) in invalid_semantics {
+        let schema_path = write_file(&directory, name, content);
+        let result = schema.validate_file(&schema_path);
+        assert!(
+            !result.valid(),
+            "expected self-schema to reject semantic violation in {}",
+            schema_path.display()
+        );
+    }
+    let result = schema.validate_file(fixture("examples/database-conditional.tosd"));
+    assert!(
+        result.valid(),
+        "expected self-schema to accept conditional example: {:?}",
         result.errors
     );
 }

@@ -1375,7 +1375,45 @@ fn parse_definition(
         ));
     }
     let mut children: BTreeMap<String, Definition> = BTreeMap::new();
+    let escaped_path = context.child_path("children");
+    let escaped_context = context.child(&escaped_path);
+    let has_escaped_children = table
+        .get("children")
+        .and_then(Value::as_table)
+        .is_some_and(|escaped_children| {
+            !context.is_property(table, "children")
+                && !has_definition_marker(escaped_children, escaped_context)
+        });
+    if let Some(escaped_children) = table.get("children").and_then(Value::as_table) {
+        if has_escaped_children {
+            if escaped_children.is_empty() {
+                return Err(format!(
+                    "{name}.children must contain at least one escaped child"
+                ));
+            }
+            for (key, value) in escaped_children {
+                if !is_definition_key(key) && key != "children" {
+                    return Err(format!(
+                        "{name}.children may only contain schema-key conflicts, found: {key}"
+                    ));
+                }
+                let child_table = value
+                    .as_table()
+                    .ok_or_else(|| format!("{name}.children.{key} must be a table"))?;
+                let child_path = escaped_context.child_path(key);
+                let child = parse_definition(
+                    &format!("{name}.{key}"),
+                    child_table,
+                    escaped_context.child(&child_path),
+                )?;
+                children.insert(key.clone(), child);
+            }
+        }
+    }
     for (key, value) in table.iter() {
+        if key == "children" && has_escaped_children {
+            continue;
+        }
         if is_definition_key(key) && context.is_property(table, key) {
             continue;
         }
@@ -3090,6 +3128,12 @@ fn property_value<'a>(table: &'a Table, key: &str) -> Option<&'a Value> {
         Some(Value::Table(_)) => None,
         value => value,
     }
+}
+
+fn has_definition_marker(table: &Table, context: SyntaxContext<'_>) -> bool {
+    ["type", "oneof", "anyof", "if"]
+        .iter()
+        .any(|key| context.is_property(table, key))
 }
 
 fn get_string(name: &str, table: &Table, key: &str) -> Result<Option<String>, String> {

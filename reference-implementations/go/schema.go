@@ -937,7 +937,35 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		return Definition{}, fmt.Errorf("%s cannot define more than one of type, oneof, anyof, and if", name)
 	}
 	children := map[string]Definition{}
+	escapedChildren, childrenIsTable := asMap(table["children"])
+	escapedPath := appendSourcePath(path, "children")
+	hasEscapedChildren := childrenIsTable &&
+		!source.isProperty(table, path, "children") &&
+		!hasDefinitionMarker(escapedChildren, escapedPath, source)
+	if hasEscapedChildren {
+		if len(escapedChildren) == 0 {
+			return Definition{}, fmt.Errorf("%s.children must contain at least one escaped child", name)
+		}
+		for key, value := range escapedChildren {
+			if !definitionKeys[key] && key != "children" {
+				return Definition{}, fmt.Errorf(
+					"%s.children may only contain schema-key conflicts, found: %s", name, key)
+			}
+			childTable, ok := asMap(value)
+			if !ok {
+				return Definition{}, fmt.Errorf("%s.children.%s must be a table", name, key)
+			}
+			child, err := parseDefinition(name+"."+key, appendSourcePath(escapedPath, key), childTable, source)
+			if err != nil {
+				return Definition{}, err
+			}
+			children[key] = child
+		}
+	}
 	for key, value := range table {
+		if key == "children" && hasEscapedChildren {
+			continue
+		}
 		if definitionKeys[key] && source.isProperty(table, path, key) {
 			continue
 		}
@@ -2458,6 +2486,15 @@ func propertyValue(table map[string]any, key string) any {
 		return nil
 	}
 	return value
+}
+
+func hasDefinitionMarker(table map[string]any, path []string, source *schemaSource) bool {
+	for _, key := range []string{"type", "oneof", "anyof", "if"} {
+		if source.isProperty(table, path, key) {
+			return true
+		}
+	}
+	return false
 }
 
 func getString(table map[string]any, key string) (string, error) {

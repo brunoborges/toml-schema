@@ -2,38 +2,593 @@
 [toml-schema]
 version = "1.0.0"
 
-# Types
-[types]
+# Reusable schema-language definitions
+[types.typeReference]
+type = "string"
+minlength = 1
 
-    # This is intentionally an open structural definition. Schema property
-    # names can also be document child keys, so modeling fixed properties here
-    # would collide with this definition's own type and itemtype keys. Schema
-    # loaders enforce property types, composition, sibling rules, annotations,
-    # and conditional applicability.
-    [types.schemaDef]
-    type = "table"
+[types.typeReferences]
+type = "array"
+itemtype = "types.typeReference"
+minlength = 1
+uniqueitems = true
 
-# Elements
-[elements]
+[types.nonEmptyValues]
+type = "array"
+itemtype = "any"
+minlength = 1
 
-    [elements.toml-schema]
-    type = "table"
+[types.nameList]
+type = "array"
+itemtype = "string"
+minlength = 1
+uniqueitems = true
 
-        [elements.toml-schema.version]
-        type = "string"
-        pattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
+[types.nameGroup]
+type = "array"
+itemtype = "string"
+minlength = 2
+uniqueitems = true
 
-        [elements.toml-schema.meta]
-        type = "table"
-        optional = true
+[types.nameGroups]
+type = "array"
+itemtype = "types.nameGroup"
+minlength = 1
 
-    [elements.types]
-    type = "collection"
-    itemtype = "types.schemaDef"
-    minlength = 0
+[types.nonNegativeInteger]
+type = "integer"
+min = 0
+
+[types.dependentRequired]
+type = "collection"
+itemtype = "types.nameList"
+minlength = 1
+
+[types.conditionalEquals]
+type = "table"
+
+    [types.conditionalEquals.key]
+    type = "string"
+
+    [types.conditionalEquals.equals]
+    type = "any"
+
+[types.conditionalIn]
+type = "table"
+
+    [types.conditionalIn.key]
+    type = "string"
+
+    [types.conditionalIn.in]
+    type = "types.nonEmptyValues"
+
+[types.conditional]
+oneof = [ "types.conditionalEquals", "types.conditionalIn" ]
+
+[types.stringFormat]
+type = "string"
+allowedvalues = [ "email", "uuid", "uri", "hostname", "ipv4", "ipv6" ]
+
+[types.neverA]
+type = "any"
+
+[types.neverB]
+type = "any"
+
+[types.never]
+oneof = [ "types.neverA", "types.neverB" ]
+
+# Scalar definitions are closed: dynamic table entries validate against `never`.
+[types.stringDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.stringDefinition.children.type]
+    type = "string"
+    allowedvalues = [ "string" ]
+
+    [types.stringDefinition.description]
+    type = "string"
     optional = true
 
-    [elements.elements]
-    type = "collection"
-    itemtype = "types.schemaDef"
-    minlength = 0
+    [types.stringDefinition.format]
+    type = "types.stringFormat"
+    optional = true
+
+    [types.stringDefinition.pattern]
+    type = "string"
+    optional = true
+
+    [types.stringDefinition.allowedvalues]
+    type = "types.nonEmptyValues"
+    optional = true
+
+    [types.stringDefinition.minlength]
+    type = "types.nonNegativeInteger"
+    optional = true
+
+    [types.stringDefinition.maxlength]
+    type = "types.nonNegativeInteger"
+    optional = true
+
+    [types.stringDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.stringDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.stringDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.stringDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.comparableDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.comparableDefinition.children.type]
+    type = "string"
+    allowedvalues = [ "integer", "float", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+
+    [types.comparableDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.comparableDefinition.allowedvalues]
+    type = "types.nonEmptyValues"
+    optional = true
+
+    [types.comparableDefinition.min]
+    oneof = [ "integer", "float", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+    optional = true
+
+    [types.comparableDefinition.max]
+    oneof = [ "integer", "float", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+    optional = true
+
+    [types.comparableDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.comparableDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.comparableDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.comparableDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.simpleScalarDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.simpleScalarDefinition.children.type]
+    type = "string"
+    allowedvalues = [ "any", "boolean" ]
+
+    [types.simpleScalarDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.simpleScalarDefinition.allowedvalues]
+    type = "types.nonEmptyValues"
+    optional = true
+
+    [types.simpleScalarDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.simpleScalarDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.simpleScalarDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.simpleScalarDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.arrayDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.arrayDefinition.children.type]
+    type = "string"
+    allowedvalues = [ "array" ]
+
+    [types.arrayDefinition.children.itemtype]
+    type = "types.typeReference"
+    optional = true
+
+    [types.arrayDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.arrayDefinition.allowedvalues]
+    type = "types.nonEmptyValues"
+    optional = true
+
+    [types.arrayDefinition.min]
+    oneof = [ "integer", "float", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+    optional = true
+
+    [types.arrayDefinition.max]
+    oneof = [ "integer", "float", "offset-date-time", "local-date-time", "local-date", "local-time" ]
+    optional = true
+
+    [types.arrayDefinition.minlength]
+    type = "types.nonNegativeInteger"
+    optional = true
+
+    [types.arrayDefinition.maxlength]
+    type = "types.nonNegativeInteger"
+    optional = true
+
+    [types.arrayDefinition.uniqueitems]
+    type = "boolean"
+    optional = true
+
+    [types.arrayDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.arrayDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.arrayDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.arrayDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.tupleDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.tupleDefinition.children.type]
+    type = "string"
+    allowedvalues = [ "array" ]
+
+    [types.tupleDefinition.items]
+    type = "types.typeReferences"
+
+    [types.tupleDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.tupleDefinition.uniqueitems]
+    type = "boolean"
+    optional = true
+
+    [types.tupleDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.tupleDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.tupleDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.tupleDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.tableDefinition]
+type = "collection"
+itemtype = "types.schemaDef"
+
+    [types.tableDefinition.children.type]
+    type = "string"
+    allowedvalues = [ "table" ]
+
+    [types.tableDefinition.children.description]
+    oneof = [ "string", "types.schemaDef" ]
+    optional = true
+
+    [types.tableDefinition.children.optional]
+    oneof = [ "boolean", "types.schemaDef" ]
+    optional = true
+
+    [types.tableDefinition.children.default]
+    type = "any"
+    optional = true
+
+    [types.tableDefinition.children.deprecated]
+    oneof = [ "boolean", "types.schemaDef" ]
+    optional = true
+
+    [types.tableDefinition.children.allof]
+    oneof = [ "types.typeReferences", "types.schemaDef" ]
+    optional = true
+
+    [types.tableDefinition.children.dependentrequired]
+    oneof = [ "types.dependentRequired", "types.schemaDef" ]
+    optional = true
+
+    [types.tableDefinition.children.mutuallyexclusive]
+    oneof = [ "types.nameGroups", "types.schemaDef" ]
+    optional = true
+
+    [types.tableDefinition.children.exactlyone]
+    oneof = [ "types.nameGroups", "types.schemaDef" ]
+    optional = true
+
+    [types.tableDefinition.children.children]
+    anyof = [ "types.escapedChildren", "types.literalChildren" ]
+    optional = true
+
+[types.collectionDefinition]
+type = "collection"
+itemtype = "types.schemaDef"
+
+    [types.collectionDefinition.children.type]
+    type = "string"
+    allowedvalues = [ "collection" ]
+
+    [types.collectionDefinition.children.itemtype]
+    oneof = [ "types.typeReference", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.description]
+    oneof = [ "string", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.keypattern]
+    oneof = [ "string", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.minlength]
+    oneof = [ "types.nonNegativeInteger", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.maxlength]
+    oneof = [ "types.nonNegativeInteger", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.optional]
+    oneof = [ "boolean", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.default]
+    type = "any"
+    optional = true
+
+    [types.collectionDefinition.children.deprecated]
+    oneof = [ "boolean", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.allof]
+    oneof = [ "types.typeReferences", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.dependentrequired]
+    oneof = [ "types.dependentRequired", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.mutuallyexclusive]
+    oneof = [ "types.nameGroups", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.exactlyone]
+    oneof = [ "types.nameGroups", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.children]
+    anyof = [ "types.escapedChildren", "types.literalChildren" ]
+    optional = true
+
+[types.namedReferenceDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.namedReferenceDefinition.children.type]
+    type = "types.typeReference"
+
+    [types.namedReferenceDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.namedReferenceDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.namedReferenceDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.namedReferenceDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.namedReferenceDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.unionDefinition]
+type = "collection"
+itemtype = "types.never"
+exactlyone = [ [ "oneof", "anyof" ] ]
+
+    [types.unionDefinition.oneof]
+    type = "types.typeReferences"
+    optional = true
+
+    [types.unionDefinition.anyof]
+    type = "types.typeReferences"
+    optional = true
+
+    [types.unionDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.unionDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.unionDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.unionDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.unionDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.conditionalDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.conditionalDefinition.children.if]
+    type = "types.conditional"
+
+    [types.conditionalDefinition.then]
+    type = "types.typeReference"
+
+    [types.conditionalDefinition.else]
+    type = "types.typeReference"
+
+    [types.conditionalDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.conditionalDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.conditionalDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.conditionalDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
+    [types.conditionalDefinition.allof]
+    type = "types.typeReferences"
+    optional = true
+
+[types.implicitTableDefinition]
+type = "collection"
+itemtype = "types.schemaDef"
+
+    [types.implicitTableDefinition.children.type]
+    type = "types.schemaDef"
+    optional = true
+
+    [types.implicitTableDefinition.children.oneof]
+    type = "types.schemaDef"
+    optional = true
+
+    [types.implicitTableDefinition.children.anyof]
+    type = "types.schemaDef"
+    optional = true
+
+    [types.implicitTableDefinition.children.if]
+    type = "types.schemaDef"
+    optional = true
+
+    [types.implicitTableDefinition.children.description]
+    oneof = [ "string", "types.schemaDef" ]
+    optional = true
+
+    [types.implicitTableDefinition.children.optional]
+    oneof = [ "boolean", "types.schemaDef" ]
+    optional = true
+
+    [types.implicitTableDefinition.children.default]
+    type = "any"
+    optional = true
+
+    [types.implicitTableDefinition.children.deprecated]
+    oneof = [ "boolean", "types.schemaDef" ]
+    optional = true
+
+    [types.implicitTableDefinition.children.allof]
+    oneof = [ "types.typeReferences", "types.schemaDef" ]
+    optional = true
+
+    [types.implicitTableDefinition.children.dependentrequired]
+    oneof = [ "types.dependentRequired", "types.schemaDef" ]
+    optional = true
+
+    [types.implicitTableDefinition.children.mutuallyexclusive]
+    oneof = [ "types.nameGroups", "types.schemaDef" ]
+    optional = true
+
+    [types.implicitTableDefinition.children.exactlyone]
+    oneof = [ "types.nameGroups", "types.schemaDef" ]
+    optional = true
+
+    [types.implicitTableDefinition.children.children]
+    anyof = [ "types.escapedChildren", "types.literalChildren" ]
+    optional = true
+
+[types.schemaDef]
+anyof = [
+    "types.stringDefinition",
+    "types.comparableDefinition",
+    "types.simpleScalarDefinition",
+    "types.arrayDefinition",
+    "types.tupleDefinition",
+    "types.tableDefinition",
+    "types.collectionDefinition",
+    "types.namedReferenceDefinition",
+    "types.unionDefinition",
+    "types.conditionalDefinition",
+    "types.implicitTableDefinition",
+]
+
+[types.escapedChildren]
+type = "collection"
+itemtype = "types.schemaDef"
+keypattern = '^(type|description|format|itemtype|items|oneof|anyof|if|then|else|allof|allowedvalues|pattern|keypattern|optional|min|max|minlength|maxlength|uniqueitems|dependentrequired|mutuallyexclusive|exactlyone|default|deprecated|children)$'
+minlength = 1
+
+[types.literalChildren]
+type = "collection"
+itemtype = "types.schemaDef"
+allof = [ "types.schemaDef" ]
+exactlyone = [ [ "type", "oneof", "anyof", "if" ] ]
+
+# Schema document structure
+[elements.toml-schema]
+type = "table"
+
+    [elements.toml-schema.version]
+    type = "string"
+    pattern = '^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$'
+
+    [elements.toml-schema.meta]
+    type = "table"
+    optional = true
+
+[elements.types]
+type = "collection"
+itemtype = "types.schemaDef"
+minlength = 0
+optional = true
+
+[elements.elements]
+type = "collection"
+itemtype = "types.schemaDef"
+minlength = 0
