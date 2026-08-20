@@ -19,9 +19,7 @@ The canonical CLI is distributed through the
 Install `1.0.0-rc.2` on Linux or Apple Silicon macOS:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSfL \
-  https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
-  bash -s -- --version 1.0.0-rc.2
+curl -fsSL https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh | bash
 ```
 
 The installer downloads the matching release archive, verifies its SHA-256
@@ -29,15 +27,14 @@ checksum, and atomically installs `tosd` to `$HOME/.local/bin/tosd`. Ensure that
 directory is on `PATH`. Override the destination when needed:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSfL \
-  https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
-  TOSD_INSTALL_DIR="$HOME/bin" bash -s -- --version 1.0.0-rc.2
+curl -fsSL https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh |
+  TOSD_INSTALL_DIR="$HOME/bin" bash
 ```
 
 To inspect the installer before running it:
 
 ```shell
-curl --proto '=https' --tlsv1.2 -sSfLo install-tosd.sh \
+curl -fsSLo install-tosd.sh \
   https://tomlschema.org/cli/releases/rust-v1.0.0-rc.2/install-tosd.sh
 less install-tosd.sh
 bash install-tosd.sh --version 1.0.0-rc.2
