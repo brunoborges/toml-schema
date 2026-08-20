@@ -16,6 +16,16 @@ type = "table"
 [types.stringOrWorkspace]
 oneof = [ "string", "types.workspaceInherited" ]
 
+[types.uri]
+type = "string"
+format = "uri"
+
+[types.documentationOrWorkspace]
+oneof = [ "types.uri", "types.workspaceInherited" ]
+
+[types.homepageOrWorkspace]
+oneof = [ "types.uri", "types.workspaceInherited" ]
+
 [types.stringArrayOrWorkspace]
 oneof = [ "types.stringArray", "types.workspaceInherited" ]
 
@@ -52,7 +62,7 @@ type = "table"
     optional = true
 
     [types.packageBase.documentation]
-    type = "types.stringOrWorkspace"
+    type = "types.documentationOrWorkspace"
     optional = true
 
     [types.packageBase.readme]
@@ -60,7 +70,7 @@ type = "table"
     optional = true
 
     [types.packageBase.homepage]
-    type = "types.stringOrWorkspace"
+    type = "types.homepageOrWorkspace"
     optional = true
 
     [types.packageBase.repository]

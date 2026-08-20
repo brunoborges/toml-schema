@@ -17,6 +17,18 @@ itemtype = "string"
 type = "collection"
 itemtype = "string"
 
+[types.email]
+type = "string"
+format = "email"
+
+[types.uri]
+type = "string"
+format = "uri"
+
+[types.uriMap]
+type = "collection"
+itemtype = "types.uri"
+
 [types.openTable]
 type = "table"
 
@@ -76,7 +88,7 @@ type = "table"
     optional = true
 
     [types.person.email]
-    type = "string"
+    type = "types.email"
     optional = true
 
 [types.people]
@@ -175,7 +187,7 @@ type = "table"
     optional = true
 
     [types.project.urls]
-    type = "types.stringMap"
+    type = "types.uriMap"
     optional = true
 
     [types.project.scripts]
