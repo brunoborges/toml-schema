@@ -256,10 +256,13 @@ final class SchemaLoader {
         if (type == null && normalizedReference == null && !hasOneOf && !hasAnyOf
                 && conditional == null) {
             if (children.isEmpty()) {
-                throw new SchemaException(
-                        name + " must define type, oneof, anyof, if/then/else, or child definitions");
+                if (allOf.isEmpty()) {
+                    throw new SchemaException(
+                            name + " must define type, oneof, anyof, if/then/else, or child definitions");
+                }
+            } else {
+                type = SchemaType.TABLE;
             }
-            type = SchemaType.TABLE;
         }
         if (!children.isEmpty() && type != SchemaType.TABLE && type != SchemaType.COLLECTION) {
             throw new SchemaException(name + " can only define children when type is table or collection");
@@ -283,6 +286,9 @@ final class SchemaLoader {
             if (getPropertyValue(table, "min") != null || getPropertyValue(table, "max") != null) {
                 throw new SchemaException(name + " cannot define min or max together with items");
             }
+            if (pattern != null || format != null) {
+                throw new SchemaException(name + " cannot define pattern or format together with items");
+            }
         }
         if (minLength != null && maxLength != null && minLength > maxLength) {
             throw new SchemaException(name + " minlength must not be greater than maxlength");
@@ -290,13 +296,15 @@ final class SchemaLoader {
         if (keyPattern != null && type != SchemaType.COLLECTION) {
             throw new SchemaException(name + " can only define keypattern when type is collection");
         }
-        if (pattern != null && type != SchemaType.STRING) {
+        if (pattern != null && type != SchemaType.STRING
+                && type != SchemaType.ARRAY && type != SchemaType.COLLECTION) {
             throw new SchemaException(name + " can only define pattern when type is string");
         }
-        if (format != null && type != SchemaType.STRING) {
+        if (format != null && type != SchemaType.STRING
+                && type != SchemaType.ARRAY && type != SchemaType.COLLECTION) {
             throw new SchemaException(name + " can only define format when type is string");
         }
-        if (hasAllowedValues && (type == SchemaType.TABLE || type == SchemaType.COLLECTION)) {
+        if (hasAllowedValues && type == SchemaType.TABLE) {
             throw new SchemaException(name + " can only define allowedvalues for scalar, unconstrained, or array types");
         }
         if ((minLength != null || maxLength != null)
@@ -731,7 +739,7 @@ final class SchemaLoader {
         if (type == SchemaType.ANY) {
             throw new SchemaException(name + " cannot define min or max when type is any");
         }
-        if (type == SchemaType.ARRAY) {
+        if (type == SchemaType.ARRAY || type == SchemaType.COLLECTION) {
             if (itemReference == null) {
                 throw new SchemaException(name + " can only define min or max when itemtype resolves to one comparable built-in type");
             }
@@ -766,7 +774,8 @@ final class SchemaLoader {
             Map<String, SchemaDefinition> definitions
     ) {
         for (SchemaDefinition definition : definitions.values()) {
-            if (definition.type() == SchemaType.ARRAY && (definition.min() != null || definition.max() != null)) {
+            if ((definition.type() == SchemaType.ARRAY || definition.type() == SchemaType.COLLECTION)
+                    && (definition.min() != null || definition.max() != null)) {
                 Set<SchemaType> itemTypes = resolveItemTypes(definition.itemReference(), types, new HashSet<>());
                 if (itemTypes.size() != 1 || !isRangeComparable(itemTypes.iterator().next())) {
                     throw new SchemaException(definition.name()
@@ -788,9 +797,11 @@ final class SchemaLoader {
         for (SchemaDefinition definition : definitions.values()) {
             Set<SchemaType> permittedTypes = Set.of();
             if (!definition.allowedValues().isEmpty()) {
-                if (definition.type() == SchemaType.ARRAY && definition.itemReference() != null) {
+                if ((definition.type() == SchemaType.ARRAY || definition.type() == SchemaType.COLLECTION)
+                        && definition.itemReference() != null) {
                     permittedTypes = resolveItemTypes(definition.itemReference(), types, new HashSet<>());
-                } else if (definition.type() != SchemaType.ARRAY) {
+                } else if (definition.type() != SchemaType.ARRAY
+                        && definition.type() != SchemaType.COLLECTION) {
                     permittedTypes = Set.of(definition.type());
                 }
                 for (int index = 0; index < definition.allowedValues().size(); index++) {
@@ -918,9 +929,10 @@ final class SchemaLoader {
             Integer minLength,
             Integer maxLength
     ) {
-        if (allowedValues.isEmpty() || type == SchemaType.ARRAY) {
+        if (allowedValues.isEmpty()) {
             return;
         }
+        boolean isContainer = type == SchemaType.ARRAY || type == SchemaType.COLLECTION;
         for (int i = 0; i < allowedValues.size(); i++) {
             Object allowed = allowedValues.get(i);
             String entry = name + " allowedvalues[" + i + "]";
@@ -939,7 +951,7 @@ final class SchemaLoader {
             if (max != null && ValueSemantics.compare(allowed, max) > 0) {
                 throw new SchemaException(entry + " is greater than max");
             }
-            if (minLength != null || maxLength != null) {
+            if (!isContainer && (minLength != null || maxLength != null)) {
                 if (!(allowed instanceof String stringValue)) {
                     throw new SchemaException(entry + " does not satisfy string length constraints");
                 }
@@ -1015,10 +1027,23 @@ final class SchemaLoader {
                 throw new SchemaException(definition.name()
                         + " effective collection must define at least one itemtype");
             }
+            if (definition.type() == SchemaType.ARRAY || definition.type() == SchemaType.COLLECTION) {
+                boolean hasStringConstraint = definition.pattern() != null || definition.format() != null;
+                if (hasStringConstraint) {
+                    Set<SchemaType> itemTypes =
+                            resolveItemTypes(definition.itemReference(), types, new HashSet<>());
+                    if (!itemTypes.equals(Set.of(SchemaType.STRING))) {
+                        throw new SchemaException(definition.name()
+                                + " can only define pattern or format when itemtype resolves to string");
+                    }
+                }
+                validateDuplicateMemberConstraints(definition, types);
+            }
             if (hasPresenceRules) {
                 Set<String> fixedChildren = determinateFixedChildren(definition, types, new HashSet<>());
                 validateRuleNames(definition, fixedChildren);
             }
+
             if (definition.condition() != null) {
                 for (Map.Entry<String, String> branchEntry : Map.of(
                         "then", definition.thenReference(),
@@ -1037,8 +1062,71 @@ final class SchemaLoader {
                                 + definition.condition().key());
                     }
                 }
+
             }
             validateDefinitionSemantics(types, definition.children());
+        }
+    }
+
+    private void validateDuplicateMemberConstraints(
+            SchemaDefinition definition,
+            Map<String, SchemaDefinition> types
+    ) {
+        if (definition.itemReference() == null) {
+            return;
+        }
+        Map<String, Boolean> constraints = Map.of(
+                "allowedvalues", !definition.allowedValues().isEmpty(),
+                "min", definition.min() != null,
+                "max", definition.max() != null,
+                "pattern", definition.pattern() != null,
+                "format", definition.format() != null);
+        for (Map.Entry<String, Boolean> entry : constraints.entrySet()) {
+            if (entry.getValue() && referenceHasConstraint(
+                    definition.itemReference(), entry.getKey(), types, new HashSet<>())) {
+                throw new SchemaException(definition.name() + " defines " + entry.getKey()
+                        + " both inline and on its resolved itemtype");
+            }
+        }
+    }
+
+    private boolean referenceHasConstraint(
+            String reference,
+            String property,
+            Map<String, SchemaDefinition> types,
+            Set<String> visiting
+    ) {
+        if (SchemaType.fromSchemaNameOptional(reference).isPresent()) {
+            return false;
+        }
+        if (!visiting.add(reference)) {
+            throw new SchemaException("Cyclic schema reference involving types." + reference);
+        }
+        try {
+            SchemaDefinition definition = referenceDefinition(reference, types);
+            boolean local = switch (property) {
+                case "allowedvalues" -> !definition.allowedValues().isEmpty();
+                case "min" -> definition.min() != null;
+                case "max" -> definition.max() != null;
+                case "pattern" -> definition.pattern() != null;
+                case "format" -> definition.format() != null;
+                default -> false;
+            };
+            if (local) {
+                return true;
+            }
+            List<String> references = new ArrayList<>();
+            if (definition.reference() != null) references.add(definition.reference());
+            references.addAll(definition.oneOf());
+            references.addAll(definition.anyOf());
+            if (definition.condition() != null) {
+                references.add(definition.thenReference());
+                references.add(definition.elseReference());
+            }
+            return references.stream().anyMatch(
+                    nested -> referenceHasConstraint(nested, property, types, visiting));
+        } finally {
+            visiting.remove(reference);
         }
     }
 
@@ -1080,10 +1168,14 @@ final class SchemaLoader {
         for (String reference : definition.allOf()) {
             Set<SchemaType> componentKinds = effectiveKinds(referenceDefinition(reference, types), types,
                     addVisit(reference, visiting));
-            if (localKinds.size() != 1 || componentKinds.size() != 1
-                    || !localKinds.equals(componentKinds)) {
+            if (componentKinds.size() != 1 || componentKinds.contains(SchemaType.ANY)
+                    || (!localKinds.isEmpty()
+                    && (localKinds.size() != 1 || !localKinds.equals(componentKinds)))) {
                 throw new SchemaException(definition.name()
                         + " allof components must resolve to compatible effective TOML kinds");
+            }
+            if (localKinds.isEmpty()) {
+                localKinds.addAll(componentKinds);
             }
         }
         return localKinds;

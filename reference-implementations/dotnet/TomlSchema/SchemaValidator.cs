@@ -181,7 +181,8 @@ internal class SchemaValidator
         }
 
         // Allowed values
-        if (effectiveSchema.AllowedValues != null && effectiveSchema.AllowedValues.Count > 0)
+        if (effectiveSchema.Type is not (SchemaType.Array or SchemaType.Collection)
+            && effectiveSchema.AllowedValues != null && effectiveSchema.AllowedValues.Count > 0)
         {
             if (!effectiveSchema.AllowedValues.Any(av => ValueEquals(av, value)))
                 _errors.Add(new ValidationError(path, "value not in allowed values", "invalid-value"));
@@ -434,15 +435,13 @@ internal class SchemaValidator
             for (int i = 0; i < array.Count; i++)
             {
                 ValidateType(array[i], itemSchema, $"{path}[{i}]");
-                if (schema.Min != null
-                    && ValueSemantics.AreComparable(array[i]!, schema.Min)
-                    && ValueSemantics.Compare(array[i]!, schema.Min) < 0)
-                    _errors.Add(new ValidationError($"{path}[{i}]", "value below minimum", "min"));
-                if (schema.Max != null
-                    && ValueSemantics.AreComparable(array[i]!, schema.Max)
-                    && ValueSemantics.Compare(array[i]!, schema.Max) > 0)
-                    _errors.Add(new ValidationError($"{path}[{i}]", "value above maximum", "max"));
+                ValidateMemberValueConstraints(array[i], schema, $"{path}[{i}]");
             }
+        }
+        else
+        {
+            for (int i = 0; i < array.Count; i++)
+                ValidateMemberValueConstraints(array[i], schema, $"{path}[{i}]");
         }
     }
 
@@ -488,6 +487,30 @@ internal class SchemaValidator
             // Validate value type
             if (valueSchema != null)
                 ValidateType(value, valueSchema, keyPath);
+            ValidateMemberValueConstraints(value, schema, keyPath);
+        }
+    }
+
+    private void ValidateMemberValueConstraints(object? value, SchemaDefinition schema, string path)
+    {
+        if (schema.AllowedValues?.Count > 0
+            && !schema.AllowedValues.Any(allowed => ValueEquals(allowed, value)))
+            _errors.Add(new ValidationError(path, "value not in allowed values", "invalid-value"));
+        if ((schema.AllowedValues?.Count ?? 0) == 0 && value != null)
+        {
+            if (schema.Min != null && ValueSemantics.AreComparable(value, schema.Min)
+                && ValueSemantics.Compare(value, schema.Min) < 0)
+                _errors.Add(new ValidationError(path, "value below minimum", "min"));
+            if (schema.Max != null && ValueSemantics.AreComparable(value, schema.Max)
+                && ValueSemantics.Compare(value, schema.Max) > 0)
+                _errors.Add(new ValidationError(path, "value above maximum", "max"));
+        }
+        if (value is string text)
+        {
+            if (schema.Pattern != null && !Regex.IsMatch(text, schema.Pattern))
+                _errors.Add(new ValidationError(path, "string does not match pattern", "pattern-mismatch"));
+            if (schema.Format != null && !StringFormatValidator.IsValid(schema.Format, text))
+                _errors.Add(new ValidationError(path, $"string is not a valid {schema.Format}", "format"));
         }
     }
 

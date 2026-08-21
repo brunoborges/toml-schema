@@ -408,7 +408,7 @@ def _validate_range_constraints(
         raise SchemaError(f"{name} cannot use NaN as max")
     if type_name == SchemaType.ANY:
         raise SchemaError(f"{name} cannot define min or max when type is any")
-    if type_name == SchemaType.ARRAY:
+    if type_name in (SchemaType.ARRAY, SchemaType.COLLECTION):
         return
     if type_name is not None and not is_range_comparable(type_name):
         raise SchemaError(
@@ -437,6 +437,7 @@ def _validate_allowed_values_constraints(
     type_name: Optional[SchemaType],
     allowed_values: List[Any],
     pattern: Optional[re.Pattern],
+    format_name: str,
     min_value: Any,
     max_value: Any,
     min_length: Optional[int],
@@ -444,13 +445,17 @@ def _validate_allowed_values_constraints(
 ) -> None:
     from ._compare import IncomparableError, compare
 
-    if not allowed_values or type_name == SchemaType.ARRAY:
+    if not allowed_values:
         return
+    is_container = type_name in (SchemaType.ARRAY, SchemaType.COLLECTION)
     for index, allowed in enumerate(allowed_values):
         entry = f"{name} allowedvalues[{index}]"
         if pattern is not None:
             if not isinstance(allowed, str) or not pattern.search(allowed):
                 raise SchemaError(f"{entry} does not satisfy pattern")
+        if format_name:
+            if not isinstance(allowed, str) or not matches_format(allowed, format_name):
+                raise SchemaError(f"{entry} does not satisfy format {format_name}")
         if (min_value is not None or max_value is not None) and is_nan(allowed):
             raise SchemaError(f"{entry} does not satisfy min or max")
         if min_value is not None:
@@ -467,7 +472,7 @@ def _validate_allowed_values_constraints(
                 raise SchemaError(f"{entry} cannot be compared with max: {exc}") from exc
             if comparison > 0:
                 raise SchemaError(f"{entry} is greater than max")
-        if min_length is not None or max_length is not None:
+        if not is_container and (min_length is not None or max_length is not None):
             if not isinstance(allowed, str):
                 raise SchemaError(f"{entry} does not satisfy string length constraints")
             length = len(allowed)
@@ -639,8 +644,10 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
 
     if type_name is None and not reference and not has_one_of and not has_any_of and condition is None:
         if not children:
-            raise SchemaError(f"{name} must define type, oneof, anyof, or child definitions")
-        type_name = SchemaType.TABLE
+            if not all_of:
+                raise SchemaError(f"{name} must define type, oneof, anyof, or child definitions")
+        else:
+            type_name = SchemaType.TABLE
 
     if children and type_name not in (SchemaType.TABLE, SchemaType.COLLECTION):
         raise SchemaError(f"{name} can only define children when type is table or collection")
@@ -658,6 +665,8 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
             raise SchemaError(f"{name} cannot define allowedvalues together with items")
         if _property_value(table, "min") is not None or _property_value(table, "max") is not None:
             raise SchemaError(f"{name} cannot define min or max together with items")
+        if pattern is not None or format_name:
+            raise SchemaError(f"{name} cannot define pattern or format together with items")
 
     min_value = _property_value(table, "min")
     max_value = _property_value(table, "max")
@@ -665,13 +674,21 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
         raise SchemaError(f"{name} minlength must not be greater than maxlength")
     if key_pattern is not None and type_name != SchemaType.COLLECTION:
         raise SchemaError(f"{name} can only define keypattern when type is collection")
-    if pattern is not None and type_name != SchemaType.STRING:
+    if pattern is not None and type_name not in (
+        SchemaType.STRING,
+        SchemaType.ARRAY,
+        SchemaType.COLLECTION,
+    ):
         raise SchemaError(f"{name} can only define pattern when type is string")
-    if format_name and type_name != SchemaType.STRING:
+    if format_name and type_name not in (
+        SchemaType.STRING,
+        SchemaType.ARRAY,
+        SchemaType.COLLECTION,
+    ):
         raise SchemaError(
             f"{name} can only define format when locally selecting built-in type string"
         )
-    if has_allowed_values and type_name in (SchemaType.TABLE, SchemaType.COLLECTION):
+    if has_allowed_values and type_name == SchemaType.TABLE:
         raise SchemaError(f"{name} can only define allowedvalues for scalar, unconstrained, or array types")
     if (min_length is not None or max_length is not None) and type_name not in (
         SchemaType.STRING,
@@ -686,14 +703,8 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
 
     _validate_range_constraints(name, type_name, min_value, max_value)
     _validate_allowed_values_constraints(
-        name, type_name, allowed_values, pattern, min_value, max_value, min_length, max_length
+        name, type_name, allowed_values, pattern, format_name, min_value, max_value, min_length, max_length
     )
-    if format_name:
-        for index, allowed in enumerate(allowed_values):
-            if not isinstance(allowed, str) or not matches_format(allowed, format_name):
-                raise SchemaError(
-                    f"{name} allowedvalues[{index}] does not satisfy format {format_name}"
-                )
 
     dependent_required = _get_dependent_required(name, path, table, source)
     mutually_exclusive = _get_key_groups(name, path, table, "mutuallyexclusive", source)
@@ -913,13 +924,15 @@ class Schema:
 
         if not definition.all_of:
             return kind, resolved
-        if not resolved or kind == SchemaType.ANY:
-            raise SchemaError("allof requires a determinate effective kind")
         for reference in definition.all_of:
             component = self.definition_for_reference(reference)
             component_kind, ok = self.effective_kind(component, visiting)
-            if not ok or component_kind == SchemaType.ANY or component_kind != kind:
+            if not ok or component_kind == SchemaType.ANY:
+                raise SchemaError(f"allof component {reference} has indeterminate effective kind")
+            if resolved and component_kind != kind:
                 raise SchemaError(f"allof component {reference} has incompatible effective kind")
+            if not resolved:
+                kind, resolved = component_kind, True
         return kind, True
 
     def determinate_fixed_children(self, definition: Definition, visiting: Set[str]) -> Set[str]:
@@ -1099,7 +1112,7 @@ class Schema:
         def validate_definition(definition: Definition) -> None:
             permitted: Set[SchemaType] = set()
             if definition.allowed_values:
-                if definition.type_name == SchemaType.ARRAY:
+                if definition.type_name in (SchemaType.ARRAY, SchemaType.COLLECTION):
                     if definition.item_reference:
                         self.collect_reference_types(definition.item_reference, set(), permitted)
                 elif definition.type_name is not None:
@@ -1197,26 +1210,100 @@ class Schema:
 
     def validate_array_ranges(self) -> None:
         def validate_definition(definition: Definition) -> None:
-            if definition.type_name == SchemaType.ARRAY and (
-                definition.min is not None or definition.max is not None
-            ):
-                try:
-                    item_type, ok = self.resolve_item_kind(definition.item_reference, set())
-                except SchemaError as exc:
-                    raise SchemaError(f"{definition.name} has invalid itemtype: {exc}") from exc
-                if not ok or not is_range_comparable(item_type):
-                    raise SchemaError(
-                        f"{definition.name} can only define min or max when itemtype resolves to one comparable built-in type"
-                    )
-                _validate_boundary_matches_type(definition.name, "min", definition.min, item_type)
-                _validate_boundary_matches_type(definition.name, "max", definition.max, item_type)
-                _validate_ordered_range(definition.name, definition.min, definition.max, item_type)
+            if definition.type_name in (SchemaType.ARRAY, SchemaType.COLLECTION):
+                has_range = definition.min is not None or definition.max is not None
+                has_string_constraint = definition.pattern is not None or bool(definition.format)
+                if has_range or has_string_constraint:
+                    try:
+                        item_type, ok = self.resolve_item_kind(definition.item_reference, set())
+                    except SchemaError as exc:
+                        raise SchemaError(f"{definition.name} has invalid itemtype: {exc}") from exc
+                    if not ok:
+                        message = (
+                            "can only define min or max when itemtype resolves to one comparable built-in type"
+                            if has_range
+                            else "per-member constraints require a determinate itemtype"
+                        )
+                        raise SchemaError(f"{definition.name} {message}")
+                    if has_range and not is_range_comparable(item_type):
+                        raise SchemaError(
+                            f"{definition.name} can only define min or max when itemtype resolves to one comparable built-in type"
+                        )
+                    if has_string_constraint and item_type != SchemaType.STRING:
+                        raise SchemaError(
+                            f"{definition.name} can only define pattern or format when itemtype resolves to string"
+                        )
+                    if has_range:
+                        _validate_boundary_matches_type(
+                            definition.name, "min", definition.min, item_type
+                        )
+                        _validate_boundary_matches_type(
+                            definition.name, "max", definition.max, item_type
+                        )
+                        _validate_ordered_range(
+                            definition.name, definition.min, definition.max, item_type
+                        )
+                self.validate_duplicate_member_constraints(definition)
             for child in definition.children.values():
                 validate_definition(child)
 
         for definitions in (self.types, self.elements):
             for definition in definitions.values():
                 validate_definition(definition)
+
+    def validate_duplicate_member_constraints(self, definition: Definition) -> None:
+        if not definition.item_reference:
+            return
+        constraints = (
+            ("allowedvalues", bool(definition.allowed_values)),
+            ("min", definition.min is not None),
+            ("max", definition.max is not None),
+            ("pattern", definition.pattern is not None),
+            ("format", bool(definition.format)),
+        )
+        for property_name, present in constraints:
+            if present and self.reference_has_constraint(
+                definition.item_reference, property_name, set()
+            ):
+                raise SchemaError(
+                    f"{definition.name} defines {property_name} both inline and on its resolved itemtype"
+                )
+
+    def reference_has_constraint(
+        self,
+        reference: str,
+        property_name: str,
+        visiting: Set[str],
+    ) -> bool:
+        if parse_schema_type(reference) is not None:
+            return False
+        if reference in visiting:
+            raise SchemaError(f"cyclic type reference: {reference}")
+        definition = self.types.get(reference)
+        if definition is None:
+            raise SchemaError(f"unknown type reference: {reference}")
+        visiting.add(reference)
+        try:
+            local = {
+                "allowedvalues": bool(definition.allowed_values),
+                "min": definition.min is not None,
+                "max": definition.max is not None,
+                "pattern": definition.pattern is not None,
+                "format": bool(definition.format),
+            }[property_name]
+            if local:
+                return True
+            references = list(definition.one_of + definition.any_of)
+            if definition.reference:
+                references.append(definition.reference)
+            if definition.condition is not None:
+                references.extend((definition.then_reference, definition.else_reference))
+            return any(
+                self.reference_has_constraint(nested, property_name, visiting)
+                for nested in references
+            )
+        finally:
+            visiting.discard(reference)
 
     def validate_defaults(self) -> None:
         def validate_definition(definition: Definition) -> None:
