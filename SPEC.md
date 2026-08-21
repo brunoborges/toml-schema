@@ -72,7 +72,7 @@ the other.
   definition with nested child definitions and no explicit selector is an
   **implicit table** (`type = "table"`), and a definition whose only applicator
   is `allof` is a **pure mixin** whose effective type comes from its components.
-  See [Types Table](#types-table---types) and
+  See [Selectors](#selectors) and
   [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton).
 
 - **Schema type**. The type a definition *selects* through `type`: a built-in
@@ -282,25 +282,42 @@ and the preferred term is the one to use in new text.
   - [Schema Versioning](#schema-versioning)
 - [Elements Table - `[elements]`](#elements-table---elements)
 - [Types Table - `[types]`](#types-table---types)
-  - [Type Reference Restrictions](#type-reference-restrictions)
+- [Schema Definitions](#schema-definitions)
   - [Schema Definition Properties](#schema-definition-properties)
     - [Local and Effective Checks](#local-and-effective-checks)
   - [Quoted and Special Keys](#quoted-and-special-keys)
-  - [Scalar and Unconstrained Built-in Types](#scalar-and-unconstrained-built-in-types)
-    - [Allowed Values - `allowedvalues`](#allowed-values---allowedvalues)
+  - [Selectors](#selectors)
+    - [Scalar and Unconstrained Built-in Types](#scalar-and-unconstrained-built-in-types)
+    - [Type Reference](#type-reference)
+    - [Type Reference Restrictions](#type-reference-restrictions)
+    - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
+    - [Conditional Selection - `if`, `then`, and `else`](#conditional-selection---if-then-and-else)
+      - [The Discriminator Key and Closed Branches](#the-discriminator-key-and-closed-branches)
+  - [Annotations](#annotations)
+    - [Description - `description`](#description---description)
+    - [Default - `default`](#default---default)
+    - [Deprecation - `deprecated`](#deprecation---deprecated)
+  - [Constraints](#constraints)
+    - [Optionality - `optional`](#optionality---optional)
+    - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
+    - [Length - `minlength` and `maxlength`](#length---minlength-and-maxlength)
+    - [Pattern - `pattern`](#pattern---pattern)
     - [String Format - `format`](#string-format---format)
-  - [Minimum Value / Maximum Value - `min` and `max`](#minimum-value--maximum-value---min-and-max)
-  - [Length - `minlength` and `maxlength`](#length---minlength-and-maxlength)
+    - [Allowed Values - `allowedvalues`](#allowed-values---allowedvalues)
+    - [Array Uniqueness - `uniqueitems`](#array-uniqueness---uniqueitems)
+    - [Per-Member Value Constraints](#per-member-value-constraints)
+    - [Sibling Presence Rules](#sibling-presence-rules)
+      - [Dependencies - `dependentrequired`](#dependencies---dependentrequired)
+      - [Mutual Exclusion - `mutuallyexclusive`](#mutual-exclusion---mutuallyexclusive)
+      - [Exactly One - `exactlyone`](#exactly-one---exactlyone)
   - [Container Types](#container-types)
     - [Tables](#tables)
     - [Arrays](#arrays)
       - [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays)
       - [Array Item Schemas and Arrays of Tables](#array-item-schemas-and-arrays-of-tables)
       - [Tuple / Positional Array Validation - `items`](#tuple--positional-array-validation---items)
-      - [Array Uniqueness - `uniqueitems`](#array-uniqueness---uniqueitems)
     - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
-    - [Per-Member Value Constraints](#per-member-value-constraints)
-  - [Type Reference](#type-reference)
+    - [Key Pattern - `keypattern`](#key-pattern---keypattern)
   - [Conjunctive Composition - `allof`](#conjunctive-composition---allof)
     - [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton)
     - [The Effective Definition](#the-effective-definition)
@@ -308,20 +325,6 @@ and the preferred term is the one to use in new text.
     - [Determinate Fixed-Child Set](#determinate-fixed-child-set)
     - [Effective Closure Set](#effective-closure-set)
     - [Composition Examples](#composition-examples)
-  - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
-  - [Conditional Selection - `if`, `then`, and `else`](#conditional-selection---if-then-and-else)
-    - [The Discriminator Key and Closed Branches](#the-discriminator-key-and-closed-branches)
-  - [Sibling Presence Rules](#sibling-presence-rules)
-    - [Dependencies - `dependentrequired`](#dependencies---dependentrequired)
-    - [Mutual Exclusion - `mutuallyexclusive`](#mutual-exclusion---mutuallyexclusive)
-    - [Exactly One - `exactlyone`](#exactly-one---exactlyone)
-  - [Annotations](#annotations)
-  - [Description - `description`](#description---description)
-  - [Default - `default`](#default---default)
-  - [Deprecation - `deprecated`](#deprecation---deprecated)
-  - [Optionality - `optional`](#optionality---optional)
-  - [Pattern - `pattern`](#pattern---pattern)
-  - [Key Pattern - `keypattern`](#key-pattern---keypattern)
 - [Validation and Data Model](#validation-and-data-model)
   - [Parsed Value Equality](#parsed-value-equality)
   - [Expressiveness and Validation Scope](#expressiveness-and-validation-scope)
@@ -652,122 +655,7 @@ unambiguous, a reusable type name MUST NOT begin with the literal characters
 `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`,
 `local-time`, `array`, `table`, and `collection`.
 
-`type`, `oneof`, `anyof`, and the `if`/`then`/`else` triple are alternative
-ways to select the type of the current definition. A definition MUST declare
-at most one selector, and two constructs supply the selection in place of one:
-
-- a definition with nested child definitions MAY omit all selectors and is then
-  treated as `type = "table"`; and
-- a definition whose only applicator is a non-empty `allof` MAY omit all
-  selectors and all nested child definitions, and then takes its effective type
-  from that composition. [Composition Supplying the Local
-  Skeleton](#composition-supplying-the-local-skeleton) is authoritative for when
-  such a definition is valid and for the code a loader reports when it is not.
-
-Schema loaders MUST reject a definition that combines selectors, contains only
-part of a conditional triple, or declares no selector, no nested child
-definitions, and no `allof`. `type` accepts either a built-in type name or a
-named reusable definition from `[types]`. Container member types are selected separately with
-`itemtype`: it validates each member of an `array` or each dynamically keyed
-value of a `collection`. `itemtype` requires the same definition to declare the
-built-in `type = "array"` or `type = "collection"`; it cannot be attached to
-another built-in or to a named type reference.
-
-Nested child definitions are valid only when the current node selects the
-built-in `table` or `collection` type, or when the node omits a selector and is
-therefore an implicit table. Schema loaders MUST reject child definitions attached to
-a scalar, `array`, named type reference, `oneof`, `anyof`, or conditional node rather than
-silently ignoring them.
-
-```toml
-[types]
-
-[types.<typename>]
-type = "<type-reference>"
-description = "<human-readable description>"
-format = "<email|uuid|uri|hostname|ipv4|ipv6>"
-itemtype = "<type-reference>"
-items = [ "<type-reference>", ... ]
-oneof = [ "<type-reference>", ... ]
-anyof = [ "<type-reference>", ... ]
-if = { key = "<direct-child-name>", equals = <toml-value> }
-# or: if = { key = "<direct-child-name>", in = [ <toml-value>, ... ] }
-then = "types.<typename>"
-else = "types.<typename>"
-allof = [ "<type-reference>", ... ]
-allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
-pattern = "<string-regex-for-string-validation>"
-keypattern = "<string-regex-for-collection-key-validation>"
-optional = true|false
-min = <integer | float | offset-date-time | local-date-time | local-date | local-time>
-max = <integer | float | offset-date-time | local-date-time | local-date | local-time>
-minlength = <integer>
-maxlength = <integer>
-uniqueitems = true|false
-dependentrequired = { <fixed-child> = [ "<fixed-child>", ... ], ... }
-mutuallyexclusive = [ [ "<fixed-child>", "<fixed-child>", ... ], ... ]
-exactlyone = [ [ "<fixed-child>", "<fixed-child>", ... ], ... ]
-default = <toml-value>
-deprecated = true|false
-```
-
-### Type Reference Restrictions
-
-This section is the single authority for which references each reference
-position accepts. Every other mention of these restrictions in this
-specification points here rather than restating them.
-
-| Position | Bare built-in name | Named `[types]` reference | Reference to a pure mixin | Reference edge |
-| --- | --- | --- | --- | --- |
-| `type` | Any built-in. `collection` only when the effective definition obtains an `itemtype` locally or from a compatible `allof` component | Yes | Yes | Non-consuming |
-| `itemtype` | Any built-in except `collection` | Yes | Yes | Consuming |
-| `items` | Any built-in except `collection` | Yes | Yes | Consuming |
-| `oneof`, `anyof` | Any built-in except `any` and `collection` | Yes | Yes | Non-consuming |
-| `allof` | Any built-in except `any` and `collection` | Yes | Yes | Non-consuming |
-| `then`, `else` | None; a bare built-in reference is invalid in either | Yes, and both branches MUST resolve to the same effective type, which MUST be `table` or `collection` | Yes, subject to that same kind requirement | Non-consuming |
-
-The two restricted built-ins are restricted for one reason each:
-
-- `collection` is valid for `type` only when the effective definition obtains
-  an `itemtype` locally or from a compatible `allof` component. It MUST NOT be
-  used as a bare reference in `itemtype`, `items`, `oneof`, `anyof`, `allof`,
-  `then`, or `else`, because those locations cannot supply the collection's dynamic-value
-  rule. Schema loaders MUST reject such references at schema-load time.
-- `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
-  directly in `oneof`, `anyof`, `allof`, `then`, or `else`. Schema loaders MUST
-  reject a direct `any` component at schema-load time.
-
-These restrictions apply to bare built-in references, not to named reusable
-definitions. A named definition that declares a complete collection or selects
-`type = "any"` remains a valid reference. A
-[pure mixin](#composition-supplying-the-local-skeleton) is an ordinary named
-definition once its components determine its effective type, so it may be
-referenced wherever any other named definition may be, subject to the same kind
-requirement the position imposes on a named reference. What a definition may
-declare *beside* a named reference is stated under
-[Type Reference](#type-reference).
-
-Every named reference used by `type`, `itemtype`, `items`, `oneof`, `anyof`,
-`allof`, `then`, or `else`
-MUST resolve to a definition in `[types]`. Schema loaders MUST reject unresolved
-references at schema-load time, including references in definitions that are
-optional or not exercised by the document being validated. The ordered algorithm
-that turns a reference string into a built-in type or a reusable definition is
-defined under [Reference Resolution](#reference-resolution), which is
-authoritative for how the restrictions above are applied. An element MUST NOT
-reference another element, as
-[Elements Table](#elements-table---elements) requires.
-
-Type-selection and composition references MUST be acyclic. A cycle composed of
-named `type` aliases, `oneof` alternatives, `anyof` alternatives, conditional
-branches, or `allof` components — the positions the table above marks
-**non-consuming** — cannot resolve to a concrete definition and
-schema loaders MUST reject it at schema-load time. Structural recursion through
-table or collection children, array `itemtype`, or tuple `items` — the
-**consuming** positions — remains valid
-because each recursive step consumes a nested document value.
-[Cycle Legality](#cycle-legality) states this classification in terms of the
-reference graph and is authoritative for deciding which cycles are legal.
+## Schema Definitions
 
 ### Schema Definition Properties
 
@@ -776,8 +664,8 @@ detailed sections below remain authoritative.
 
 | Property | Applicable definition |
 | --- | --- |
-| `type` | Selects one built-in or named type; at most one selector per definition, per [Types Table](#types-table---types) |
-| `oneof`, `anyof` | Select the current node from one or more alternatives; at most one selector per definition, per [Types Table](#types-table---types) |
+| `type` | Selects one built-in or named type; at most one selector per definition, per [Selectors](#selectors) |
+| `oneof`, `anyof` | Select the current node from one or more alternatives; at most one selector per definition, per [Selectors](#selectors) |
 | `if`, `then`, `else` | Exhaustively select one of two named table-like definitions from a direct child's parsed value |
 | `allof` | Conjunctively applies one or more compatible type references in addition to the local definition; alone, it also supplies an omitted selector, per [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton) |
 | `description`, `optional`, `default`, `deprecated` | Any definition, including a named reference or alternative selector |
@@ -911,7 +799,7 @@ definition is a schema property, while a table-header path segment below that
 definition is normally a target child definition.
 
 A schema definition with nested child definitions and no explicit selector is an
-implicit table, as [Types Table](#types-table---types) defines. This lets
+implicit table, as [Selectors](#selectors) defines. This lets
 schemas describe target keys that would
 otherwise share a name with schema properties when the parent does not also use
 the property.
@@ -1016,7 +904,68 @@ Here `elements.plugin.type = "table"` selects the parent type, while
 Without the `children` segment, TOML would require `type` to be both a string
 and a table at the same path.
 
-### Scalar and Unconstrained Built-in Types
+### Selectors
+
+`type`, `oneof`, `anyof`, and the `if`/`then`/`else` triple are alternative
+ways to select the type of the current definition. A definition MUST declare
+at most one selector, and two constructs supply the selection in place of one:
+
+- a definition with nested child definitions MAY omit all selectors and is then
+  treated as `type = "table"`; and
+- a definition whose only applicator is a non-empty `allof` MAY omit all
+  selectors and all nested child definitions, and then takes its effective type
+  from that composition. [Composition Supplying the Local
+  Skeleton](#composition-supplying-the-local-skeleton) is authoritative for when
+  such a definition is valid and for the code a loader reports when it is not.
+
+Schema loaders MUST reject a definition that combines selectors, contains only
+part of a conditional triple, or declares no selector, no nested child
+definitions, and no `allof`. `type` accepts either a built-in type name or a
+named reusable definition from `[types]`. Container member types are selected separately with
+`itemtype`: it validates each member of an `array` or each dynamically keyed
+value of a `collection`. `itemtype` requires the same definition to declare the
+built-in `type = "array"` or `type = "collection"`; it cannot be attached to
+another built-in or to a named type reference.
+
+Nested child definitions are valid only when the current node selects the
+built-in `table` or `collection` type, or when the node omits a selector and is
+therefore an implicit table. Schema loaders MUST reject child definitions attached to
+a scalar, `array`, named type reference, `oneof`, `anyof`, or conditional node rather than
+silently ignoring them.
+
+```toml
+[types]
+
+[types.<typename>]
+type = "<type-reference>"
+description = "<human-readable description>"
+format = "<email|uuid|uri|hostname|ipv4|ipv6>"
+itemtype = "<type-reference>"
+items = [ "<type-reference>", ... ]
+oneof = [ "<type-reference>", ... ]
+anyof = [ "<type-reference>", ... ]
+if = { key = "<direct-child-name>", equals = <toml-value> }
+# or: if = { key = "<direct-child-name>", in = [ <toml-value>, ... ] }
+then = "types.<typename>"
+else = "types.<typename>"
+allof = [ "<type-reference>", ... ]
+allowedvalues = [ <array-with-enumeration-of-allowed-values> ]
+pattern = "<string-regex-for-string-validation>"
+keypattern = "<string-regex-for-collection-key-validation>"
+optional = true|false
+min = <integer | float | offset-date-time | local-date-time | local-date | local-time>
+max = <integer | float | offset-date-time | local-date-time | local-date | local-time>
+minlength = <integer>
+maxlength = <integer>
+uniqueitems = true|false
+dependentrequired = { <fixed-child> = [ "<fixed-child>", ... ], ... }
+mutuallyexclusive = [ [ "<fixed-child>", "<fixed-child>", ... ], ... ]
+exactlyone = [ [ "<fixed-child>", "<fixed-child>", ... ], ... ]
+default = <toml-value>
+deprecated = true|false
+```
+
+#### Scalar and Unconstrained Built-in Types
 
 The unconstrained built-in type is:
 
@@ -1033,66 +982,828 @@ The scalar built-in types are:
 - Local Date: `local-date`
 - Local Time: `local-time`
 
-#### Allowed Values - `allowedvalues`
+#### Type Reference
 
-`allowedvalues` provides an enumeration for a scalar or unconstrained built-in
-type. On an `array` or a `collection` it is instead a
-[per-member constraint](#per-member-value-constraints) and enumerates the values
-permitted for each item or each dynamic entry, as also described
-under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
-It is invalid on a `table`.
+A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
 
-The `allowedvalues` array MUST contain at least one entry. Every entry on a
-definition that is neither an `array` nor a `collection` MUST have the TOML kind
-selected by that definition;
-`type = "any"` is the exception and permits entries of any TOML kind. Numeric
-equality between integers and floats does not make their TOML kinds
-interchangeable for this schema-load check. A malformed enumeration MUST be
-rejected at schema-load time.
+When `type` selects a named reusable definition, the reference inherits that
+definition's validation rules as-is. This inheritance includes `optional`, as
+[Optionality](#optionality---optional) defines. In version 1.0, the
+referencing definition MAY additionally declare only `allof`, `description`,
+`optional`, `default`, and `deprecated`; it MUST NOT declare any other sibling
+property or child definition. `allof` adds conjunctive components rather than
+overriding the named reference. A local `default` is the use-site annotation
+defined under [Default](#default---default), and `deprecated = false` cannot
+cancel deprecation inherited from a reference. In particular, validation
+constraints such as `pattern`,
+`keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`,
+`itemtype`, and `items` cannot be added or overridden at the reference site.
+Schema loaders MUST reject such schemas at schema-load time.
 
-For a definition that is neither an `array` nor a `collection`, when
-`allowedvalues` is combined with `pattern`, `format`,
-`min`, `max`, `minlength`, or `maxlength` on the same definition, every entry in
-`allowedvalues` MUST satisfy every applicable constraint. A schema containing an
-entry that violates one of those constraints is malformed, and schema loaders
-MUST reject it at schema-load time. This is a consistency check on the
-enumeration itself; it describes nothing about how a document value is
-validated. For offset date-times, this boundary check uses instant
-ordering even though subsequent `allowedvalues` membership uses parsed-value
-equality; equivalent instants with different retained local fields or offsets
-therefore compare equal for a boundary but remain distinct enumeration values.
+To specialize validation rules, declare another named reusable definition rather than adding constraints to a reference:
 
-After a schema with `allowedvalues` has been loaded successfully, each document
-value governed by that definition — each item or dynamic-entry value, for an
-`array` or `collection` definition —
-is evaluated in the following order:
+```toml
+[types.lowercaseName]
+type = "string"
+pattern = "^[a-z]+$"
 
-1. The value's parsed TOML kind MUST be the kind the definition selects for it,
-   through `type` or, for container members, through `itemtype`. A kind mismatch
-   is a
-   validation error regardless of `allowedvalues`, and membership in the
-   enumeration never satisfies the type check. For example, a definition with
-   `type = "integer"` and `allowedvalues = [ 80, 443 ]` rejects the document
-   value `80.0` even though [Parsed Value Equality](#parsed-value-equality)
-   makes `80.0` equal to `80`. The unconstrained `any` selects no kind and
-   imposes no such restriction.
-2. Every other assertion that applies to the value is evaluated, including the
-   assertions declared on the definition itself and those contributed by `allof`
-   components. Validators MUST NOT skip an assertion on the grounds that the
-   enumeration was already checked while loading the schema: that schema-load
-   check covers only the definition's own constraints listed above, and a
-   composed constraint does not participate in it.
-3. The value MUST be a member of `allowedvalues` according to
-   [Parsed Value Equality](#parsed-value-equality).
+[elements.name]
+type = "types.lowercaseName"
+description = "Display name"
+optional = true
+```
 
-The value is valid for that definition only when all three steps succeed.
+The following is invalid because `pattern` attempts to override the referenced definition:
+
+```toml
+[types.name]
+type = "string"
+pattern = "^[a-z]+$"
+
+[elements.name]
+type = "types.name"
+pattern = "^[A-Z]+$" # invalid
+```
+
+```toml
+[types]
+
+    [types.nameType]
+    type="string"
+    pattern="[a-zA-Z]"  # unanchored: matches any string containing a letter
+
+    [types.serverType.name]
+    type = "types.nameType"
+
+    [types.serverType.enabled]
+    type = "boolean"
+
+[elements]
+
+    [elements.datacenter]
+    type="table"
+
+        [elements.datacenter.name]
+        type="types.nameType"
+
+        [elements.datacenter.tags]
+        type = "array"
+        itemtype = "string"
+
+        [elements.datacenter.servers]
+        type = "collection"
+        itemtype = "types.serverType"
+```
+
+#### Type Reference Restrictions
+
+This section is the single authority for which references each reference
+position accepts. Every other mention of these restrictions in this
+specification points here rather than restating them.
+
+| Position | Bare built-in name | Named `[types]` reference | Reference to a pure mixin | Reference edge |
+| --- | --- | --- | --- | --- |
+| `type` | Any built-in. `collection` only when the effective definition obtains an `itemtype` locally or from a compatible `allof` component | Yes | Yes | Non-consuming |
+| `itemtype` | Any built-in except `collection` | Yes | Yes | Consuming |
+| `items` | Any built-in except `collection` | Yes | Yes | Consuming |
+| `oneof`, `anyof` | Any built-in except `any` and `collection` | Yes | Yes | Non-consuming |
+| `allof` | Any built-in except `any` and `collection` | Yes | Yes | Non-consuming |
+| `then`, `else` | None; a bare built-in reference is invalid in either | Yes, and both branches MUST resolve to the same effective type, which MUST be `table` or `collection` | Yes, subject to that same kind requirement | Non-consuming |
+
+The two restricted built-ins are restricted for one reason each:
+
+- `collection` is valid for `type` only when the effective definition obtains
+  an `itemtype` locally or from a compatible `allof` component. It MUST NOT be
+  used as a bare reference in `itemtype`, `items`, `oneof`, `anyof`, `allof`,
+  `then`, or `else`, because those locations cannot supply the collection's dynamic-value
+  rule. Schema loaders MUST reject such references at schema-load time.
+- `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
+  directly in `oneof`, `anyof`, `allof`, `then`, or `else`. Schema loaders MUST
+  reject a direct `any` component at schema-load time.
+
+These restrictions apply to bare built-in references, not to named reusable
+definitions. A named definition that declares a complete collection or selects
+`type = "any"` remains a valid reference. A
+[pure mixin](#composition-supplying-the-local-skeleton) is an ordinary named
+definition once its components determine its effective type, so it may be
+referenced wherever any other named definition may be, subject to the same kind
+requirement the position imposes on a named reference. What a definition may
+declare *beside* a named reference is stated under
+[Type Reference](#type-reference).
+
+Every named reference used by `type`, `itemtype`, `items`, `oneof`, `anyof`,
+`allof`, `then`, or `else`
+MUST resolve to a definition in `[types]`. Schema loaders MUST reject unresolved
+references at schema-load time, including references in definitions that are
+optional or not exercised by the document being validated. The ordered algorithm
+that turns a reference string into a built-in type or a reusable definition is
+defined under [Reference Resolution](#reference-resolution), which is
+authoritative for how the restrictions above are applied. An element MUST NOT
+reference another element, as
+[Elements Table](#elements-table---elements) requires.
+
+Type-selection and composition references MUST be acyclic. A cycle composed of
+named `type` aliases, `oneof` alternatives, `anyof` alternatives, conditional
+branches, or `allof` components — the positions the table above marks
+**non-consuming** — cannot resolve to a concrete definition and
+schema loaders MUST reject it at schema-load time. Structural recursion through
+table or collection children, array `itemtype`, or tuple `items` — the
+**consuming** positions — remains valid
+because each recursive step consumes a nested document value.
+[Cycle Legality](#cycle-legality) states this classification in terms of the
+reference graph and is authoritative for deciding which cycles are legal.
+
+#### Alternative Types - `oneof` and `anyof`
+
+Use `oneof` or `anyof` when a value may validate against alternative type references.
+
+- `oneof`: exactly one referenced type must validate.
+- `anyof`: at least one referenced type must validate.
+
+These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array or collection items. Which references an alternative may name is stated under
+[Type Reference Restrictions](#type-reference-restrictions); use a named
+reusable definition when an alternative needs a fully defined collection, an
+intentionally unconstrained named branch, or any other constraint.
+
+`type`, `oneof`, `anyof`, and the conditional triple all select the current
+node's type, and a definition declares at most one of them, as
+[Selectors](#selectors) requires.
+
+The array assigned to `oneof` or `anyof` MUST contain at least one type
+reference. A union definition MAY additionally declare only `description`,
+`optional`, `default`, `deprecated`, and `allof`; it MUST NOT declare another
+validation property or any nested child definition. Schema loaders MUST reject
+empty unions and other union siblings at schema-load time. Constraints required
+by an alternative belong in a named reusable definition referenced by the
+union.
+
+The alternatives of a `oneof` or `anyof` array MUST be distinct. A repeated
+alternative adds no branch and, for `oneof`, cannot be the exactly-one match.
+Duplication is judged on resolved identity, after the optional `types.` prefix
+has been removed, so `oneof = [ "types.stringId", "stringId" ]` names the same
+definition twice and is malformed. Schema loaders MUST reject a duplicate
+alternative at schema-load time. This differs from
+[`items`](#tuple--positional-array-validation---items), where an entry denotes a
+tuple position rather than an alternative and repetition is meaningful.
+
+A union contributes nothing to the
+[determinate fixed-child set](#determinate-fixed-child-set) of the node it
+selects, because no alternative is chosen until a document value exists. It does
+contribute at validation time: when an alternative is evaluated against a
+document node, that alternative's fixed children join the node's
+[effective closure set](#effective-closure-set) for that evaluation, so a key
+the alternative declares is a known key of the node and MUST NOT be reported as
+unexpected. This is what lets a union be composed into a table with `allof`
+without the alternatives' own children becoming unknown keys.
+
+When alternatives contain annotations, only successful alternatives contribute
+them, and only for a value that is present. Deprecation warnings follow the
+successful-alternative rule: `oneof` reports the warning of its single
+successful alternative, and `anyof` reports the warnings of every successful
+alternative, deduplicated as [Diagnostics](#diagnostics) requires. Consequently,
+a deprecated successful alternative contributes a warning even when another
+successful `anyof` alternative is not deprecated; this preserves all annotations
+attached to definitions that accepted the value. Alternative `default`
+annotations are governed by [Default](#default---default): they are never
+combined into the slot's effective default and never cause a schema-load
+conflict. For a present value, an implementation MAY surface the default of each
+successful alternative as a hint, deduplicated by
+[Parsed Value Equality](#parsed-value-equality). An alternative that fails
+validation contributes neither defaults nor deprecation warnings; what happens to
+its diagnostics is defined under
+[Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard).
+
+Examples:
+
+```toml
+[types.stringId]
+type = "string"
+pattern = "^[a-z]+$"
+
+[types.integerId]
+type = "integer"
+min = 1
+
+[elements.id]
+anyof = [ "types.stringId", "types.integerId" ]
+
+[elements.simpleId]
+oneof = [ "string", "integer" ]
+```
+
+Use a named reusable definition whenever an alternative needs constraints such as `pattern`, `min`, `allowedvalues`, `itemtype`, or child fields.
+
+```toml
+[types.dependencyVersion]
+type = "string"
+pattern = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+
+[types.inlineDependency]
+type = "table"
+
+[types.dependency]
+oneof = [ "types.dependencyVersion", "types.inlineDependency" ]
+```
+
+For container items with alternative types, use a named wrapper:
+
+```toml
+[types.dnsValue]
+oneof = [ "types.ipAddress", "types.hostname" ]
+
+[elements.dns]
+type = "collection"
+itemtype = "types.dnsValue"
+```
+
+A named container definition can also be an alternative. This models formats
+that accept either one table or an array of the same table shape:
+
+```toml
+[types.cascadeEntry]
+type = "table"
+
+    [types.cascadeEntry.params]
+    type = "table"
+    optional = true
+
+[types.cascadeEntries]
+type = "array"
+itemtype = "types.cascadeEntry"
+
+[elements.cascade]
+oneof = [ "types.cascadeEntry", "types.cascadeEntries" ]
+```
+
+#### Conditional Selection - `if`, `then`, and `else`
+
+The `if`, `then`, and `else` properties form one exhaustive selector for a
+table-like node. The condition inspects one direct child of the current parsed
+table and selects one of two named reusable definitions:
+
+```toml
+[types.sqliteDatabase]
+type = "table"
+
+    [types.sqliteDatabase.engine]
+    type = "string"
+    allowedvalues = [ "sqlite" ]
+
+    [types.sqliteDatabase.path]
+    type = "string"
+
+[types.serverDatabase]
+type = "table"
+
+    [types.serverDatabase.engine]
+    type = "string"
+    allowedvalues = [ "postgresql", "mysql" ]
+
+    [types.serverDatabase.host]
+    type = "string"
+
+[types.database]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqliteDatabase"
+else = "types.serverDatabase"
+```
+
+Both branches declare `engine`, the key the condition reads. That is required
+rather than stylistic: see
+[The Discriminator Key and Closed Branches](#the-discriminator-key-and-closed-branches)
+below.
+
+`if` MUST be an inline table containing `key` and exactly one of `equals` or
+`in`. It MUST contain no other members.
+
+Because `if` is also a legal child key, an `if = { ... }` key/value entry is
+always the conditional selector, while a table header such as
+`[types.example.if]` is always a child definition named `if`. Consequently the
+condition MUST use inline-table syntax and can never be written as
+`[types.example.if]`. A definition that needs a target child named `if` writes
+that child through the `children` namespace, as described under
+[Quoted and Special Keys](#quoted-and-special-keys). A conditional definition
+has no nested child definitions of its own, so the two spellings never compete
+within one conditional definition, but a loader still MUST NOT infer the
+selector from a table-form `if`.
+
+- `key` MUST be a string naming one direct child key of the parsed table being
+  validated. It is a decoded TOML key, not a dotted document path, and it does
+  not have to name a schema-declared child, because a conditional definition has
+  no nested child definitions of its own. An empty or literal dotted key is
+  permitted.
+- `equals` accepts one TOML value. The condition succeeds when the child exists
+  and is equal to that value according to [Parsed Value Equality](#parsed-value-equality).
+- `in` MUST be a non-empty array. The condition succeeds when the child exists
+  and is equal to at least one array entry according to Parsed Value Equality.
+
+If the named child is absent, the condition is false. A validator MUST apply
+only the selected branch: `then` when the condition is true and `else` when it
+is false. The condition itself emits no document-validation diagnostic.
+Validation diagnostics and deprecation annotations come only from the selected
+branch. A branch default does not become the conditional slot's effective
+default; for a present value, an implementation MAY surface the selected
+branch's default as a hint.
+
+The condition reads a direct child of a parsed table. When the document value at
+a conditional node is not a table — a scalar, an array, or an array of tables —
+no direct child can be read, so the condition cannot be satisfied and is false,
+exactly as it is for an absent child. `else` is therefore the selected branch.
+Because both branches MUST resolve to the same table-like effective type, that
+value cannot validate against either branch, and the node is invalid. A
+validator MUST report this as a kind mismatch against the common branch kind at
+the node's location, using the `type-mismatch` code defined under
+[Validation Codes](#validation-codes), and MUST NOT report the branch's internal
+`missing-required` or `unknown-key` diagnostics for a value that is not a table
+at all. It MUST NOT report a diagnostic describing the condition, which never
+fails on its own.
+
+Consequently, a `default` on a conditional definition MUST be a table. A
+non-table default cannot satisfy either branch, so a schema loader MUST reject
+it at schema-load time under the default-validation rule stated below.
+
+Like a union, the conditional triple contributes nothing to the
+[determinate fixed-child set](#determinate-fixed-child-set) of the node it
+selects. The selected branch's fixed children join the node's
+[effective closure set](#effective-closure-set) at validation time, so the keys
+the matched branch declares are known keys of that node, while keys declared
+only by the branch that was not selected are not.
+
+`then` and `else` MUST each be a string naming a reusable definition in
+`[types]`, and both definitions MUST resolve
+to the same effective type, which MUST be `table` or `collection`, as
+[Type Reference Restrictions](#type-reference-restrictions) states.
+Schema loaders MUST reject unresolved branches, different branch kinds,
+branches that do not resolve to a table-like kind, and cycles through
+conditional branches.
+
+The conditional triple is one of the four selectors a definition declares at
+most one of, as [Selectors](#selectors) requires. A conditional
+definition MAY additionally declare only `allof`,
+`description`, `optional`, `default`, and `deprecated`; it MUST NOT contain
+kind-specific validation properties or nested child definitions. An `allof`
+component MUST be compatible with the common branch kind and is applied
+conjunctively with whichever branch is selected.
+
+Optionality belongs to the conditional definition, as
+[Optionality](#optionality---optional) defines. A default on the conditional
+definition MUST validate against the branch selected by that default at
+schema-load time.
+
+Example with a multi-value condition:
+
+```toml
+[types.database]
+if = { key = "engine", in = [ "postgresql", "mysql" ] }
+then = "types.serverDatabase"
+else = "types.embeddedDatabase"
+```
+
+Additional alternatives can be expressed by referencing another conditional
+definition from `then` or `else`.
+
+##### The Discriminator Key and Closed Branches
+
+The key named by `if.key` is ordinary application data. It is read to select a
+branch, and it is then validated by the selected branch like any other key. A
+conditional definition contributes no fixed children of its own, so nothing
+declares the discriminator on the node's behalf.
+
+A branch that declares fixed children is closed against exactly those children,
+as [Effective Closure Set](#effective-closure-set) defines. If such a branch
+omits the discriminator, the key the condition just read is not in the node's
+effective closure set and a validator MUST report it as an unknown key, so the
+conditional can never accept a document. Every closed branch MUST therefore
+declare the discriminator itself.
+
+Schema loaders MUST reject a conditional definition when a branch has a
+non-empty [determinate fixed-child set](#determinate-fixed-child-set) that does
+not contain the key named by `if.key`. That set is computed at schema-load time,
+so this check catches the common authoring mistake without resolving
+document-dependent shapes. A branch whose fixed children are contributed only by
+a nested union or conditional has an empty determinate set, and a loader cannot
+decide the question for it; the same unknown-key rule still applies at
+validation time, and authors remain responsible for declaring the discriminator
+in every shape a branch can take.
+
+Two branch shapes need no declaration and are not rejected: a branch that is an
+open table, whose effective closure set is empty and which therefore accepts the
+discriminator as arbitrary data, and a branch that is a `collection`, whose
+dynamic-entry rules accept the discriminator when its `keypattern` and
+`itemtype` permit it.
+
+The `else` branch is subject to the same rule as `then`. An `else` branch is
+selected both when the discriminator holds a different value and when it is
+absent, so a closed `else` branch typically declares the discriminator with
+`optional = true`, with `allowedvalues` excluding the value that selects `then`,
+or with both. In the example above, `types.serverDatabase` declares `engine`
+with `allowedvalues = [ "postgresql", "mysql" ]`, which both admits the key and
+rejects a value that should have selected the other branch.
+
+### Annotations
+
+`description`, `default`, and `deprecated` are **annotations**. Unlike the
+assertions defined below, an annotation never decides validity: it cannot make a
+document valid or invalid, and removing every annotation from a schema leaves
+the set of documents that schema accepts unchanged. The sections below define
+each annotation; this section defines what they attach to and how one effective
+value is obtained when a definition is reached indirectly.
+
+**Attachment.** An annotation attaches to the document node being validated —
+identified by its [instance path](#instance-path) — not to the schema definition
+that carries it. The same definition applied at several nodes annotates each node
+separately, and a definition applied to no node annotates nothing. Consequences:
+
+- A definition used as an array `itemtype` annotates every present item node, not
+  the array. A deprecated `itemtype` applied to an array of one hundred items
+  therefore produces one hundred warnings, one per item node, and never a single
+  warning for the array.
+- A definition used as a `collection` `itemtype` annotates every present
+  dynamically keyed entry, once per entry.
+- A definition reached through `items` annotates the one indexed node it
+  validates.
+- An absent optional slot holds no node, so it carries no annotation and produces
+  no deprecation warning.
+
+Every annotation-derived diagnostic therefore carries the instance path of the
+node it annotates. The severity and code of such a diagnostic are assigned by
+[Diagnostics](#diagnostics); this section defines only what annotations attach
+to.
+
+**Effective annotation.** For one document location, the participants that may
+carry an annotation are the use site, each definition along that use site's
+`type` reference chain, each `allof` component of the effective definition, the
+`oneof` or `anyof` alternative that succeeded, and the conditional branch that
+was selected. The general precedence is:
+
+1. an annotation declared at the use site takes precedence over the same
+   annotation obtained through that use site's `type` reference chain, and
+   within the chain the nearest declaration takes precedence over a more distant
+   one;
+2. `allof` components, union alternatives, and conditional branches contribute
+   annotations for the location they help validate, but never override an
+   annotation the use site or its reference chain already supplies.
+
+`deprecated` is an exception to point 2 and does not follow the general
+precedence: it combines disjunctively rather than resolving to a single
+declaration, so a contributing `deprecated = true` deprecates the location even
+when the use site declares `deprecated = false`. [Deprecation](#deprecation---deprecated) is
+authoritative for it. The general precedence governs `description` and any
+future annotation that resolves to at most one value.
+
+Each annotation then resolves its own contributions as follows.
+
+`description` follows the general precedence and resolves to at most one value.
+A use-site `description` overrides the one carried by the definition it
+references, and the nearest description along a reference chain overrides a more
+distant one; the use site is the more specific statement about that location, so
+it wins. Descriptions carried by `allof` components, by the successful union
+alternative, and by the selected conditional branch never replace that value.
+Where a single description is required — an editor hover, for instance — the
+effective description is the use-site or reference-chain value if one exists,
+and otherwise nothing. An implementation MAY additionally expose the
+contributed descriptions as documentation, in a stable order: `allof`
+components in declaration order, then the successful alternative or selected
+branch. It MUST NOT merge or concatenate contributions into a value it presents
+as a single authored description, and it MUST NOT reject a schema because two
+participants carry different descriptions.
+
+`default` does not follow this general precedence alone, because it is
+machine-readable and must resolve to exactly one value. Its precedence and
+conflict rules, including the `allof` and union rules, are defined under
+[Default](#default---default) and are authoritative.
+
+`deprecated` is a per-node warning. It fires once for each present document node
+whose effective definition is deprecated, and duplicate warnings contributed by
+more than one successful path are deduplicated as
+[Diagnostics](#diagnostics) requires. It fires per node and never per definition,
+so the count follows the attachment rules above. Deprecation is not inherited
+downward: a deprecated parent produces one warning at the parent's instance path,
+and a descendant produces a warning only when its own effective definition is
+deprecated. When a union or conditional definition is itself deprecated, that
+warning is reported at the node's own instance path in addition to any warning
+contributed by the successful alternative or selected branch, and the two are
+distinct instance paths only when the alternative or branch annotates a
+descendant.
+
+#### Description - `description`
+
+`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation. Its precedence when a definition is reached through a reference, composition, an alternative, or a conditional branch is defined under [Annotations](#annotations).
+
+```toml
+[types.game]
+type = "table"
+description = "A game object."
+
+    [types.game.id]
+    type = "string"
+    description = "Unique identifier for the game."
+
+[elements.game]
+type = "array"
+description = "A list of games."
+itemtype = "types.game"
+```
+
+#### Default - `default`
+
+`default` is a machine-readable annotation containing any TOML value. Like the
+other annotations, it attaches to the document node a definition validates, and
+to the slot that node occupies, as described under [Annotations](#annotations);
+unlike them, it MUST resolve to exactly one value, and the rules below are
+authoritative for that resolution.
+
+Because `default` is also a legal child key, a `default = <value>` key/value
+entry is always the annotation, while a table header such as
+`[elements.options.default]` is always a child definition named `default`.
+Consequently, a table-valued default MUST use inline-table syntax, for example
+`default = { min = 1, max = 10 }`. A definition that needs both the annotation
+and a child named `default` writes the child through the `children` namespace,
+as described under [Quoted and Special Keys](#quoted-and-special-keys).
+
+A default is not a validation assertion and never changes the document being
+validated. It does not insert a missing value, satisfy a required definition,
+or change the parsed TOML data returned by an implementation. Tools MAY expose
+it as a suggestion or effective-configuration hint through schema metadata.
+Version 1.0 does not define an operation that materializes defaults.
+
+Despite being an annotation, a declared default MUST validate as a present
+value against the full effective definition at schema-load time. Default
+validation applies all references, composition, alternatives, fixed children,
+sibling rules, and ordinary constraints, but does not emit a deprecation
+warning. A loader MUST reject an incompatible default. This is one of the
+schema-load checks that read the effective rather than the local view, as
+[Local and Effective Checks](#local-and-effective-checks) records.
+
+A default declared directly at a use site takes precedence over one inherited
+through its `type` reference. Without a use-site default, the referenced
+default is inherited. Defaults contributed by `allof` components are compared using
+[Parsed Value Equality](#parsed-value-equality). Equal defaults are
+deduplicated. If components contribute unequal defaults and the local
+definition has no default, the schema is malformed because it has no single
+effective default. A valid local default resolves that annotation conflict and
+must still satisfy every component.
+
+Alternative selectors do not contribute to a slot's effective default. The
+effective default of a slot whose selector resolves to `oneof` or `anyof` is
+determined only by a use-site `default`, a default inherited through the named
+`type` reference chain that resolves to the union, and defaults composed
+through `allof`, using the precedence and conflict rules above. A `default`
+declared on an individual alternative is never aggregated into the union's
+effective default and never causes a schema-load conflict, even when several
+`anyof` alternatives declare unequal defaults. A loader MUST NOT reject a
+schema solely because two alternatives declare defaults, equal or unequal.
+Resolving effective defaults therefore never requires deciding whether two
+alternatives can match the same value.
+
+When a union slot is absent, only this effective default applies; if none
+exists, the slot has no default. When the slot value is present, `default` does
+not change it, so alternative defaults surfaced under the successful-alternative
+rule are informational hints. An implementation MAY expose the default of each
+successful alternative, deduplicated by
+[Parsed Value Equality](#parsed-value-equality), but MUST NOT treat multiple
+present-value alternative defaults as an error.
 
 Example:
+
 ```toml
-[types.colorType]
-type="string"
-allowedvalues=[ "red", "black", "blue" ]
+[elements.retries]
+type = "integer"
+optional = true
+default = 3
 ```
+
+#### Deprecation - `deprecated`
+
+`deprecated` is a boolean annotation. When `true`, it advises that the present
+value at that schema location should no longer be used and may be removed in a
+future version.
+
+Deprecation never makes a document invalid. A successfully validated present
+value produces a warning diagnostic with the code `deprecated`; an absent
+optional value produces no warning. A deprecated parent produces one warning at
+the parent's instance path rather than one warning for every descendant. The
+instance path a deprecation warning is reported at, and how many warnings a
+deprecated array `itemtype` or collection `itemtype` produces, follow the
+attachment rules under [Annotations](#annotations). Whether a node counts as
+successfully validated for this purpose is decided by the annotation step of
+[Keyword Evaluation Order](#keyword-evaluation-order).
+
+Deprecation propagates through named references. Across `allof`, any
+contributing `deprecated = true` deprecates the location, and a local
+`deprecated = false` cannot cancel it. Which warning a definition contributes
+when it is reached through an alternative or a conditional branch is defined
+under [Annotations](#annotations). A non-boolean `deprecated`
+value is a schema-load error. Authors SHOULD use `description` for migration or
+replacement guidance.
+
+Example:
+
+```toml
+[elements.legacy-timeout]
+type = "integer"
+deprecated = true
+description = "Use request-timeout instead."
+optional = true
+```
+
+### Constraints
+
+#### Optionality - `optional`
+
+A definition may be marked optional in the schema. By default, `optional` is
+`false`, and the structure is required.
+
+Validators MUST skip a definition only when it is optional and the corresponding
+value does not exist in the TOML document. In every other case, the validator
+MUST validate the value against the definition.
+
+This section is the single authority for how `optional` interacts with
+references, composition, alternatives, and conditional branches.
+
+For a named `type` reference, optionality is inherited: the referencing slot is
+optional if either the use site or any definition in the reference chain
+declares `optional = true`. An explicit `optional = false` cannot cancel an
+inherited `true`. In contrast, `optional` on the local definition determines
+whether a composed node may be absent, and `optional` values contributed only
+through `allof` components do not affect presence; such a value has meaning only
+when that component is referenced normally with `type`. The presence of a
+`oneof` or `anyof` slot is governed only by `optional` on the union definition
+or inherited through a named `type` reference to that union. `optional`
+declared inside an alternative does not make the union slot optional because
+no alternative is selected when the slot is absent. Optionality likewise belongs
+to a conditional definition rather than to its branches: an `optional`
+annotation inside a `then` or `else` branch does not make the conditional slot
+optional, because no branch is selected when the slot is absent.
+
+#### Minimum Value / Maximum Value - `min` and `max`
+
+These properties define inclusive value ranges. The **comparable kinds** are:
+
+ - `float`
+ - `integer`
+ - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
+
+`min` and `max` MAY be declared only on a definition whose type resolves to
+exactly one comparable kind, and on an `array` or a `collection` whose members
+do, as the per-member reading below describes.
+
+A `min` or `max` boundary MUST be a TOML value that is comparable with the effective type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
+
+`nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries, but they are not valid boundaries on a definition whose comparable kind is `integer`; an infinite boundary has no integer counterpart and constrains no integer value, so schema loaders MUST reject it there at schema-load time.
+
+Date/time boundaries compare only against values of the same TOML temporal type. For example, an `offset-date-time` boundary applies to `offset-date-time` values, not to `local-date-time` values.
+
+Numeric ranges use mathematical ordering after TOML parsing. Integer-to-integer
+ordering MUST remain exact across the full signed 64-bit range. Mixed
+integer/float ordering MUST compare the exact integer with the parsed binary
+floating-point value without first rounding the integer to that floating-point
+format. Positive and negative zero have the same position. A document NaN is
+unordered and never satisfies a range constraint.
+
+Offset date-times are ordered by the instant they identify after applying their
+offset; representations of the same instant compare equal even when their local
+fields and offsets differ. Local date-times, local dates, and local times are
+ordered lexicographically by their parsed fields, from the largest component to
+the smallest, including fractional seconds. No timezone or daylight-saving
+conversion is applied to a local temporal value.
+
+When both `min` and `max` are present, `min` MUST be less than or equal to `max`
+under the same ordering this section defines for validation: mathematical
+ordering for numeric boundaries, instant ordering for `offset-date-time`
+boundaries, and parsed-field ordering for `local-date-time`, `local-date`, and
+`local-time` boundaries. A schema violating that rule is malformed and schema
+loaders MUST reject it at schema-load time. The comparison is always defined
+because the unordered boundary values excluded above are not valid boundaries in
+the first place.
+
+On an `array` or a `collection`, `min` and `max` are
+[per-member constraints](#per-member-value-constraints) and apply to each item
+or each dynamic entry. That section is authoritative for the per-member reading,
+for how the member type is resolved through `itemtype` and through the
+alternatives of a referenced `oneof` or `anyof`, and for the schema-load
+rejection of a member type that is indeterminate or of the wrong kind. The
+interaction between array range
+boundaries and `allowedvalues` is defined under
+[Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
+
+#### Length - `minlength` and `maxlength`
+
+These properties MUST be used only to define the allowed length of a `string`,
+an `array`, or a `collection`.
+
+`minlength` and `maxlength` are valid only on definitions whose selected type is
+the built-in `string`, `array`, or `collection`. They cannot be attached to
+another built-in type, an alternative selector, or a named type reference, as
+[Schema Definition Properties](#schema-definition-properties) requires.
+Schema loaders MUST reject an incompatible length constraint at schema-load time rather
+than silently ignoring it.
+
+Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present, `minlength` MUST be less than or equal to `maxlength`. A schema violating either rule is malformed and schema loaders MUST reject it at schema-load time.
+
+For `string` values, length is counted as the number of Unicode scalar values after TOML parsing and escape processing. It is not the number of UTF-8 bytes, UTF-16 code units, or user-perceived grapheme clusters. For example, `"\U0001F600"` has length 1, while `"e\u0301"` has length 2 because it is composed of two Unicode scalar values.
+
+For an `array`, length is its number of items. For a `collection`, length is
+the number of dynamic entries to which `itemtype` applies; fixed child
+definitions are excluded from the count.
+
+On an `array` or a `collection` these two properties always bound the
+container's own member count. They are deliberately excluded from the
+[per-member value-constraint subset](#per-member-value-constraints), which
+explains why, and a per-member length bound is written on the definition the
+container's `itemtype` reaches.
+
+#### Pattern - `pattern`
+
+`pattern` constrains a parsed TOML string with a regular expression.
+
+`pattern` is valid on a definition whose selected type is the built-in
+`string`, and, as a [per-member constraint](#per-member-value-constraints), on a
+non-tuple `array` or `collection` whose effective member type is the built-in
+`string`. It cannot be attached to another built-in type, an alternative
+selector, or a named type reference, as
+[Schema Definition Properties](#schema-definition-properties) requires. Schema
+loaders MUST reject an incompatible
+`pattern` at schema-load time rather than silently ignoring it. On a
+`collection`, `pattern` constrains dynamic entry values while
+[`keypattern`](#key-pattern---keypattern) constrains their keys.
+
+The portable TOML Schema regular-expression profile consists of literals,
+escaped metacharacters, the character escapes `\t`, `\n`, `\r`, `\f`, `\v`, and
+`\a`, `.`, character classes and ranges, negated character
+classes, concatenation, alternation, capturing and non-capturing groups, the
+anchors `^` and `$`, and the greedy quantifiers `?`, `*`, `+`, `{n}`, `{n,}`,
+and `{n,m}`. These constructs use the syntax documented by the
+[RE2 syntax reference](https://github.com/google/re2/wiki/Syntax). Implementations MUST
+support this profile.
+
+The listed character escapes are portable because each denotes one fixed control
+character, so no engine can disagree about what it matches. They are portable
+both standalone and inside a character class, so `[ \t]` is a portable pattern.
+
+Character-class shorthands such as `\d`, `\s`, and `\w` are outside the
+portable profile because regular-expression engines disagree about whether
+they use ASCII or Unicode membership. Write the intended set explicitly instead:
+`[0-9]` rather than `\d`. Unicode property classes such as
+`\p{L}`, inline flag groups such as `(?i)`, backreferences, look-around
+assertions, atomic groups, conditionals, recursion, and the non-greedy and
+possessive quantifier forms such as `*?` and `*+` are also outside the
+portable profile.
+
+**Patterns are compiled at schema-load time.** A schema loader MUST compile
+every `pattern` value when it loads the schema, whether or not any document
+exercises it. A pattern that does not compile — `"["`, `"{2,1}"`, or a trailing
+backslash, for example — makes the schema malformed, and the loader MUST reject
+it at schema-load time with the `invalid-pattern` code. An implementation MUST
+NOT defer a compilation failure to match time, MUST NOT treat an uncompilable
+pattern as a failed match, and MUST NOT treat it as a satisfied constraint.
+
+A construct outside the portable profile is likewise a schema-load error,
+reported with the `unsupported-pattern` code. A loader operating in its
+conformant TOML Schema 1.0 mode MUST reject a `pattern`
+that uses one, even when the underlying engine could compile it. An
+implementation MAY offer an additional, explicitly named and documented extended
+pattern profile that accepts further constructs, but that profile MUST NOT be
+the default, and a schema accepted only under it is not a TOML Schema 1.0
+schema. Portability is the whole purpose of naming a profile: if a
+non-portable construct were merely discouraged, the same schema would be a
+load error on one implementation, an ASCII-only match on a second, and a
+Unicode match on a third, which is precisely the interoperability split the
+profile exists to prevent. Conformance suites MUST use only the portable
+profile. The engine an implementation matches these expressions with, and the
+resource limits it applies to compilation and matching, are additionally
+constrained by
+[Regular-Expression Safety](#regular-expression-safety).
+
+**Unicode semantics.** A pattern is compiled from, and matched against, the
+decoded parsed string: a sequence of Unicode scalar values. The TOML parser has
+already applied string escapes such as `\u00E9`, so a loader never sees TOML
+escape syntax in a pattern. Matching operates on Unicode scalar values, never on
+UTF-8 bytes, UTF-16 code units, or grapheme clusters, and the count semantics of
+`{n,m}` follow that same unit. `.` matches exactly one scalar value other than
+a line feed. A character class matches one scalar value from its members, and a
+range such as `[a-z]` or `[À-Ö]` is an inclusive range over Unicode code
+points; a range whose start code point is greater than its end code point does
+not compile and is therefore a schema-load error. A negated class matches any
+scalar value not listed, including a line feed.
+
+Matching is case-sensitive and applies no case folding. No Unicode
+normalization is applied to the pattern or to the subject before matching:
+both are compared as the exact decoded scalar sequences the TOML parser
+produced, consistent with the string rule under
+[Parsed Value Equality](#parsed-value-equality). Two strings that are
+canonically equivalent but differently composed are therefore distinct
+subjects, and an implementation MUST NOT normalize either operand.
+
+The pattern is not implicitly anchored. A value validates if the regular
+expression matches anywhere in the string. Authors who require a full-string
+match MUST anchor the expression with `^` and `$`.
+
+Patterns are evaluated without multiline or dot-all modes. `^` matches only
+the start of the complete parsed string, `$` matches only its end (not a
+position before a final line feed), and `.` does not match a line feed. These
+rules also apply when an implementation uses a regular-expression engine with
+different defaults.
 
 #### String Format - `format`
 
@@ -1163,82 +1874,322 @@ type = "string"
 format = "uuid"
 ```
 
-### Minimum Value / Maximum Value - `min` and `max`
+#### Allowed Values - `allowedvalues`
 
-These properties define inclusive value ranges. The **comparable kinds** are:
+`allowedvalues` provides an enumeration for a scalar or unconstrained built-in
+type. On an `array` or a `collection` it is instead a
+[per-member constraint](#per-member-value-constraints) and enumerates the values
+permitted for each item or each dynamic entry, as also described
+under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
+It is invalid on a `table`.
 
- - `float`
- - `integer`
- - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
+The `allowedvalues` array MUST contain at least one entry. Every entry on a
+definition that is neither an `array` nor a `collection` MUST have the TOML kind
+selected by that definition;
+`type = "any"` is the exception and permits entries of any TOML kind. Numeric
+equality between integers and floats does not make their TOML kinds
+interchangeable for this schema-load check. A malformed enumeration MUST be
+rejected at schema-load time.
 
-`min` and `max` MAY be declared only on a definition whose type resolves to
-exactly one comparable kind, and on an `array` or a `collection` whose members
-do, as the per-member reading below describes.
+For a definition that is neither an `array` nor a `collection`, when
+`allowedvalues` is combined with `pattern`, `format`,
+`min`, `max`, `minlength`, or `maxlength` on the same definition, every entry in
+`allowedvalues` MUST satisfy every applicable constraint. A schema containing an
+entry that violates one of those constraints is malformed, and schema loaders
+MUST reject it at schema-load time. This is a consistency check on the
+enumeration itself; it describes nothing about how a document value is
+validated. For offset date-times, this boundary check uses instant
+ordering even though subsequent `allowedvalues` membership uses parsed-value
+equality; equivalent instants with different retained local fields or offsets
+therefore compare equal for a boundary but remain distinct enumeration values.
 
-A `min` or `max` boundary MUST be a TOML value that is comparable with the effective type: `integer` or `float` boundaries for `integer` and `float` values, and matching temporal boundaries for temporal values.
+After a schema with `allowedvalues` has been loaded successfully, each document
+value governed by that definition — each item or dynamic-entry value, for an
+`array` or `collection` definition —
+is evaluated in the following order:
 
-`nan`, `+nan`, and `-nan` are not valid `min` or `max` boundaries because NaN is unordered. `inf`, `+inf`, and `-inf` are valid float boundaries, but they are not valid boundaries on a definition whose comparable kind is `integer`; an infinite boundary has no integer counterpart and constrains no integer value, so schema loaders MUST reject it there at schema-load time.
+1. The value's parsed TOML kind MUST be the kind the definition selects for it,
+   through `type` or, for container members, through `itemtype`. A kind mismatch
+   is a
+   validation error regardless of `allowedvalues`, and membership in the
+   enumeration never satisfies the type check. For example, a definition with
+   `type = "integer"` and `allowedvalues = [ 80, 443 ]` rejects the document
+   value `80.0` even though [Parsed Value Equality](#parsed-value-equality)
+   makes `80.0` equal to `80`. The unconstrained `any` selects no kind and
+   imposes no such restriction.
+2. Every other assertion that applies to the value is evaluated, including the
+   assertions declared on the definition itself and those contributed by `allof`
+   components. Validators MUST NOT skip an assertion on the grounds that the
+   enumeration was already checked while loading the schema: that schema-load
+   check covers only the definition's own constraints listed above, and a
+   composed constraint does not participate in it.
+3. The value MUST be a member of `allowedvalues` according to
+   [Parsed Value Equality](#parsed-value-equality).
 
-Date/time boundaries compare only against values of the same TOML temporal type. For example, an `offset-date-time` boundary applies to `offset-date-time` values, not to `local-date-time` values.
+The value is valid for that definition only when all three steps succeed.
 
-Numeric ranges use mathematical ordering after TOML parsing. Integer-to-integer
-ordering MUST remain exact across the full signed 64-bit range. Mixed
-integer/float ordering MUST compare the exact integer with the parsed binary
-floating-point value without first rounding the integer to that floating-point
-format. Positive and negative zero have the same position. A document NaN is
-unordered and never satisfies a range constraint.
+Example:
+```toml
+[types.colorType]
+type="string"
+allowedvalues=[ "red", "black", "blue" ]
+```
 
-Offset date-times are ordered by the instant they identify after applying their
-offset; representations of the same instant compare equal even when their local
-fields and offsets differ. Local date-times, local dates, and local times are
-ordered lexicographically by their parsed fields, from the largest component to
-the smallest, including fractional seconds. No timezone or daylight-saving
-conversion is applied to a local temporal value.
+#### Array Uniqueness - `uniqueitems`
 
-When both `min` and `max` are present, `min` MUST be less than or equal to `max`
-under the same ordering this section defines for validation: mathematical
-ordering for numeric boundaries, instant ordering for `offset-date-time`
-boundaries, and parsed-field ordering for `local-date-time`, `local-date`, and
-`local-time` boundaries. A schema violating that rule is malformed and schema
-loaders MUST reject it at schema-load time. The comparison is always defined
-because the unordered boundary values excluded above are not valid boundaries in
-the first place.
+`uniqueitems` is a boolean property valid only on a definition whose selected
+type is the built-in `array`. When it is `true`, no two items in the document
+array may be equal. When it is `false` or absent, the schema imposes no
+uniqueness condition. It applies to homogeneous arrays, tuple arrays, and
+arrays whose item type is otherwise unconstrained.
 
-On an `array` or a `collection`, `min` and `max` are
-[per-member constraints](#per-member-value-constraints) and apply to each item
-or each dynamic entry. That section is authoritative for the per-member reading,
-for how the member type is resolved through `itemtype` and through the
-alternatives of a referenced `oneof` or `anyof`, and for the schema-load
-rejection of a member type that is indeterminate or of the wrong kind. The
-interaction between array range
-boundaries and `allowedvalues` is defined under
-[Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
+Items are compared using
+[Parsed Value Equality](#parsed-value-equality), recursively for arrays and
+tables.
 
-### Length - `minlength` and `maxlength`
+Uniqueness compares complete item values. Version 1.0 does not define a
+field-selecting operation such as `uniqueBy`; two tables that share an `id` but
+differ elsewhere remain distinct. A schema loader MUST reject a non-boolean
+`uniqueitems` value or its use on a non-array definition.
 
-These properties MUST be used only to define the allowed length of a `string`,
-an `array`, or a `collection`.
+#### Per-Member Value Constraints
 
-`minlength` and `maxlength` are valid only on definitions whose selected type is
-the built-in `string`, `array`, or `collection`. They cannot be attached to
-another built-in type, an alternative selector, or a named type reference, as
-[Schema Definition Properties](#schema-definition-properties) requires.
-Schema loaders MUST reject an incompatible length constraint at schema-load time rather
-than silently ignoring it.
+Five value constraints form the **per-member value-constraint subset**:
+`allowedvalues`, `min`, `max`, `pattern`, and `format`. Any of them MAY be
+declared directly on a definition that selects the built-in `type = "array"` or
+the built-in `type = "collection"`. Declared there, a constraint does not
+describe the container. It applies to **each item** of the array and to **each
+dynamically keyed entry** of the collection. The subset is identical for the two
+containers, because an array item and a collection entry are the same thing: one
+member value that the container's `itemtype` governs.
 
-Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present, `minlength` MUST be less than or equal to `maxlength`. A schema violating either rule is malformed and schema loaders MUST reject it at schema-load time.
+Declaring a per-member constraint inline is exactly equivalent to declaring that
+same constraint on the member definition the container's `itemtype` reaches. The
+two spellings MUST validate identically, and authors MAY choose either. Inline
+is the shorter spelling for a container whose members need one or two
+constraints; a named `itemtype` definition is the reusable one.
 
-For `string` values, length is counted as the number of Unicode scalar values after TOML parsing and escape processing. It is not the number of UTF-8 bytes, UTF-16 code units, or user-perceived grapheme clusters. For example, `"\U0001F600"` has length 1, while `"e\u0301"` has length 2 because it is composed of two Unicode scalar values.
+```toml
+[elements.ports]
+type = "array"
+itemtype = "integer"
+min = 1
+max = 65535
 
-For an `array`, length is its number of items. For a `collection`, length is
-the number of dynamic entries to which `itemtype` applies; fixed child
-definitions are excluded from the count.
+[elements.hosts]
+type = "collection"
+itemtype = "string"
+format = "hostname"
+keypattern = "^[a-z][a-z0-9-]*$"
+```
 
-On an `array` or a `collection` these two properties always bound the
-container's own member count. They are deliberately excluded from the
-[per-member value-constraint subset](#per-member-value-constraints), which
-explains why, and a per-member length bound is written on the definition the
-container's `itemtype` reaches.
+On a `collection`, `pattern` constrains each dynamic entry's **value** while
+`keypattern` constrains each dynamic entry's **key**. The two are independent,
+apply to different subjects, and MAY be combined on the same definition.
+
+Because the two spellings are equivalent, declaring the **same** constraint both
+inline and on the resolved `itemtype` definition is a schema-load error, and
+schema loaders MUST reject it with `exclusive-properties`. This specification
+defines no precedence between them and needs none: a schema that would say the
+same thing twice says it once instead. Different constraints MAY be split across
+the two spellings and then apply conjunctively. The check compares the inline
+constraint against the constraint the resolved `itemtype` definition declares
+itself; a constraint that definition acquires from its own `allof` is not part
+of the check and merges conjunctively as
+[Merging by TOML Kind](#merging-by-toml-kind) requires.
+
+A per-member constraint obeys the same applicability rule its own section
+states, applied to the **member** type rather than to the container:
+
+- `pattern` and `format` require the effective member type to be the built-in
+  `string`, as [Pattern](#pattern---pattern) and
+  [String Format](#string-format---format) require of a string constraint.
+- `min` and `max` require the effective member type to resolve to exactly one
+  comparable kind, as
+  [Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max)
+  requires.
+- every `allowedvalues` entry MUST have a TOML kind the effective member type
+  permits, as [Allowed Values](#allowed-values---allowedvalues) requires.
+
+The member type is the one the container's `itemtype` selects, resolved through
+named references and through the alternatives of a referenced `oneof` or
+`anyof`, which MUST all resolve to the same kind. When a container declares no
+`itemtype`, its members are unconstrained `any`: `allowedvalues` still applies
+and enumerates values of any TOML kind, while `min`, `max`, `pattern`, and
+`format` have no determinate member kind to apply to. Schema loaders MUST reject
+a per-member constraint whose member type is indeterminate or of the wrong kind
+at schema-load time.
+
+`items` is mutually exclusive with the whole subset. A tuple position is
+described by the reusable definition named at that position, so a constraint
+that would apply uniformly to every member has no meaning beside a positional
+definition.
+
+**`minlength` and `maxlength` are deliberately not in the subset.** On an
+`array` or a `collection` those two spellings are already taken: they constrain
+the **container**, bounding an array's item count and a collection's
+dynamic-entry count, as [Length](#length---minlength-and-maxlength) defines.
+That meaning is unchanged. One spelling cannot mean both "this container holds
+at least two members" and "each member is a string of at least two characters",
+and reinterpreting it per member on a container whose members happen to be
+strings would make the same keyword mean different things in two schemas that
+differ only in their `itemtype`. Per-member string length is therefore expressed
+through `itemtype`:
+
+```toml
+[types.shortName]
+type = "string"
+minlength = 1
+maxlength = 32
+
+[elements.tags]
+type = "array"
+itemtype = "types.shortName"
+minlength = 1
+```
+
+Here `minlength = 1` on `elements.tags` requires at least one tag, while the
+bounds inside `types.shortName` govern each tag's length in characters. This is
+the one exception to the symmetry above, and it exists because the spelling is
+occupied, not because container members are otherwise privileged.
+
+#### Sibling Presence Rules
+
+Version 1.0 defines three presence-only rules for direct fixed children of an
+effective `table` or `collection`. They inspect parsed key presence, never a
+child's value, and never follow a dotted string as a document path.
+
+##### Dependencies - `dependentrequired`
+
+`dependentrequired` is a non-empty inline table. Each member maps one trigger
+child name to a non-empty array of unique child names. When the trigger is
+present, every listed child MUST also be present.
+
+Because `dependentrequired` is also a legal child key, a
+`dependentrequired = { ... }` key/value entry is always the sibling rule, while
+a table header such as `[types.example.dependentrequired]` is always a child
+definition named `dependentrequired`. A definition that needs both the rule and
+a child of that name writes the child through the `children` namespace, as
+described under [Quoted and Special Keys](#quoted-and-special-keys).
+
+Dependencies are directional. If `a` requires `b`, the presence of `b` does not
+require `a` unless a reverse mapping is declared. Every triggered mapping is
+evaluated, so dependencies may apply transitively.
+
+Example:
+
+```toml
+[types.dependency]
+type = "table"
+dependentrequired = { branch = [ "git" ], tag = [ "git" ], rev = [ "git" ] }
+
+    [types.dependency.git]
+    type = "string"
+    optional = true
+
+    [types.dependency.branch]
+    type = "string"
+    optional = true
+
+    [types.dependency.tag]
+    type = "string"
+    optional = true
+
+    [types.dependency.rev]
+    type = "string"
+    optional = true
+```
+
+##### Mutual Exclusion - `mutuallyexclusive`
+
+`mutuallyexclusive` is a non-empty array of groups. Each group is an array of
+at least two unique child-name strings. At most one member of each group MAY be
+present.
+
+Zero or one present member satisfies a group.
+
+Example:
+
+```toml
+[types.source]
+type = "table"
+mutuallyexclusive = [ [ "git", "path" ], [ "branch", "tag", "rev" ] ]
+
+    [types.source.git]
+    type = "string"
+    optional = true
+
+    [types.source.path]
+    type = "string"
+    optional = true
+
+    [types.source.branch]
+    type = "string"
+    optional = true
+
+    [types.source.tag]
+    type = "string"
+    optional = true
+
+    [types.source.rev]
+    type = "string"
+    optional = true
+```
+
+##### Exactly One - `exactlyone`
+
+`exactlyone` has the same shape as `mutuallyexclusive`, but exactly one member
+of every group MUST be present.
+
+This allows every group member to remain individually `optional = true` while
+the group still requires one choice.
+
+Example:
+
+```toml
+[types.readmeTable]
+type = "table"
+exactlyone = [ [ "file", "text" ] ]
+
+    [types.readmeTable.file]
+    type = "string"
+    optional = true
+
+    [types.readmeTable.text]
+    type = "string"
+    optional = true
+```
+
+Every name in these three properties MUST identify a direct fixed child in the
+[determinate fixed-child set](#determinate-fixed-child-set) of the definition
+after `allof` composition. Operand resolution and the `table`-or-`collection`
+applicability of these rules are therefore effective rather than local checks,
+as [Local and Effective Checks](#local-and-effective-checks) records. Operands
+are resolved when the schema is loaded, so
+they MUST NOT be resolved against the validation-time
+[effective closure set](#effective-closure-set); only the presence check itself
+happens while a document is validated. A quoted string containing a
+dot identifies a literal dotted child key, and a child written through the
+`children` namespace is named by its target key rather than by the literal
+string `children`. Dynamic collection keys are not fixed children and cannot be
+operands, while a collection's explicitly defined children participate normally.
+
+Because a `oneof` or `anyof` selector and a conditional selector contribute
+nothing to the determinate set, an operand that only such an alternative or
+branch could supply names no fixed child and MUST be rejected at schema-load
+time. Declare those operands as local fixed children instead — `optional = true`
+ones when the document may omit them — or move the rule into the alternatives or
+branches that define the children.
+
+Schema loaders MUST reject a rule with the wrong TOML value type, an empty
+mapping or group list, a group with fewer than two members, a duplicate name
+within one dependency array or group, an unknown fixed-child name, or use on an
+incompatible effective type. Loaders are not required to prove general logical
+satisfiability between multiple valid rules.
+
+Ordinary requiredness is evaluated together with these rules. An absent
+optional trigger has no effect. A non-optional child remains required even if a
+presence group would otherwise permit its absence.
 
 ### Container Types
 
@@ -1259,7 +2210,7 @@ identically.
 
 If a schema definition has nested child definitions but does not declare a
 selector, it is an implicit table, as
-[Types Table](#types-table---types) defines.
+[Selectors](#selectors) defines.
 
 The **fixed children** of a table, for the purpose of the rules below, are its
 own nested child definitions together with the children contributed by every
@@ -1470,23 +2421,6 @@ type = "array"
 items = [ "types.coordinate", "types.label" ]
 ```
 
-##### Array Uniqueness - `uniqueitems`
-
-`uniqueitems` is a boolean property valid only on a definition whose selected
-type is the built-in `array`. When it is `true`, no two items in the document
-array may be equal. When it is `false` or absent, the schema imposes no
-uniqueness condition. It applies to homogeneous arrays, tuple arrays, and
-arrays whose item type is otherwise unconstrained.
-
-Items are compared using
-[Parsed Value Equality](#parsed-value-equality), recursively for arrays and
-tables.
-
-Uniqueness compares complete item values. Version 1.0 does not define a
-field-selecting operation such as `uniqueBy`; two tables that share an `id` but
-differ elsewhere remain distinct. A schema loader MUST reject a non-boolean
-`uniqueitems` value or its use on a non-array definition.
-
 #### Collection of Elements for Dynamic Keys
 
 One can set an element of type `collection` when there is a need to have multiple children with dynamic, user-provided keys or table headers.
@@ -1629,179 +2563,56 @@ TOML Schema:
 
 A `collection` may be represented as subtables of a common table in a TOML document.
 
-#### Per-Member Value Constraints
+#### Key Pattern - `keypattern`
 
-Five value constraints form the **per-member value-constraint subset**:
-`allowedvalues`, `min`, `max`, `pattern`, and `format`. Any of them MAY be
-declared directly on a definition that selects the built-in `type = "array"` or
-the built-in `type = "collection"`. Declared there, a constraint does not
-describe the container. It applies to **each item** of the array and to **each
-dynamically keyed entry** of the collection. The subset is identical for the two
-containers, because an array item and a collection entry are the same thing: one
-member value that the container's `itemtype` governs.
+`keypattern` constrains the keys of a collection's dynamically named entries
+with a regular expression.
 
-Declaring a per-member constraint inline is exactly equivalent to declaring that
-same constraint on the member definition the container's `itemtype` reaches. The
-two spellings MUST validate identically, and authors MAY choose either. Inline
-is the shorter spelling for a container whose members need one or two
-constraints; a named `itemtype` definition is the reusable one.
+`keypattern` may only be used on a `collection`. It constrains the **keys** (entry names) of the
+collection's dynamic children: every dynamically keyed entry must match the provided regular
+expression. It does not validate entry *values* — that is the role of `itemtype`. It is
+therefore orthogonal to `itemtype` and may be combined with it.
 
-```toml
-[elements.ports]
-type = "array"
-itemtype = "integer"
-min = 1
-max = 65535
+`keypattern` is invalid on any non-`collection` type (scalars, `array`, plain
+`table`), and a schema loader MUST reject a schema that uses it elsewhere.
 
-[elements.hosts]
-type = "collection"
-itemtype = "string"
-format = "hostname"
-keypattern = "^[a-z][a-z0-9-]*$"
-```
+Keys that are explicitly declared as fixed child definitions of the collection (schema-restricted
+key-value pairs) are validated by their own definitions and are not subject to `keypattern`. Only
+dynamic, user-provided keys are matched against the pattern.
 
-On a `collection`, `pattern` constrains each dynamic entry's **value** while
-`keypattern` constrains each dynamic entry's **key**. The two are independent,
-apply to different subjects, and MAY be combined on the same definition.
+Implementations MUST support the same portable RE2 regular-expression profile as
+[`pattern`](#pattern---pattern), and every rule that section states about
+regular expressions applies unchanged to `keypattern`: schema-load compilation,
+rejection of uncompilable patterns and of constructs outside the portable
+profile, Unicode scalar-value matching, character-class and range behavior,
+case sensitivity, and the absence of Unicode normalization. The subject is the
+decoded TOML key rather than a string value; keys are matched as the exact
+decoded scalar sequences the TOML parser produced, so a quoted key and a bare
+key that decode to the same characters are the same subject. Like `pattern`,
+`keypattern` is not implicitly
+anchored: a key validates if the regular expression matches anywhere in the key
+string. Authors who require a full-key match MUST anchor the expression with
+`^` and `$`.
 
-Because the two spellings are equivalent, declaring the **same** constraint both
-inline and on the resolved `itemtype` definition is a schema-load error, and
-schema loaders MUST reject it with `exclusive-properties`. This specification
-defines no precedence between them and needs none: a schema that would say the
-same thing twice says it once instead. Different constraints MAY be split across
-the two spellings and then apply conjunctively. The check compares the inline
-constraint against the constraint the resolved `itemtype` definition declares
-itself; a constraint that definition acquires from its own `allof` is not part
-of the check and merges conjunctively as
-[Merging by TOML Kind](#merging-by-toml-kind) requires.
-
-A per-member constraint obeys the same applicability rule its own section
-states, applied to the **member** type rather than to the container:
-
-- `pattern` and `format` require the effective member type to be the built-in
-  `string`, as [Pattern](#pattern---pattern) and
-  [String Format](#string-format---format) require of a string constraint.
-- `min` and `max` require the effective member type to resolve to exactly one
-  comparable kind, as
-  [Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max)
-  requires.
-- every `allowedvalues` entry MUST have a TOML kind the effective member type
-  permits, as [Allowed Values](#allowed-values---allowedvalues) requires.
-
-The member type is the one the container's `itemtype` selects, resolved through
-named references and through the alternatives of a referenced `oneof` or
-`anyof`, which MUST all resolve to the same kind. When a container declares no
-`itemtype`, its members are unconstrained `any`: `allowedvalues` still applies
-and enumerates values of any TOML kind, while `min`, `max`, `pattern`, and
-`format` have no determinate member kind to apply to. Schema loaders MUST reject
-a per-member constraint whose member type is indeterminate or of the wrong kind
-at schema-load time.
-
-`items` is mutually exclusive with the whole subset. A tuple position is
-described by the reusable definition named at that position, so a constraint
-that would apply uniformly to every member has no meaning beside a positional
-definition.
-
-**`minlength` and `maxlength` are deliberately not in the subset.** On an
-`array` or a `collection` those two spellings are already taken: they constrain
-the **container**, bounding an array's item count and a collection's
-dynamic-entry count, as [Length](#length---minlength-and-maxlength) defines.
-That meaning is unchanged. One spelling cannot mean both "this container holds
-at least two members" and "each member is a string of at least two characters",
-and reinterpreting it per member on a container whose members happen to be
-strings would make the same keyword mean different things in two schemas that
-differ only in their `itemtype`. Per-member string length is therefore expressed
-through `itemtype`:
+Example:
 
 ```toml
-[types.shortName]
-type = "string"
-minlength = 1
-maxlength = 32
-
-[elements.tags]
-type = "array"
-itemtype = "types.shortName"
-minlength = 1
+[types.listOfServersType]
+type       = "collection"
+itemtype   = "types.serverType"
+minlength  = 1
+keypattern = "^server_[0-9]+$"
 ```
 
-Here `minlength = 1` on `elements.tags` requires at least one tag, while the
-bounds inside `types.shortName` govern each tag's length in characters. This is
-the one exception to the symmetry above, and it exists because the spelling is
-occupied, not because container members are otherwise privileged.
-
-### Type Reference
-
-A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
-
-When `type` selects a named reusable definition, the reference inherits that
-definition's validation rules as-is. This inheritance includes `optional`, as
-[Optionality](#optionality---optional) defines. In version 1.0, the
-referencing definition MAY additionally declare only `allof`, `description`,
-`optional`, `default`, and `deprecated`; it MUST NOT declare any other sibling
-property or child definition. `allof` adds conjunctive components rather than
-overriding the named reference. A local `default` is the use-site annotation
-defined under [Default](#default---default), and `deprecated = false` cannot
-cancel deprecation inherited from a reference. In particular, validation
-constraints such as `pattern`,
-`keypattern`, `min`, `max`, `minlength`, `maxlength`, `allowedvalues`,
-`itemtype`, and `items` cannot be added or overridden at the reference site.
-Schema loaders MUST reject such schemas at schema-load time.
-
-To specialize validation rules, declare another named reusable definition rather than adding constraints to a reference:
+Against a TOML document:
 
 ```toml
-[types.lowercaseName]
-type = "string"
-pattern = "^[a-z]+$"
-
-[elements.name]
-type = "types.lowercaseName"
-description = "Display name"
-optional = true
+[servers.server_01]   # accepted
+[servers.server_02]   # accepted
+[servers.alpha]       # rejected: key does not match ^server_[0-9]+$
 ```
 
-The following is invalid because `pattern` attempts to override the referenced definition:
-
-```toml
-[types.name]
-type = "string"
-pattern = "^[a-z]+$"
-
-[elements.name]
-type = "types.name"
-pattern = "^[A-Z]+$" # invalid
-```
-
-```toml
-[types]
-
-    [types.nameType]
-    type="string"
-    pattern="[a-zA-Z]"  # unanchored: matches any string containing a letter
-
-    [types.serverType.name]
-    type = "types.nameType"
-
-    [types.serverType.enabled]
-    type = "boolean"
-
-[elements]
-
-    [elements.datacenter]
-    type="table"
-
-        [elements.datacenter.name]
-        type="types.nameType"
-
-        [elements.datacenter.tags]
-        type = "array"
-        itemtype = "string"
-
-        [elements.datacenter.servers]
-        type = "collection"
-        itemtype = "types.serverType"
-```
+This mirrors JSON Schema's `propertyNames: { pattern: ... }`, applied to TOML maps.
 
 ### Conjunctive Composition - `allof`
 
@@ -1888,7 +2699,7 @@ special case for collections.
 
 A definition that declares no selector, no nested child definition, and no
 `allof` determines nothing at all, and it remains a schema-load error under
-[Types Table](#types-table---types).
+[Selectors](#selectors).
 
 #### The Effective Definition
 
@@ -2303,808 +3114,6 @@ references MUST resolve at schema-load time, and composition/type-selection
 cycles are malformed. Structural recursion that consumes a child or container
 member remains valid.
 
-### Alternative Types - `oneof` and `anyof`
-
-Use `oneof` or `anyof` when a value may validate against alternative type references.
-
-- `oneof`: exactly one referenced type must validate.
-- `anyof`: at least one referenced type must validate.
-
-These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array or collection items. Which references an alternative may name is stated under
-[Type Reference Restrictions](#type-reference-restrictions); use a named
-reusable definition when an alternative needs a fully defined collection, an
-intentionally unconstrained named branch, or any other constraint.
-
-`type`, `oneof`, `anyof`, and the conditional triple all select the current
-node's type, and a definition declares at most one of them, as
-[Types Table](#types-table---types) requires.
-
-The array assigned to `oneof` or `anyof` MUST contain at least one type
-reference. A union definition MAY additionally declare only `description`,
-`optional`, `default`, `deprecated`, and `allof`; it MUST NOT declare another
-validation property or any nested child definition. Schema loaders MUST reject
-empty unions and other union siblings at schema-load time. Constraints required
-by an alternative belong in a named reusable definition referenced by the
-union.
-
-The alternatives of a `oneof` or `anyof` array MUST be distinct. A repeated
-alternative adds no branch and, for `oneof`, cannot be the exactly-one match.
-Duplication is judged on resolved identity, after the optional `types.` prefix
-has been removed, so `oneof = [ "types.stringId", "stringId" ]` names the same
-definition twice and is malformed. Schema loaders MUST reject a duplicate
-alternative at schema-load time. This differs from
-[`items`](#tuple--positional-array-validation---items), where an entry denotes a
-tuple position rather than an alternative and repetition is meaningful.
-
-A union contributes nothing to the
-[determinate fixed-child set](#determinate-fixed-child-set) of the node it
-selects, because no alternative is chosen until a document value exists. It does
-contribute at validation time: when an alternative is evaluated against a
-document node, that alternative's fixed children join the node's
-[effective closure set](#effective-closure-set) for that evaluation, so a key
-the alternative declares is a known key of the node and MUST NOT be reported as
-unexpected. This is what lets a union be composed into a table with `allof`
-without the alternatives' own children becoming unknown keys.
-
-When alternatives contain annotations, only successful alternatives contribute
-them, and only for a value that is present. Deprecation warnings follow the
-successful-alternative rule: `oneof` reports the warning of its single
-successful alternative, and `anyof` reports the warnings of every successful
-alternative, deduplicated as [Diagnostics](#diagnostics) requires. Consequently,
-a deprecated successful alternative contributes a warning even when another
-successful `anyof` alternative is not deprecated; this preserves all annotations
-attached to definitions that accepted the value. Alternative `default`
-annotations are governed by [Default](#default---default): they are never
-combined into the slot's effective default and never cause a schema-load
-conflict. For a present value, an implementation MAY surface the default of each
-successful alternative as a hint, deduplicated by
-[Parsed Value Equality](#parsed-value-equality). An alternative that fails
-validation contributes neither defaults nor deprecation warnings; what happens to
-its diagnostics is defined under
-[Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard).
-
-Examples:
-
-```toml
-[types.stringId]
-type = "string"
-pattern = "^[a-z]+$"
-
-[types.integerId]
-type = "integer"
-min = 1
-
-[elements.id]
-anyof = [ "types.stringId", "types.integerId" ]
-
-[elements.simpleId]
-oneof = [ "string", "integer" ]
-```
-
-Use a named reusable definition whenever an alternative needs constraints such as `pattern`, `min`, `allowedvalues`, `itemtype`, or child fields.
-
-```toml
-[types.dependencyVersion]
-type = "string"
-pattern = "^[0-9]+\\.[0-9]+\\.[0-9]+$"
-
-[types.inlineDependency]
-type = "table"
-
-[types.dependency]
-oneof = [ "types.dependencyVersion", "types.inlineDependency" ]
-```
-
-For container items with alternative types, use a named wrapper:
-
-```toml
-[types.dnsValue]
-oneof = [ "types.ipAddress", "types.hostname" ]
-
-[elements.dns]
-type = "collection"
-itemtype = "types.dnsValue"
-```
-
-A named container definition can also be an alternative. This models formats
-that accept either one table or an array of the same table shape:
-
-```toml
-[types.cascadeEntry]
-type = "table"
-
-    [types.cascadeEntry.params]
-    type = "table"
-    optional = true
-
-[types.cascadeEntries]
-type = "array"
-itemtype = "types.cascadeEntry"
-
-[elements.cascade]
-oneof = [ "types.cascadeEntry", "types.cascadeEntries" ]
-```
-
-### Conditional Selection - `if`, `then`, and `else`
-
-The `if`, `then`, and `else` properties form one exhaustive selector for a
-table-like node. The condition inspects one direct child of the current parsed
-table and selects one of two named reusable definitions:
-
-```toml
-[types.sqliteDatabase]
-type = "table"
-
-    [types.sqliteDatabase.engine]
-    type = "string"
-    allowedvalues = [ "sqlite" ]
-
-    [types.sqliteDatabase.path]
-    type = "string"
-
-[types.serverDatabase]
-type = "table"
-
-    [types.serverDatabase.engine]
-    type = "string"
-    allowedvalues = [ "postgresql", "mysql" ]
-
-    [types.serverDatabase.host]
-    type = "string"
-
-[types.database]
-if = { key = "engine", equals = "sqlite" }
-then = "types.sqliteDatabase"
-else = "types.serverDatabase"
-```
-
-Both branches declare `engine`, the key the condition reads. That is required
-rather than stylistic: see
-[The Discriminator Key and Closed Branches](#the-discriminator-key-and-closed-branches)
-below.
-
-`if` MUST be an inline table containing `key` and exactly one of `equals` or
-`in`. It MUST contain no other members.
-
-Because `if` is also a legal child key, an `if = { ... }` key/value entry is
-always the conditional selector, while a table header such as
-`[types.example.if]` is always a child definition named `if`. Consequently the
-condition MUST use inline-table syntax and can never be written as
-`[types.example.if]`. A definition that needs a target child named `if` writes
-that child through the `children` namespace, as described under
-[Quoted and Special Keys](#quoted-and-special-keys). A conditional definition
-has no nested child definitions of its own, so the two spellings never compete
-within one conditional definition, but a loader still MUST NOT infer the
-selector from a table-form `if`.
-
-- `key` MUST be a string naming one direct child key of the parsed table being
-  validated. It is a decoded TOML key, not a dotted document path, and it does
-  not have to name a schema-declared child, because a conditional definition has
-  no nested child definitions of its own. An empty or literal dotted key is
-  permitted.
-- `equals` accepts one TOML value. The condition succeeds when the child exists
-  and is equal to that value according to [Parsed Value Equality](#parsed-value-equality).
-- `in` MUST be a non-empty array. The condition succeeds when the child exists
-  and is equal to at least one array entry according to Parsed Value Equality.
-
-If the named child is absent, the condition is false. A validator MUST apply
-only the selected branch: `then` when the condition is true and `else` when it
-is false. The condition itself emits no document-validation diagnostic.
-Validation diagnostics and deprecation annotations come only from the selected
-branch. A branch default does not become the conditional slot's effective
-default; for a present value, an implementation MAY surface the selected
-branch's default as a hint.
-
-The condition reads a direct child of a parsed table. When the document value at
-a conditional node is not a table — a scalar, an array, or an array of tables —
-no direct child can be read, so the condition cannot be satisfied and is false,
-exactly as it is for an absent child. `else` is therefore the selected branch.
-Because both branches MUST resolve to the same table-like effective type, that
-value cannot validate against either branch, and the node is invalid. A
-validator MUST report this as a kind mismatch against the common branch kind at
-the node's location, using the `type-mismatch` code defined under
-[Validation Codes](#validation-codes), and MUST NOT report the branch's internal
-`missing-required` or `unknown-key` diagnostics for a value that is not a table
-at all. It MUST NOT report a diagnostic describing the condition, which never
-fails on its own.
-
-Consequently, a `default` on a conditional definition MUST be a table. A
-non-table default cannot satisfy either branch, so a schema loader MUST reject
-it at schema-load time under the default-validation rule stated below.
-
-Like a union, the conditional triple contributes nothing to the
-[determinate fixed-child set](#determinate-fixed-child-set) of the node it
-selects. The selected branch's fixed children join the node's
-[effective closure set](#effective-closure-set) at validation time, so the keys
-the matched branch declares are known keys of that node, while keys declared
-only by the branch that was not selected are not.
-
-`then` and `else` MUST each be a string naming a reusable definition in
-`[types]`, and both definitions MUST resolve
-to the same effective type, which MUST be `table` or `collection`, as
-[Type Reference Restrictions](#type-reference-restrictions) states.
-Schema loaders MUST reject unresolved branches, different branch kinds,
-branches that do not resolve to a table-like kind, and cycles through
-conditional branches.
-
-The conditional triple is one of the four selectors a definition declares at
-most one of, as [Types Table](#types-table---types) requires. A conditional
-definition MAY additionally declare only `allof`,
-`description`, `optional`, `default`, and `deprecated`; it MUST NOT contain
-kind-specific validation properties or nested child definitions. An `allof`
-component MUST be compatible with the common branch kind and is applied
-conjunctively with whichever branch is selected.
-
-Optionality belongs to the conditional definition, as
-[Optionality](#optionality---optional) defines. A default on the conditional
-definition MUST validate against the branch selected by that default at
-schema-load time.
-
-Example with a multi-value condition:
-
-```toml
-[types.database]
-if = { key = "engine", in = [ "postgresql", "mysql" ] }
-then = "types.serverDatabase"
-else = "types.embeddedDatabase"
-```
-
-Additional alternatives can be expressed by referencing another conditional
-definition from `then` or `else`.
-
-#### The Discriminator Key and Closed Branches
-
-The key named by `if.key` is ordinary application data. It is read to select a
-branch, and it is then validated by the selected branch like any other key. A
-conditional definition contributes no fixed children of its own, so nothing
-declares the discriminator on the node's behalf.
-
-A branch that declares fixed children is closed against exactly those children,
-as [Effective Closure Set](#effective-closure-set) defines. If such a branch
-omits the discriminator, the key the condition just read is not in the node's
-effective closure set and a validator MUST report it as an unknown key, so the
-conditional can never accept a document. Every closed branch MUST therefore
-declare the discriminator itself.
-
-Schema loaders MUST reject a conditional definition when a branch has a
-non-empty [determinate fixed-child set](#determinate-fixed-child-set) that does
-not contain the key named by `if.key`. That set is computed at schema-load time,
-so this check catches the common authoring mistake without resolving
-document-dependent shapes. A branch whose fixed children are contributed only by
-a nested union or conditional has an empty determinate set, and a loader cannot
-decide the question for it; the same unknown-key rule still applies at
-validation time, and authors remain responsible for declaring the discriminator
-in every shape a branch can take.
-
-Two branch shapes need no declaration and are not rejected: a branch that is an
-open table, whose effective closure set is empty and which therefore accepts the
-discriminator as arbitrary data, and a branch that is a `collection`, whose
-dynamic-entry rules accept the discriminator when its `keypattern` and
-`itemtype` permit it.
-
-The `else` branch is subject to the same rule as `then`. An `else` branch is
-selected both when the discriminator holds a different value and when it is
-absent, so a closed `else` branch typically declares the discriminator with
-`optional = true`, with `allowedvalues` excluding the value that selects `then`,
-or with both. In the example above, `types.serverDatabase` declares `engine`
-with `allowedvalues = [ "postgresql", "mysql" ]`, which both admits the key and
-rejects a value that should have selected the other branch.
-
-### Sibling Presence Rules
-
-Version 1.0 defines three presence-only rules for direct fixed children of an
-effective `table` or `collection`. They inspect parsed key presence, never a
-child's value, and never follow a dotted string as a document path.
-
-#### Dependencies - `dependentrequired`
-
-`dependentrequired` is a non-empty inline table. Each member maps one trigger
-child name to a non-empty array of unique child names. When the trigger is
-present, every listed child MUST also be present.
-
-Because `dependentrequired` is also a legal child key, a
-`dependentrequired = { ... }` key/value entry is always the sibling rule, while
-a table header such as `[types.example.dependentrequired]` is always a child
-definition named `dependentrequired`. A definition that needs both the rule and
-a child of that name writes the child through the `children` namespace, as
-described under [Quoted and Special Keys](#quoted-and-special-keys).
-
-Dependencies are directional. If `a` requires `b`, the presence of `b` does not
-require `a` unless a reverse mapping is declared. Every triggered mapping is
-evaluated, so dependencies may apply transitively.
-
-Example:
-
-```toml
-[types.dependency]
-type = "table"
-dependentrequired = { branch = [ "git" ], tag = [ "git" ], rev = [ "git" ] }
-
-    [types.dependency.git]
-    type = "string"
-    optional = true
-
-    [types.dependency.branch]
-    type = "string"
-    optional = true
-
-    [types.dependency.tag]
-    type = "string"
-    optional = true
-
-    [types.dependency.rev]
-    type = "string"
-    optional = true
-```
-
-#### Mutual Exclusion - `mutuallyexclusive`
-
-`mutuallyexclusive` is a non-empty array of groups. Each group is an array of
-at least two unique child-name strings. At most one member of each group MAY be
-present.
-
-Zero or one present member satisfies a group.
-
-Example:
-
-```toml
-[types.source]
-type = "table"
-mutuallyexclusive = [ [ "git", "path" ], [ "branch", "tag", "rev" ] ]
-
-    [types.source.git]
-    type = "string"
-    optional = true
-
-    [types.source.path]
-    type = "string"
-    optional = true
-
-    [types.source.branch]
-    type = "string"
-    optional = true
-
-    [types.source.tag]
-    type = "string"
-    optional = true
-
-    [types.source.rev]
-    type = "string"
-    optional = true
-```
-
-#### Exactly One - `exactlyone`
-
-`exactlyone` has the same shape as `mutuallyexclusive`, but exactly one member
-of every group MUST be present.
-
-This allows every group member to remain individually `optional = true` while
-the group still requires one choice.
-
-Example:
-
-```toml
-[types.readmeTable]
-type = "table"
-exactlyone = [ [ "file", "text" ] ]
-
-    [types.readmeTable.file]
-    type = "string"
-    optional = true
-
-    [types.readmeTable.text]
-    type = "string"
-    optional = true
-```
-
-Every name in these three properties MUST identify a direct fixed child in the
-[determinate fixed-child set](#determinate-fixed-child-set) of the definition
-after `allof` composition. Operand resolution and the `table`-or-`collection`
-applicability of these rules are therefore effective rather than local checks,
-as [Local and Effective Checks](#local-and-effective-checks) records. Operands
-are resolved when the schema is loaded, so
-they MUST NOT be resolved against the validation-time
-[effective closure set](#effective-closure-set); only the presence check itself
-happens while a document is validated. A quoted string containing a
-dot identifies a literal dotted child key, and a child written through the
-`children` namespace is named by its target key rather than by the literal
-string `children`. Dynamic collection keys are not fixed children and cannot be
-operands, while a collection's explicitly defined children participate normally.
-
-Because a `oneof` or `anyof` selector and a conditional selector contribute
-nothing to the determinate set, an operand that only such an alternative or
-branch could supply names no fixed child and MUST be rejected at schema-load
-time. Declare those operands as local fixed children instead — `optional = true`
-ones when the document may omit them — or move the rule into the alternatives or
-branches that define the children.
-
-Schema loaders MUST reject a rule with the wrong TOML value type, an empty
-mapping or group list, a group with fewer than two members, a duplicate name
-within one dependency array or group, an unknown fixed-child name, or use on an
-incompatible effective type. Loaders are not required to prove general logical
-satisfiability between multiple valid rules.
-
-Ordinary requiredness is evaluated together with these rules. An absent
-optional trigger has no effect. A non-optional child remains required even if a
-presence group would otherwise permit its absence.
-
-### Annotations
-
-`description`, `default`, and `deprecated` are **annotations**. Unlike the
-assertions defined above, an annotation never decides validity: it cannot make a
-document valid or invalid, and removing every annotation from a schema leaves
-the set of documents that schema accepts unchanged. The sections below define
-each annotation; this section defines what they attach to and how one effective
-value is obtained when a definition is reached indirectly.
-
-**Attachment.** An annotation attaches to the document node being validated —
-identified by its [instance path](#instance-path) — not to the schema definition
-that carries it. The same definition applied at several nodes annotates each node
-separately, and a definition applied to no node annotates nothing. Consequences:
-
-- A definition used as an array `itemtype` annotates every present item node, not
-  the array. A deprecated `itemtype` applied to an array of one hundred items
-  therefore produces one hundred warnings, one per item node, and never a single
-  warning for the array.
-- A definition used as a `collection` `itemtype` annotates every present
-  dynamically keyed entry, once per entry.
-- A definition reached through `items` annotates the one indexed node it
-  validates.
-- An absent optional slot holds no node, so it carries no annotation and produces
-  no deprecation warning.
-
-Every annotation-derived diagnostic therefore carries the instance path of the
-node it annotates. The severity and code of such a diagnostic are assigned by
-[Diagnostics](#diagnostics); this section defines only what annotations attach
-to.
-
-**Effective annotation.** For one document location, the participants that may
-carry an annotation are the use site, each definition along that use site's
-`type` reference chain, each `allof` component of the effective definition, the
-`oneof` or `anyof` alternative that succeeded, and the conditional branch that
-was selected. The general precedence is:
-
-1. an annotation declared at the use site takes precedence over the same
-   annotation obtained through that use site's `type` reference chain, and
-   within the chain the nearest declaration takes precedence over a more distant
-   one;
-2. `allof` components, union alternatives, and conditional branches contribute
-   annotations for the location they help validate, but never override an
-   annotation the use site or its reference chain already supplies.
-
-`deprecated` is an exception to point 2 and does not follow the general
-precedence: it combines disjunctively rather than resolving to a single
-declaration, so a contributing `deprecated = true` deprecates the location even
-when the use site declares `deprecated = false`. [Deprecation](#deprecation---deprecated) is
-authoritative for it. The general precedence governs `description` and any
-future annotation that resolves to at most one value.
-
-Each annotation then resolves its own contributions as follows.
-
-`description` follows the general precedence and resolves to at most one value.
-A use-site `description` overrides the one carried by the definition it
-references, and the nearest description along a reference chain overrides a more
-distant one; the use site is the more specific statement about that location, so
-it wins. Descriptions carried by `allof` components, by the successful union
-alternative, and by the selected conditional branch never replace that value.
-Where a single description is required — an editor hover, for instance — the
-effective description is the use-site or reference-chain value if one exists,
-and otherwise nothing. An implementation MAY additionally expose the
-contributed descriptions as documentation, in a stable order: `allof`
-components in declaration order, then the successful alternative or selected
-branch. It MUST NOT merge or concatenate contributions into a value it presents
-as a single authored description, and it MUST NOT reject a schema because two
-participants carry different descriptions.
-
-`default` does not follow this general precedence alone, because it is
-machine-readable and must resolve to exactly one value. Its precedence and
-conflict rules, including the `allof` and union rules, are defined under
-[Default](#default---default) and are authoritative.
-
-`deprecated` is a per-node warning. It fires once for each present document node
-whose effective definition is deprecated, and duplicate warnings contributed by
-more than one successful path are deduplicated as
-[Diagnostics](#diagnostics) requires. It fires per node and never per definition,
-so the count follows the attachment rules above. Deprecation is not inherited
-downward: a deprecated parent produces one warning at the parent's instance path,
-and a descendant produces a warning only when its own effective definition is
-deprecated. When a union or conditional definition is itself deprecated, that
-warning is reported at the node's own instance path in addition to any warning
-contributed by the successful alternative or selected branch, and the two are
-distinct instance paths only when the alternative or branch annotates a
-descendant.
-
-### Description - `description`
-
-`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation. Its precedence when a definition is reached through a reference, composition, an alternative, or a conditional branch is defined under [Annotations](#annotations).
-
-```toml
-[types.game]
-type = "table"
-description = "A game object."
-
-    [types.game.id]
-    type = "string"
-    description = "Unique identifier for the game."
-
-[elements.game]
-type = "array"
-description = "A list of games."
-itemtype = "types.game"
-```
-
-### Default - `default`
-
-`default` is a machine-readable annotation containing any TOML value. Like the
-other annotations, it attaches to the document node a definition validates, and
-to the slot that node occupies, as described under [Annotations](#annotations);
-unlike them, it MUST resolve to exactly one value, and the rules below are
-authoritative for that resolution.
-
-Because `default` is also a legal child key, a `default = <value>` key/value
-entry is always the annotation, while a table header such as
-`[elements.options.default]` is always a child definition named `default`.
-Consequently, a table-valued default MUST use inline-table syntax, for example
-`default = { min = 1, max = 10 }`. A definition that needs both the annotation
-and a child named `default` writes the child through the `children` namespace,
-as described under [Quoted and Special Keys](#quoted-and-special-keys).
-
-A default is not a validation assertion and never changes the document being
-validated. It does not insert a missing value, satisfy a required definition,
-or change the parsed TOML data returned by an implementation. Tools MAY expose
-it as a suggestion or effective-configuration hint through schema metadata.
-Version 1.0 does not define an operation that materializes defaults.
-
-Despite being an annotation, a declared default MUST validate as a present
-value against the full effective definition at schema-load time. Default
-validation applies all references, composition, alternatives, fixed children,
-sibling rules, and ordinary constraints, but does not emit a deprecation
-warning. A loader MUST reject an incompatible default. This is one of the
-schema-load checks that read the effective rather than the local view, as
-[Local and Effective Checks](#local-and-effective-checks) records.
-
-A default declared directly at a use site takes precedence over one inherited
-through its `type` reference. Without a use-site default, the referenced
-default is inherited. Defaults contributed by `allof` components are compared using
-[Parsed Value Equality](#parsed-value-equality). Equal defaults are
-deduplicated. If components contribute unequal defaults and the local
-definition has no default, the schema is malformed because it has no single
-effective default. A valid local default resolves that annotation conflict and
-must still satisfy every component.
-
-Alternative selectors do not contribute to a slot's effective default. The
-effective default of a slot whose selector resolves to `oneof` or `anyof` is
-determined only by a use-site `default`, a default inherited through the named
-`type` reference chain that resolves to the union, and defaults composed
-through `allof`, using the precedence and conflict rules above. A `default`
-declared on an individual alternative is never aggregated into the union's
-effective default and never causes a schema-load conflict, even when several
-`anyof` alternatives declare unequal defaults. A loader MUST NOT reject a
-schema solely because two alternatives declare defaults, equal or unequal.
-Resolving effective defaults therefore never requires deciding whether two
-alternatives can match the same value.
-
-When a union slot is absent, only this effective default applies; if none
-exists, the slot has no default. When the slot value is present, `default` does
-not change it, so alternative defaults surfaced under the successful-alternative
-rule are informational hints. An implementation MAY expose the default of each
-successful alternative, deduplicated by
-[Parsed Value Equality](#parsed-value-equality), but MUST NOT treat multiple
-present-value alternative defaults as an error.
-
-Example:
-
-```toml
-[elements.retries]
-type = "integer"
-optional = true
-default = 3
-```
-
-### Deprecation - `deprecated`
-
-`deprecated` is a boolean annotation. When `true`, it advises that the present
-value at that schema location should no longer be used and may be removed in a
-future version.
-
-Deprecation never makes a document invalid. A successfully validated present
-value produces a warning diagnostic with the code `deprecated`; an absent
-optional value produces no warning. A deprecated parent produces one warning at
-the parent's instance path rather than one warning for every descendant. The
-instance path a deprecation warning is reported at, and how many warnings a
-deprecated array `itemtype` or collection `itemtype` produces, follow the
-attachment rules under [Annotations](#annotations). Whether a node counts as
-successfully validated for this purpose is decided by the annotation step of
-[Keyword Evaluation Order](#keyword-evaluation-order).
-
-Deprecation propagates through named references. Across `allof`, any
-contributing `deprecated = true` deprecates the location, and a local
-`deprecated = false` cannot cancel it. Which warning a definition contributes
-when it is reached through an alternative or a conditional branch is defined
-under [Annotations](#annotations). A non-boolean `deprecated`
-value is a schema-load error. Authors SHOULD use `description` for migration or
-replacement guidance.
-
-Example:
-
-```toml
-[elements.legacy-timeout]
-type = "integer"
-deprecated = true
-description = "Use request-timeout instead."
-optional = true
-```
-
-### Optionality - `optional`
-
-A definition may be marked optional in the schema. By default, `optional` is
-`false`, and the structure is required.
-
-Validators MUST skip a definition only when it is optional and the corresponding
-value does not exist in the TOML document. In every other case, the validator
-MUST validate the value against the definition.
-
-This section is the single authority for how `optional` interacts with
-references, composition, alternatives, and conditional branches.
-
-For a named `type` reference, optionality is inherited: the referencing slot is
-optional if either the use site or any definition in the reference chain
-declares `optional = true`. An explicit `optional = false` cannot cancel an
-inherited `true`. In contrast, `optional` on the local definition determines
-whether a composed node may be absent, and `optional` values contributed only
-through `allof` components do not affect presence; such a value has meaning only
-when that component is referenced normally with `type`. The presence of a
-`oneof` or `anyof` slot is governed only by `optional` on the union definition
-or inherited through a named `type` reference to that union. `optional`
-declared inside an alternative does not make the union slot optional because
-no alternative is selected when the slot is absent. Optionality likewise belongs
-to a conditional definition rather than to its branches: an `optional`
-annotation inside a `then` or `else` branch does not make the conditional slot
-optional, because no branch is selected when the slot is absent.
-
-### Pattern - `pattern`
-
-`pattern` constrains a parsed TOML string with a regular expression.
-
-`pattern` is valid on a definition whose selected type is the built-in
-`string`, and, as a [per-member constraint](#per-member-value-constraints), on a
-non-tuple `array` or `collection` whose effective member type is the built-in
-`string`. It cannot be attached to another built-in type, an alternative
-selector, or a named type reference, as
-[Schema Definition Properties](#schema-definition-properties) requires. Schema
-loaders MUST reject an incompatible
-`pattern` at schema-load time rather than silently ignoring it. On a
-`collection`, `pattern` constrains dynamic entry values while
-[`keypattern`](#key-pattern---keypattern) constrains their keys.
-
-The portable TOML Schema regular-expression profile consists of literals,
-escaped metacharacters, the character escapes `\t`, `\n`, `\r`, `\f`, `\v`, and
-`\a`, `.`, character classes and ranges, negated character
-classes, concatenation, alternation, capturing and non-capturing groups, the
-anchors `^` and `$`, and the greedy quantifiers `?`, `*`, `+`, `{n}`, `{n,}`,
-and `{n,m}`. These constructs use the syntax documented by the
-[RE2 syntax reference](https://github.com/google/re2/wiki/Syntax). Implementations MUST
-support this profile.
-
-The listed character escapes are portable because each denotes one fixed control
-character, so no engine can disagree about what it matches. They are portable
-both standalone and inside a character class, so `[ \t]` is a portable pattern.
-
-Character-class shorthands such as `\d`, `\s`, and `\w` are outside the
-portable profile because regular-expression engines disagree about whether
-they use ASCII or Unicode membership. Write the intended set explicitly instead:
-`[0-9]` rather than `\d`. Unicode property classes such as
-`\p{L}`, inline flag groups such as `(?i)`, backreferences, look-around
-assertions, atomic groups, conditionals, recursion, and the non-greedy and
-possessive quantifier forms such as `*?` and `*+` are also outside the
-portable profile.
-
-**Patterns are compiled at schema-load time.** A schema loader MUST compile
-every `pattern` value when it loads the schema, whether or not any document
-exercises it. A pattern that does not compile — `"["`, `"{2,1}"`, or a trailing
-backslash, for example — makes the schema malformed, and the loader MUST reject
-it at schema-load time with the `invalid-pattern` code. An implementation MUST
-NOT defer a compilation failure to match time, MUST NOT treat an uncompilable
-pattern as a failed match, and MUST NOT treat it as a satisfied constraint.
-
-A construct outside the portable profile is likewise a schema-load error,
-reported with the `unsupported-pattern` code. A loader operating in its
-conformant TOML Schema 1.0 mode MUST reject a `pattern`
-that uses one, even when the underlying engine could compile it. An
-implementation MAY offer an additional, explicitly named and documented extended
-pattern profile that accepts further constructs, but that profile MUST NOT be
-the default, and a schema accepted only under it is not a TOML Schema 1.0
-schema. Portability is the whole purpose of naming a profile: if a
-non-portable construct were merely discouraged, the same schema would be a
-load error on one implementation, an ASCII-only match on a second, and a
-Unicode match on a third, which is precisely the interoperability split the
-profile exists to prevent. Conformance suites MUST use only the portable
-profile. The engine an implementation matches these expressions with, and the
-resource limits it applies to compilation and matching, are additionally
-constrained by
-[Regular-Expression Safety](#regular-expression-safety).
-
-**Unicode semantics.** A pattern is compiled from, and matched against, the
-decoded parsed string: a sequence of Unicode scalar values. The TOML parser has
-already applied string escapes such as `\u00E9`, so a loader never sees TOML
-escape syntax in a pattern. Matching operates on Unicode scalar values, never on
-UTF-8 bytes, UTF-16 code units, or grapheme clusters, and the count semantics of
-`{n,m}` follow that same unit. `.` matches exactly one scalar value other than
-a line feed. A character class matches one scalar value from its members, and a
-range such as `[a-z]` or `[À-Ö]` is an inclusive range over Unicode code
-points; a range whose start code point is greater than its end code point does
-not compile and is therefore a schema-load error. A negated class matches any
-scalar value not listed, including a line feed.
-
-Matching is case-sensitive and applies no case folding. No Unicode
-normalization is applied to the pattern or to the subject before matching:
-both are compared as the exact decoded scalar sequences the TOML parser
-produced, consistent with the string rule under
-[Parsed Value Equality](#parsed-value-equality). Two strings that are
-canonically equivalent but differently composed are therefore distinct
-subjects, and an implementation MUST NOT normalize either operand.
-
-The pattern is not implicitly anchored. A value validates if the regular
-expression matches anywhere in the string. Authors who require a full-string
-match MUST anchor the expression with `^` and `$`.
-
-Patterns are evaluated without multiline or dot-all modes. `^` matches only
-the start of the complete parsed string, `$` matches only its end (not a
-position before a final line feed), and `.` does not match a line feed. These
-rules also apply when an implementation uses a regular-expression engine with
-different defaults.
-
-### Key Pattern - `keypattern`
-
-`keypattern` constrains the keys of a collection's dynamically named entries
-with a regular expression.
-
-`keypattern` may only be used on a `collection`. It constrains the **keys** (entry names) of the
-collection's dynamic children: every dynamically keyed entry must match the provided regular
-expression. It does not validate entry *values* — that is the role of `itemtype`. It is
-therefore orthogonal to `itemtype` and may be combined with it.
-
-`keypattern` is invalid on any non-`collection` type (scalars, `array`, plain
-`table`), and a schema loader MUST reject a schema that uses it elsewhere.
-
-Keys that are explicitly declared as fixed child definitions of the collection (schema-restricted
-key-value pairs) are validated by their own definitions and are not subject to `keypattern`. Only
-dynamic, user-provided keys are matched against the pattern.
-
-Implementations MUST support the same portable RE2 regular-expression profile as
-[`pattern`](#pattern---pattern), and every rule that section states about
-regular expressions applies unchanged to `keypattern`: schema-load compilation,
-rejection of uncompilable patterns and of constructs outside the portable
-profile, Unicode scalar-value matching, character-class and range behavior,
-case sensitivity, and the absence of Unicode normalization. The subject is the
-decoded TOML key rather than a string value; keys are matched as the exact
-decoded scalar sequences the TOML parser produced, so a quoted key and a bare
-key that decode to the same characters are the same subject. Like `pattern`,
-`keypattern` is not implicitly
-anchored: a key validates if the regular expression matches anywhere in the key
-string. Authors who require a full-key match MUST anchor the expression with
-`^` and `$`.
-
-Example:
-
-```toml
-[types.listOfServersType]
-type       = "collection"
-itemtype   = "types.serverType"
-minlength  = 1
-keypattern = "^server_[0-9]+$"
-```
-
-Against a TOML document:
-
-```toml
-[servers.server_01]   # accepted
-[servers.server_02]   # accepted
-[servers.alpha]       # rejected: key does not match ^server_[0-9]+$
-```
-
-This mirrors JSON Schema's `propertyNames: { pattern: ... }`, applied to TOML maps.
-
 ## Validation and Data Model
 
 TOML Schema validation does not modify the parsed TOML data model.
@@ -3309,7 +3318,7 @@ the steps that depend on it begin:
    selector exclusivity: at most one of `type`, `oneof`, `anyof`, and the
    conditional triple, and at least one unless the definition is an implicit
    table or a [pure mixin](#composition-supplying-the-local-skeleton), both
-   described under [Types Table](#types-table---types). It also includes the
+   described under [Selectors](#selectors). It also includes the
    exclusion between `items` and the
    [per-member value-constraint subset](#per-member-value-constraints) and the
    rejection of a per-member constraint that is also declared on the definition
