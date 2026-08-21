@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.t]
+type = "table"
+
+[elements.t.name]
+type = "string"

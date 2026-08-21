@@ -1,0 +1,10 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.tag]
+type = "string"
+pattern = "^[a-z]+$"
+
+[elements.tags]
+type = "array"
+itemtype = "types.tag"

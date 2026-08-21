@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.network.endpoint]
+type = "string"
+
+[elements.x]
+type = "network.endpoint"

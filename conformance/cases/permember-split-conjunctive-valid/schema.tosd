@@ -1,0 +1,11 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.p]
+type = "integer"
+min = 1
+
+[elements.ports]
+type = "array"
+itemtype = "types.p"
+max = 10

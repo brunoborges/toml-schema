@@ -1,0 +1,9 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.x]
+type = "integer"
+default = 3
+
+[elements.y]
+type = "string"

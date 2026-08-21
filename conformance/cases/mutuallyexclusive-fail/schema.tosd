@@ -1,0 +1,14 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.s]
+type = "table"
+mutuallyexclusive = [ [ "git", "path" ] ]
+
+[elements.s.git]
+type = "string"
+optional = true
+
+[elements.s.path]
+type = "string"
+optional = true

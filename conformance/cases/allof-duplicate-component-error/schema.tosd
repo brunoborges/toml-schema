@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.a]
+type = "string"
+
+[elements.x]
+allof = [ "types.a", "a" ]

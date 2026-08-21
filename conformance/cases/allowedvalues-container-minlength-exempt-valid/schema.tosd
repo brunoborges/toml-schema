@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.tags]
+type = "array"
+itemtype = "string"
+minlength = 5
+allowedvalues = [ "ab", "cd" ]

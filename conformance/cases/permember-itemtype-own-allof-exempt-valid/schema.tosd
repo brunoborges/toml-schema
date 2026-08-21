@@ -1,0 +1,15 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.base]
+type = "integer"
+min = 1
+
+[types.p]
+type = "integer"
+allof = [ "types.base" ]
+
+[elements.ports]
+type = "array"
+itemtype = "types.p"
+min = 1

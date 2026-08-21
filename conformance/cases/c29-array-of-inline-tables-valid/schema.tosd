@@ -1,0 +1,12 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.p]
+type = "table"
+
+[types.p.name]
+type = "string"
+
+[elements.products]
+type = "array"
+itemtype = "types.p"

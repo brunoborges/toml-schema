@@ -1,0 +1,10 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.num]
+oneof = [ "integer", "float" ]
+
+[elements.x]
+type = "array"
+itemtype = "types.num"
+min = 0

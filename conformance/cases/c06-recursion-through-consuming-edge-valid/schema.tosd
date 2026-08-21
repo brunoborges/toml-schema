@@ -1,0 +1,12 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.branch]
+type = "array"
+itemtype = "types.tree"
+
+[types.tree]
+oneof = [ "integer", "types.branch" ]
+
+[elements.tree]
+type = "types.tree"

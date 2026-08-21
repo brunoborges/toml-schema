@@ -1,0 +1,4 @@
+name = "x"
+
+[toml-schema]
+location = "whatever.tosd"

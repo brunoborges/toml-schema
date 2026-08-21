@@ -1,0 +1,20 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.base]
+type = "table"
+
+[types.base.version]
+type = "string"
+
+[types.named]
+type = "table"
+
+[types.named.name]
+type = "string"
+
+[types.package]
+allof = [ "types.base", "types.named" ]
+
+[elements.pkg]
+type = "types.package"

@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.s]
+type = "collection"
+
+[elements.s.group]
+type = "string"

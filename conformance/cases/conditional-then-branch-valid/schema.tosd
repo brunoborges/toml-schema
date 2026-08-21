@@ -1,0 +1,29 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.sqlite]
+type = "table"
+
+[types.sqlite.engine]
+type = "string"
+allowedvalues = [ "sqlite" ]
+
+[types.sqlite.path]
+type = "string"
+
+[types.server]
+type = "table"
+
+[types.server.engine]
+type = "string"
+optional = true
+allowedvalues = [ "postgres", "mysql" ]
+
+[types.server.host]
+type = "string"
+optional = true
+
+[elements.db]
+if = { key = "engine", equals = "sqlite" }
+then = "types.sqlite"
+else = "types.server"

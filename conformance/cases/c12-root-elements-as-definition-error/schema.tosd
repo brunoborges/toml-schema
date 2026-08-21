@@ -1,0 +1,6 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements]
+type = "collection"
+itemtype = "any"

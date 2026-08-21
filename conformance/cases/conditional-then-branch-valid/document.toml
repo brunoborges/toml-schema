@@ -1,0 +1,3 @@
+[db]
+engine = "sqlite"
+path = "/x"

@@ -1,0 +1,17 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.t]
+type = "table"
+
+[types.t.a]
+type = "string"
+
+[types.i]
+type = "integer"
+
+[types.bad]
+allof = [ "types.t", "types.i" ]
+
+[elements.x]
+type = "types.bad"
