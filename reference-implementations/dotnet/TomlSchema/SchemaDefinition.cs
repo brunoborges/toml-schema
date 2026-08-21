@@ -73,8 +73,8 @@ public record SchemaDefinition
     /// <summary>Nested child definitions</summary>
     public Dictionary<string, SchemaDefinition> Children { get; init; } = new();
 
-    /// <summary>Dependent required sibling rules (if key present, these are required)</summary>
-    public List<string>? DependentRequired { get; init; }
+    /// <summary>Dependent required sibling rules mapping each trigger key to its required siblings</summary>
+    public Dictionary<string, List<string>>? DependentRequiredMap { get; init; }
 
     /// <summary>Mutually exclusive sibling groups</summary>
     public List<List<string>>? MutuallyExclusive { get; init; }

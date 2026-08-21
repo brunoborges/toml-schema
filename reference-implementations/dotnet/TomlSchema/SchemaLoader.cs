@@ -104,6 +104,12 @@ public class SchemaLoader
         {
             foreach (var (typeName, typeValue) in typesDef)
             {
+                if (SchemaTypeExtensions.AllTypeNames.Contains(typeName))
+                    throw new InvalidOperationException(
+                        $"[types.{typeName}] uses a reserved built-in type name");
+                if (typeName.StartsWith("types.", StringComparison.Ordinal))
+                    throw new InvalidOperationException(
+                        $"[types.{typeName}] uses the reserved type-reference prefix");
                 if (typeValue is not TomlTable typeTable)
                     throw new InvalidOperationException($"[types.{typeName}] must be a table");
 
@@ -123,6 +129,9 @@ public class SchemaLoader
             }
         }
 
+        ValidateReferences(types, types);
+        ValidateReferences(types, elements);
+        ValidateSelectorCycles(types);
         ValidateRangeSemantics(types, elements);
         ValidateDefinitionKinds(types, types);
         ValidateDefinitionKinds(types, elements);
@@ -130,7 +139,9 @@ public class SchemaLoader
         ValidateMemberConstraintSemantics(types, elements);
         ValidateSiblingRuleSemantics(types, elements);
         ValidateConditionalSemantics(types, elements);
-        return new TomlSchema(version, types, elements);
+        var schema = new TomlSchema(version, types, elements);
+        ValidateDefaults(schema, types, elements);
+        return schema;
     }
 
     private SchemaDefinition ParseDefinition(string location, TomlTable table)
@@ -255,6 +266,10 @@ public class SchemaLoader
             ? avArray.Cast<object?>().ToList()
             : null;
         var defaultValue = GetValue(table, "default");
+        // A `default` whose value is a table carrying a selector marker is a child
+        // definition named `default` (table-header form), not the default annotation.
+        if (defaultValue is TomlTable defaultChild && HasSelectorMarker(defaultChild))
+            defaultValue = null;
         if (condition != null && table.ContainsKey("default") && defaultValue is not TomlTable)
             throw new InvalidOperationException($"{location} conditional default must be a table");
 
@@ -291,6 +306,22 @@ public class SchemaLoader
         if (minLength.HasValue && maxLength.HasValue && minLength > maxLength)
             throw new InvalidOperationException(
                 $"{location} minlength must not be greater than maxlength");
+        if ((minLength.HasValue || maxLength.HasValue)
+            && type is not (SchemaType.String or SchemaType.Array or SchemaType.Collection))
+            throw new InvalidOperationException(
+                $"{location} can only define minlength or maxlength when type is string, array, or collection");
+        var itemType = GetString(table, "itemtype");
+        var items = GetStringArray(table, "items");
+        var hasItems = table.TryGetValue("items", out var itemsValue) && itemsValue is TomlArray;
+        if (hasItems && (items == null || items.Count == 0))
+            throw new InvalidOperationException(
+                $"{location} items must contain at least one type reference");
+        if (items is { Count: > 0 } && itemType != null)
+            throw new InvalidOperationException(
+                $"{location} cannot define both items and itemtype");
+        if (type == SchemaType.Collection && itemType == null && (allOf?.Count ?? 0) == 0)
+            throw new InvalidOperationException(
+                $"{location} must define itemtype when type is collection");
         ValidateAllowedValuesConstraints(
             location, type, allowedValues, pattern, format, min, max, minLength, maxLength);
         if (children.Count == 0 && type == null && reference == null
@@ -298,7 +329,8 @@ public class SchemaLoader
             throw new InvalidOperationException(
                 $"{location} must define type, oneof, anyof, if/then/else, or child definitions");
         if ((table.TryGetValue("items", out var tupleItems) && tupleItems is TomlArray)
-            && (allowedValues != null || min != null || max != null || pattern != null || format != null))
+            && (allowedValues != null || min != null || max != null || pattern != null || format != null
+                || minLength.HasValue || maxLength.HasValue))
             throw new InvalidOperationException(
                 $"{location} cannot combine items with per-member constraints");
 
@@ -327,7 +359,7 @@ public class SchemaLoader
             Deprecated = GetBool(table, "deprecated") ?? false,
             Condition = condition,
             Children = children,
-            DependentRequired = GetStringArray(table, "dependentrequired"),
+            DependentRequiredMap = GetDependentRequiredMap(location, table),
             MutuallyExclusive = mutuallyExclusive,
             ExactlyOne = exactlyOne
         };
@@ -425,6 +457,28 @@ public class SchemaLoader
             return null;
 
         return arr.Cast<string>().ToList();
+    }
+
+    private Dictionary<string, List<string>>? GetDependentRequiredMap(string location, TomlTable table)
+    {
+        if (!table.TryGetValue("dependentrequired", out var value))
+            return null;
+
+        if (value is not TomlTable map)
+            throw new InvalidOperationException($"{location}.dependentrequired must be an inline table");
+
+        if (map.Count == 0)
+            throw new InvalidOperationException($"{location}.dependentrequired must not be empty");
+
+        var result = new Dictionary<string, List<string>>();
+        foreach (var (trigger, dependents) in map)
+        {
+            if (dependents is not TomlArray dependentArray)
+                throw new InvalidOperationException(
+                    $"dependentrequired.{trigger} must be an array of child names");
+            result[trigger] = dependentArray.Cast<string>().ToList();
+        }
+        return result;
     }
 
     private static void ValidateDistinctReferences(
@@ -680,7 +734,7 @@ public class SchemaLoader
         SchemaDefinition definition,
         IReadOnlyDictionary<string, SchemaDefinition> types)
     {
-        var hasRules = definition.DependentRequired?.Count > 0
+        var hasRules = definition.DependentRequiredMap?.Count > 0
             || definition.MutuallyExclusive?.Count > 0
             || definition.ExactlyOne?.Count > 0;
         if (hasRules)
@@ -690,8 +744,13 @@ public class SchemaLoader
                 throw new InvalidOperationException("sibling rules require an effective table or collection");
 
             var fixedChildren = DeterminateFixedChildren(definition, types, new HashSet<string>());
-            foreach (var operand in definition.DependentRequired ?? [])
-                ValidateSiblingOperand("dependentrequired", operand, fixedChildren);
+            foreach (var (trigger, dependents) in definition.DependentRequiredMap
+                ?? new Dictionary<string, List<string>>())
+            {
+                ValidateSiblingOperand("dependentrequired", trigger, fixedChildren);
+                foreach (var dependent in dependents)
+                    ValidateSiblingOperand("dependentrequired", dependent, fixedChildren);
+            }
             foreach (var (property, groups) in new[]
             {
                 ("mutuallyexclusive", definition.MutuallyExclusive ?? []),
@@ -914,6 +973,111 @@ public class SchemaLoader
         {
             visiting.Remove(normalized);
         }
+    }
+
+    private static void ValidateReferences(
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        IReadOnlyDictionary<string, SchemaDefinition> definitions)
+    {
+        foreach (var definition in definitions.Values)
+        {
+            foreach (var reference in CollectReferences(definition))
+            {
+                var normalized = NormalizeReference(reference);
+                if (!SchemaTypeExtensions.AllTypeNames.Contains(normalized)
+                    && !types.ContainsKey(normalized))
+                    throw new InvalidOperationException(
+                        $"{definition.Name} contains unknown type reference: {reference}");
+            }
+            ValidateReferences(types, definition.Children);
+        }
+    }
+
+    private static IEnumerable<string> CollectReferences(SchemaDefinition definition)
+    {
+        if (definition.Reference != null)
+            yield return definition.Reference;
+        if (definition.ItemType != null)
+            yield return definition.ItemType;
+        foreach (var item in definition.Items ?? [])
+            yield return item;
+        foreach (var reference in definition.OneOf ?? [])
+            yield return reference;
+        foreach (var reference in definition.AnyOf ?? [])
+            yield return reference;
+        foreach (var reference in definition.AllOf ?? [])
+            yield return reference;
+        if (definition.Condition != null)
+        {
+            if (definition.Condition.ThenType != null)
+                yield return definition.Condition.ThenType;
+            if (definition.Condition.ElseType != null)
+                yield return definition.Condition.ElseType;
+        }
+    }
+
+    private static void ValidateSelectorCycles(
+        IReadOnlyDictionary<string, SchemaDefinition> types)
+    {
+        var visited = new HashSet<string>();
+        foreach (var typeName in types.Keys)
+            ValidateSelectorCycle(typeName, types, new HashSet<string>(), visited);
+    }
+
+    private static void ValidateSelectorCycle(
+        string typeName,
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        HashSet<string> visiting,
+        HashSet<string> visited)
+    {
+        if (SchemaTypeExtensions.AllTypeNames.Contains(typeName) || visited.Contains(typeName))
+            return;
+        if (!visiting.Add(typeName))
+            throw new InvalidOperationException(
+                $"cyclic type selector reference involving types.{typeName}");
+        if (types.TryGetValue(typeName, out var definition))
+        {
+            var references = new List<string>();
+            if (definition.Reference != null)
+                references.Add(definition.Reference);
+            references.AddRange(definition.OneOf ?? []);
+            references.AddRange(definition.AnyOf ?? []);
+            references.AddRange(definition.AllOf ?? []);
+            if (definition.Condition != null)
+            {
+                if (definition.Condition.ThenType != null)
+                    references.Add(definition.Condition.ThenType);
+                if (definition.Condition.ElseType != null)
+                    references.Add(definition.Condition.ElseType);
+            }
+            foreach (var reference in references)
+                ValidateSelectorCycle(NormalizeReference(reference), types, visiting, visited);
+        }
+        visiting.Remove(typeName);
+        visited.Add(typeName);
+    }
+
+    private static void ValidateDefaults(
+        TomlSchema schema,
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        IReadOnlyDictionary<string, SchemaDefinition> elements)
+    {
+        foreach (var definition in types.Values.Concat(elements.Values))
+            ValidateDefaultDefinition(schema, definition);
+    }
+
+    private static void ValidateDefaultDefinition(TomlSchema schema, SchemaDefinition definition)
+    {
+        if (definition.Default != null)
+        {
+            var validator = new SchemaValidator(schema);
+            var errors = validator.ValidateDefaultAnnotation(definition.Default, definition);
+            if (errors.Count > 0)
+                throw new InvalidOperationException(
+                    $"{definition.Name} has invalid effective default: {errors[0].Message}");
+        }
+        foreach (var child in definition.Children.Values)
+            ValidateDefaultDefinition(schema, child);
     }
 
     private static string NormalizeReference(string reference) =>

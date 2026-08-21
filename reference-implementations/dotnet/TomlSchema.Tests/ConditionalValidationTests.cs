@@ -46,6 +46,32 @@ public class ConditionalValidationTests : TestBase
     }
 
     [Fact]
+    public void RejectsArrayFormDependentRequired()
+    {
+        // SPEC.md: "dependentrequired is a non-empty inline table". The array
+        // shorthand was accepted by an earlier loader and is not legal.
+        var schema = Write("dependent-required-array.tosd", """
+            [toml-schema]
+            version = "1.0.0"
+
+            [elements.server]
+            type = "table"
+            dependentrequired = ["ssl_cert", "ssl_key"]
+
+                [elements.server.ssl_cert]
+                type = "string"
+                optional = true
+
+                [elements.server.ssl_key]
+                type = "string"
+                optional = true
+            """);
+
+        var error = Assert.ThrowsAny<Exception>(() => global::TomlSchema.TomlSchema.Load(schema));
+        Assert.Contains("inline table", error.Message);
+    }
+
+    [Fact]
     public void ValidatesDependentRequired()
     {
         var schema = Write("dependent-required.tosd", """
@@ -54,7 +80,7 @@ public class ConditionalValidationTests : TestBase
 
             [elements.server]
             type = "table"
-            dependentrequired = ["ssl_cert", "ssl_key"]
+            dependentrequired = { ssl_cert = ["ssl_key"], ssl_key = ["ssl_cert"] }
 
                 [elements.server.ssl_cert]
                 type = "string"
@@ -85,9 +111,9 @@ public class ConditionalValidationTests : TestBase
         Assert.True(validResult.IsValid);
 
         var invalidResult = schemaObj.Validate(invalidToml);
-        // This may or may not be strict depending on implementation
-        // For now we just validate it loads without error
-        Assert.NotNull(invalidResult);
+        // ssl_cert is present but ssl_key is not, so the dependentrequired rule must fire.
+        Assert.False(invalidResult.IsValid);
+        Assert.Contains(invalidResult.Errors, e => e.Code == "dependentrequired");
     }
 
     [Fact]
