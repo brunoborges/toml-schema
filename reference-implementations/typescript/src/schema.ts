@@ -9,7 +9,7 @@ import { DiagnosticCodes } from "./diagnostics.js";
 import { validateSchemaVersion } from "./semver.js";
 import { DocumentValidator, ValidationResult } from "./validator.js";
 import { isTomlTable, type TomlTable, type TomlValue } from "./values.js";
-import { appendPath } from "./paths.js";
+import { appendPath, schemaPathOf } from "./paths.js";
 
 const TOP_LEVEL_KEYS = new Set(["toml-schema", "types", "elements"]);
 const TOML_SCHEMA_KEYS = new Set(["version", "meta"]);
@@ -131,25 +131,35 @@ export function loadSchemaFromSource(path: string, source: string): Schema {
 
   const metadataValue = parsed["toml-schema"];
   if (!isTomlTable(metadataValue)) {
-    throw new SchemaError("schema must contain a [toml-schema] table");
+    throw new SchemaError("schema must contain a [toml-schema] table", {
+      schemaPath: schemaPathOf(["toml-schema"]),
+    });
   }
   const elementsValue = parsed["elements"];
   if (!isTomlTable(elementsValue)) {
-    throw new SchemaError("schema must contain an [elements] table");
+    throw new SchemaError("schema must contain an [elements] table", {
+      schemaPath: schemaPathOf(["elements"]),
+    });
   }
   for (const key of Object.keys(parsed)) {
     if (!TOP_LEVEL_KEYS.has(key)) {
-      throw new SchemaError(`unsupported top-level schema key: ${key}`);
+      throw new SchemaError(`unsupported top-level schema key: ${key}`, {
+        schemaPath: schemaPathOf([key]),
+      });
     }
   }
   const version = metadataValue["version"];
   if (version === undefined) {
-    throw new SchemaError("[toml-schema] must contain version");
+    throw new SchemaError("[toml-schema] must contain version", {
+      schemaPath: schemaPathOf(["toml-schema", "version"]),
+    });
   }
   validateSchemaVersion(version);
   for (const key of Object.keys(metadataValue)) {
     if (!TOML_SCHEMA_KEYS.has(key)) {
-      throw new SchemaError(`unsupported [toml-schema] key: ${key}`);
+      throw new SchemaError(`unsupported [toml-schema] key: ${key}`, {
+        schemaPath: schemaPathOf(["toml-schema", key]),
+      });
     }
   }
 

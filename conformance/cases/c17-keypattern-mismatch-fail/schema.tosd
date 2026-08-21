@@ -1,0 +1,7 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugins]
+type = "collection"
+itemtype = "string"
+keypattern = '^[a-z]+$'
