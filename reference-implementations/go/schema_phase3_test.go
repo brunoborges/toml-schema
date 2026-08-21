@@ -34,10 +34,10 @@ type = "types.count"
 `)
 	document := write(t, dir, "valid.toml", "pkg = { name = \"x\", version = \"1\" }\ncount = 5")
 	invalid := write(t, dir, "invalid.toml", "pkg = { name = \"x\", version = \"1\" }\ncount = 0")
-	if result := schema.ValidateFile(document); !result.Valid() {
+	if result, _ := schema.ValidateFile(document); !result.Valid() {
 		t.Fatalf("pure allof mixin should validate: %#v", result.Errors)
 	}
-	if result := schema.ValidateFile(invalid); result.Valid() {
+	if result, _ := schema.ValidateFile(invalid); result.Valid() {
 		t.Fatal("pure scalar allof constraints were not applied")
 	}
 }
@@ -74,10 +74,10 @@ pattern = '^[a-z]+$'
 `)
 	valid := write(t, dir, "valid.toml", `tags = ["alpha", "beta"]`)
 	invalid := write(t, dir, "invalid.toml", `tags = ["alpha", "Beta"]`)
-	if result := schema.ValidateFile(valid); !result.Valid() {
+	if result, _ := schema.ValidateFile(valid); !result.Valid() {
 		t.Fatalf("valid tags rejected: %#v", result.Errors)
 	}
-	if result := schema.ValidateFile(invalid); !hasPath(result, "$.tags[1]") {
+	if result, _ := schema.ValidateFile(invalid); !hasPath(result, "$.tags[1]") {
 		t.Fatalf("invalid tag was not rejected: %#v", result.Errors)
 	}
 }
@@ -105,10 +105,10 @@ format = "email"
 `)
 	valid := write(t, dir, "valid.toml", "[ports]\nhttp = 80\n[roles]\nowner = \"admin\"\n[tags]\nrelease = \"stable@example.com\"\n[emails]\nowner = \"admin@example.com\"\n")
 	invalid := write(t, dir, "invalid.toml", "[ports]\nlow = 0\nhigh = 70000\n[roles]\nowner = \"root\"\n[tags]\nrelease = \"Stable\"\n[emails]\nowner = \"not-an-email\"\n")
-	if result := schema.ValidateFile(valid); !result.Valid() {
+	if result, _ := schema.ValidateFile(valid); !result.Valid() {
 		t.Fatalf("valid collection members rejected: %#v", result.Errors)
 	}
-	result := schema.ValidateFile(invalid)
+	result, _ := schema.ValidateFile(invalid)
 	for _, path := range []string{"$.ports.low", "$.ports.high", "$.roles.owner", "$.tags.release", "$.emails.owner"} {
 		if !hasPath(result, path) {
 			t.Fatalf("invalid collection member at %s was not rejected: %#v", path, result.Errors)
@@ -160,7 +160,7 @@ allowedvalues = ["aaaa", "bbbbb"]
 maxlength = 2
 `)
 	valid := write(t, dir, "container-length.toml", `value = ["aaaa"]`)
-	if result := schema.ValidateFile(valid); !result.Valid() {
+	if result, _ := schema.ValidateFile(valid); !result.Valid() {
 		t.Fatalf("container with maxlength enumeration rejected: %#v", result.Errors)
 	}
 }
@@ -182,13 +182,13 @@ allowedvalues = ["b", "c"]
 	valid := write(t, dir, "valid.toml", `values = ["b"]`)
 	inlineInvalid := write(t, dir, "inline-invalid.toml", `values = ["a"]`)
 	inheritedInvalid := write(t, dir, "inherited-invalid.toml", `values = ["c"]`)
-	if result := schema.ValidateFile(valid); !result.Valid() {
+	if result, _ := schema.ValidateFile(valid); !result.Valid() {
 		t.Fatalf("intersection value should validate: %#v", result.Errors)
 	}
-	if result := schema.ValidateFile(inlineInvalid); result.Valid() {
+	if result, _ := schema.ValidateFile(inlineInvalid); result.Valid() {
 		t.Fatal("inline allowedvalues constraint was not applied")
 	}
-	if result := schema.ValidateFile(inheritedInvalid); result.Valid() {
+	if result, _ := schema.ValidateFile(inheritedInvalid); result.Valid() {
 		t.Fatal("allof-inherited allowedvalues constraint was not applied")
 	}
 }
