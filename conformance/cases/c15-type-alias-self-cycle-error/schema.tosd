@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.a]
+type = "types.a"
+
+[elements.x]
+type = "types.a"

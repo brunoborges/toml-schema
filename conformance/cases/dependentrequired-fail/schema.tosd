@@ -1,0 +1,14 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.dep]
+type = "table"
+dependentrequired = { branch = [ "git" ] }
+
+[elements.dep.git]
+type = "string"
+optional = true
+
+[elements.dep.branch]
+type = "string"
+optional = true

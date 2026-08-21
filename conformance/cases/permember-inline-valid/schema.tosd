@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.ports]
+type = "array"
+itemtype = "integer"
+min = 1
+max = 65535

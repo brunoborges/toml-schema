@@ -1,0 +1,13 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.ab]
+type = "string"
+allowedvalues = [ "a", "b" ]
+
+[types.bc]
+type = "string"
+allowedvalues = [ "b", "c" ]
+
+[elements.x]
+allof = [ "types.ab", "types.bc" ]

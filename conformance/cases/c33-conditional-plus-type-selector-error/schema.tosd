@@ -1,0 +1,22 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.a]
+type = "table"
+
+[types.a.engine]
+type = "string"
+optional = true
+
+[types.b]
+type = "table"
+
+[types.b.engine]
+type = "string"
+optional = true
+
+[elements.db]
+type = "string"
+if = { key = "engine", equals = "x" }
+then = "types.a"
+else = "types.b"

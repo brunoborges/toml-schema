@@ -1,0 +1,13 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.a]
+type = "integer"
+default = 1
+
+[types.b]
+type = "string"
+default = "x"
+
+[elements.v]
+oneof = [ "types.a", "types.b" ]

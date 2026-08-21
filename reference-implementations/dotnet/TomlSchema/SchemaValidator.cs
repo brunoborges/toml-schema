@@ -20,8 +20,7 @@ internal class SchemaValidator
     }
 
     public ValidationResult Validate(TomlTable document)
-    {
-        var workDoc = new TomlTable();
+    {        var workDoc = new TomlTable();
         foreach (var kvp in document.Where(x => x.Key != "toml-schema" || _schema.Elements.ContainsKey("toml-schema")))
             workDoc[kvp.Key] = kvp.Value;
 
@@ -48,6 +47,17 @@ internal class SchemaValidator
         }
 
         return new ValidationResult(_errors.AsReadOnly(), _warnings.AsReadOnly());
+    }
+
+    /// <summary>
+    /// Validates a declared <c>default</c> annotation as a present value against
+    /// its definition. Used at schema-load time; deprecation is not emitted here.
+    /// </summary>
+    internal IReadOnlyList<ValidationError> ValidateDefaultAnnotation(
+        object value, SchemaDefinition definition)
+    {
+        ValidateType(value, definition, "$default");
+        return _errors;
     }
 
     private void ValidateElement(string name, object? value, SchemaDefinition schema, string path)
@@ -369,18 +379,17 @@ internal class SchemaValidator
     private void ValidatePresenceRules(TomlTable table, SchemaDefinition schema, string path)
     {
         // dependentrequired
-        if (schema.DependentRequired != null)
+        if (schema.DependentRequiredMap != null)
         {
-            foreach (var dep in schema.DependentRequired)
+            foreach (var (trigger, dependents) in schema.DependentRequiredMap)
             {
-                if (table.ContainsKey(dep))
+                if (!table.ContainsKey(trigger))
+                    continue;
+                foreach (var required in dependents)
                 {
-                    foreach (var required in schema.Children.Keys)
-                    {
-                        if (!table.ContainsKey(required))
-                            _errors.Add(new ValidationError(AppendPath(path, required), 
-                                $"required by presence of {dep}", "dependentrequired"));
-                    }
+                    if (!table.ContainsKey(required))
+                        _errors.Add(new ValidationError(AppendPath(path, required),
+                            $"required because sibling {trigger} is present", "dependentrequired"));
                 }
             }
         }
@@ -410,6 +419,22 @@ internal class SchemaValidator
 
     private void ValidateArray(TomlArray array, SchemaDefinition schema, string path)
     {
+        // Tuple / positional array validation
+        if (schema.Items is { Count: > 0 })
+        {
+            if (array.Count != schema.Items.Count)
+                _errors.Add(new ValidationError(path,
+                    $"expected array length {schema.Items.Count} but found {array.Count}", "items-arity"));
+            var bound = Math.Min(array.Count, schema.Items.Count);
+            for (int i = 0; i < bound; i++)
+            {
+                var itemSchema = ResolveItemType(schema.Items[i])
+                    ?? throw new InvalidOperationException($"Undefined item type: {schema.Items[i]}");
+                ValidateType(array[i], itemSchema, $"{path}[{i}]");
+            }
+            return;
+        }
+
         // Unique items
         if (schema.UniqueItems == true)
         {

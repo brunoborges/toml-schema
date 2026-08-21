@@ -1,0 +1,7 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.code]
+type = "string"
+minlength = 3
+allowedvalues = [ "ab" ]

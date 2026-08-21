@@ -1,0 +1,13 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.a]
+type = "integer"
+min = 1
+
+[types.b]
+type = "integer"
+max = 100
+
+[elements.v]
+oneof = [ "types.a", "types.b" ]

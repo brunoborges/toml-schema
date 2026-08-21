@@ -1,0 +1,11 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.a]
+type = "integer"
+
+[elements.v]
+oneof = [ "types.a", "string" ]
+optional = true
+default = 1
+deprecated = true

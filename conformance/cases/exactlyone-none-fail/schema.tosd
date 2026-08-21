@@ -1,0 +1,14 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.r]
+type = "table"
+exactlyone = [ [ "file", "text" ] ]
+
+[elements.r.file]
+type = "string"
+optional = true
+
+[elements.r.text]
+type = "string"
+optional = true

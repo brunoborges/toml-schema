@@ -1,0 +1,10 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.i]
+type = "string"
+
+[elements.s]
+type = "collection"
+itemtype = "types.i"
+keypattern = "\\d+"

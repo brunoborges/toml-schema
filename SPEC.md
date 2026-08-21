@@ -361,6 +361,7 @@ and the preferred term is the one to use in new text.
     - [Validation Codes](#validation-codes)
   - [Informative Examples](#informative-examples)
 - [Schema Self-Validation](#schema-self-validation)
+  - [Precedence](#precedence)
 - [Security Considerations](#security-considerations)
   - [Schema Discovery and Retrieval](#schema-discovery-and-retrieval)
   - [Resource Limits](#resource-limits)
@@ -4294,6 +4295,29 @@ validate the latter recursively.
 
 A conforming implementation MUST apply both the self-schema validation and these
 reference-aware and source-aware schema-load checks.
+
+### Precedence
+
+Where this specification and the companion self-schema disagree, this
+specification governs. An implementation MUST NOT accept a schema this
+specification rejects merely because the self-schema accepts it, and MUST NOT
+reject a schema this specification permits merely because the self-schema rejects
+it. Any such disagreement is a defect in the self-schema and MUST be corrected
+there rather than in the prose.
+
+This rule is not hypothetical. The two groups listed above are exactly the cases
+where the self-schema is knowingly more permissive than the prose, because a
+schema document cannot assert those rules about itself. A definition that
+declares no selector, no nested child definition, and no `allof` is the clearest
+example: the self-schema accepts it and this specification rejects it, and the
+schema is invalid.
+
+Each tagged specification release publishes `SPEC.md`, `toml-schema.abnf`, and
+`toml-schema.tosd` together as one versioned bundle, accompanied by a
+`CHECKSUMS.txt` listing a SHA-256 digest for each of those three documents. A
+consumer that needs to pin an exact revision of the self-schema SHOULD cite the
+release version together with that digest, which identifies one immutable
+document rather than a mutable branch path.
 
 ## Security Considerations
 

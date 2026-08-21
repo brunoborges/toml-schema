@@ -1,0 +1,12 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.plugin]
+type = "table"
+
+[elements.plugin.children.type]
+type = "string"
+allowedvalues = [ "npm", "local" ]
+
+[elements.plugin.name]
+type = "string"

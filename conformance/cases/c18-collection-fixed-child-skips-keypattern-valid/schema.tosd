@@ -1,0 +1,13 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.item]
+type = "string"
+
+[elements.servers]
+type = "collection"
+itemtype = "types.item"
+keypattern = "^g"
+
+[elements.servers.group]
+type = "integer"

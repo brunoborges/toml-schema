@@ -1,0 +1,7 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.x]
+type = "integer"
+min = 10
+max = 5

@@ -1,0 +1,10 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.strcoll]
+type = "collection"
+itemtype = "string"
+
+[elements.s]
+type = "collection"
+allof = [ "types.strcoll" ]

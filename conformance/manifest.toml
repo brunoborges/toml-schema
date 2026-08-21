@@ -1,0 +1,604 @@
+# TOML Schema conformance corpus manifest.
+# Generated fixtures; every expectation is derived from SPEC.md (see `spec`).
+# expect: one of "schema-load-error" (exit 2), "validation-failure" (exit 1), "valid" (exit 0).
+
+[[case]]
+id = "c01-allowedvalues-kind-over-equality"
+expect = "validation-failure"
+summary = "type=integer allowedvalues=[80]: document 80.0 fails on kind even though 80.0==80"
+spec = "#### Allowed Values - `allowedvalues`"
+origin = "grok C1"
+document = true
+
+[[case]]
+id = "c01-allowedvalues-kind-match-valid"
+expect = "valid"
+summary = "type=integer allowedvalues=[80]: integer 80 passes kind + membership"
+spec = "#### Allowed Values - `allowedvalues`"
+origin = "grok C1"
+document = true
+
+[[case]]
+id = "c02-items-repeated-entries-valid"
+expect = "valid"
+summary = "items may repeat the same type reference; two-float tuple loads and validates"
+spec = "##### Tuple / Positional Array Validation - `items`"
+origin = "grok C2"
+document = true
+
+[[case]]
+id = "c03-oneof-duplicate-alias-error"
+expect = "schema-load-error"
+summary = "oneof = [\"types.foo\",\"foo\"] names the same definition twice"
+spec = "#### Alternative Types - `oneof` and `anyof`"
+origin = "grok C3"
+document = false
+
+[[case]]
+id = "c04-types-prefix-on-builtin-valid"
+expect = "valid"
+summary = "type = \"types.string\" resolves to the built-in string and must load"
+spec = "#### Built-in Names Are Reserved"
+origin = "grok C4"
+document = true
+
+[[case]]
+id = "c05-conditional-nontable-value-fail"
+expect = "validation-failure"
+summary = "conditional node whose document value is a scalar cannot satisfy either table branch"
+spec = "#### Conditional Selection - `if`, `then`, and `else`"
+origin = "grok C5"
+document = true
+
+[[case]]
+id = "c06-recursion-through-consuming-edge-valid"
+expect = "valid"
+summary = "cycle through oneof then array itemtype is legal because itemtype is a consuming edge"
+spec = "#### Cycle Legality"
+origin = "grok C6"
+document = true
+
+[[case]]
+id = "c07-conditional-closed-branch-missing-discriminator-error"
+expect = "schema-load-error"
+summary = "closed branch determinate set lacks the if.key discriminator"
+spec = "##### The Discriminator Key and Closed Branches"
+origin = "grok C7"
+document = false
+
+[[case]]
+id = "c08-pure-mixin-valid"
+expect = "valid"
+summary = "definition whose only applicator is allof takes its effective table type from components"
+spec = "#### Composition Supplying the Local Skeleton"
+origin = "grok C8"
+document = true
+
+[[case]]
+id = "c09-min-greater-than-max-error"
+expect = "schema-load-error"
+summary = "min=10 max=5 violates the min<=max rule"
+spec = "#### Minimum Value / Maximum Value - `min` and `max`"
+origin = "grok C9"
+document = false
+
+[[case]]
+id = "c09-integer-infinite-boundary-error"
+expect = "schema-load-error"
+summary = "inf is not a valid boundary on an integer definition"
+spec = "#### Minimum Value / Maximum Value - `min` and `max`"
+origin = "grok C9"
+document = false
+
+[[case]]
+id = "c10-itemtype-builtin-table-valid"
+expect = "valid"
+summary = "itemtype = \"table\" makes each array item an open table"
+spec = "#### Type Reference Restrictions"
+origin = "grok C10"
+document = true
+
+[[case]]
+id = "c11-pattern-uncompilable-error"
+expect = "schema-load-error"
+summary = "pattern = \"[\" does not compile and is rejected at schema-load"
+spec = "#### Pattern - `pattern`"
+origin = "grok C11"
+document = false
+
+[[case]]
+id = "c11-pattern-nonportable-error"
+expect = "schema-load-error"
+summary = "pattern = \"\\d+\" uses a non-portable shorthand outside the RE2 profile"
+spec = "#### Pattern - `pattern`"
+origin = "grok C11"
+document = false
+
+[[case]]
+id = "c12-root-elements-as-definition-error"
+expect = "schema-load-error"
+summary = "the root [elements] cannot itself be declared a collection with type/itemtype"
+spec = "**No open or dynamically keyed root.**"
+origin = "grok C12"
+document = false
+
+[[case]]
+id = "c13-deprecated-itemtype-still-valid"
+expect = "valid"
+summary = "a deprecated array itemtype produces warnings per item but the document is valid"
+spec = "**Attachment.**"
+origin = "grok C13"
+document = true
+
+[[case]]
+id = "c34-conditional-nontable-default-error"
+expect = "schema-load-error"
+summary = "a non-table default on a conditional definition is rejected at schema-load"
+spec = "#### Conditional Selection - `if`, `then`, and `else`"
+origin = "grok C34"
+document = false
+
+[[case]]
+id = "c35-dotted-type-name-unresolved-error"
+expect = "schema-load-error"
+summary = "unquoted [types.network.endpoint] creates type \"network\"; reference \"network.endpoint\" is unresolved"
+spec = "#### Resolution Algorithm"
+origin = "grok C35"
+document = false
+
+[[case]]
+id = "c14-conditional-absent-key-selects-else-valid"
+expect = "valid"
+summary = "when if.key is absent the condition is false and the else branch validates"
+spec = "#### Conditional Selection - `if`, `then`, and `else`"
+origin = "grok C14"
+document = true
+
+[[case]]
+id = "c15-type-alias-self-cycle-error"
+expect = "schema-load-error"
+summary = "a type alias that references itself is an illegal non-consuming cycle"
+spec = "#### Cycle Legality"
+origin = "grok C15"
+document = false
+
+[[case]]
+id = "c16-unresolved-reference-on-optional-error"
+expect = "schema-load-error"
+summary = "an unresolved reference is rejected even on an optional slot"
+spec = "#### Type Reference Restrictions"
+origin = "grok C16"
+document = false
+
+[[case]]
+id = "c17-reserved-builtin-type-name-error"
+expect = "schema-load-error"
+summary = "a reusable definition may not take the reserved built-in name string"
+spec = "#### Built-in Names Are Reserved"
+origin = "grok C17"
+document = false
+
+[[case]]
+id = "c18-collection-fixed-child-skips-keypattern-valid"
+expect = "valid"
+summary = "a fixed child is validated by its own definition and is exempt from keypattern"
+spec = "#### Key Pattern - `keypattern`"
+origin = "grok C18"
+document = true
+
+[[case]]
+id = "c19-itemtype-and-items-together-error"
+expect = "schema-load-error"
+summary = "itemtype and items are mutually exclusive"
+spec = "##### Tuple / Positional Array Validation - `items`"
+origin = "grok C19"
+document = false
+
+[[case]]
+id = "c20-items-arity-mismatch-fail"
+expect = "validation-failure"
+summary = "an items tuple requires exactly the declared number of positions"
+spec = "##### Tuple / Positional Array Validation - `items`"
+origin = "grok C20"
+document = true
+
+[[case]]
+id = "c20-empty-items-error"
+expect = "schema-load-error"
+summary = "items = [] is rejected; an empty array is required with maxlength=0 instead"
+spec = "##### Tuple / Positional Array Validation - `items`"
+origin = "grok C20"
+document = false
+
+[[case]]
+id = "c21-uniqueitems-int-float-equal-fail"
+expect = "validation-failure"
+summary = "uniqueitems treats 1 and 1.0 as equal under Parsed Value Equality"
+spec = "### Parsed Value Equality"
+origin = "grok C21"
+document = true
+
+[[case]]
+id = "c21-uniqueitems-nan-equal-fail"
+expect = "validation-failure"
+summary = "uniqueitems treats nan and nan as equal for this equality relation"
+spec = "### Parsed Value Equality"
+origin = "grok C21"
+document = true
+
+[[case]]
+id = "c22-permember-min-multikind-itemtype-error"
+expect = "schema-load-error"
+summary = "min on an array whose oneof itemtype spans integer and float has no single comparable kind"
+spec = "#### Per-Member Value Constraints"
+origin = "grok C22"
+document = false
+
+[[case]]
+id = "c23-minlength-on-integer-error"
+expect = "schema-load-error"
+summary = "minlength is invalid on a non-string, non-container type"
+spec = "#### Length - `minlength` and `maxlength`"
+origin = "grok C23"
+document = false
+
+[[case]]
+id = "c23-pattern-on-nonstring-member-error"
+expect = "schema-load-error"
+summary = "pattern on an array whose member type is integer has no string member to constrain"
+spec = "#### Per-Member Value Constraints"
+origin = "grok C23"
+document = false
+
+[[case]]
+id = "c23-pattern-contradicting-allowedvalues-error"
+expect = "schema-load-error"
+summary = "an allowedvalues entry that violates a sibling pattern is rejected at schema-load"
+spec = "#### Allowed Values - `allowedvalues`"
+origin = "grok C23"
+document = false
+
+[[case]]
+id = "c24-default-wrong-kind-error"
+expect = "schema-load-error"
+summary = "a default whose kind does not match the definition is rejected at schema-load"
+spec = "#### Default - `default`"
+origin = "grok C24"
+document = false
+
+[[case]]
+id = "c24-default-does-not-satisfy-required-fail"
+expect = "validation-failure"
+summary = "a default on a required node does not insert and does not satisfy requiredness"
+spec = "#### Default - `default`"
+origin = "grok C24"
+document = true
+
+[[case]]
+id = "c25-oneof-alternative-defaults-no-conflict-valid"
+expect = "valid"
+summary = "unequal defaults on oneof alternatives are never aggregated and never a load conflict"
+spec = "#### Default - `default`"
+origin = "grok C25"
+document = true
+
+[[case]]
+id = "c26-document-toml-schema-ignored-valid"
+expect = "valid"
+summary = "the reserved root [toml-schema] table in a document is ignored during validation"
+spec = "## TOML Reference of a TOML Schema"
+origin = "grok C26"
+document = true
+
+[[case]]
+id = "c27-children-namespace-property-key-valid"
+expect = "valid"
+summary = "a target key named type is described through the children escape namespace"
+spec = "### Quoted and Special Keys"
+origin = "grok C27"
+document = true
+
+[[case]]
+id = "c28-empty-and-dotted-keys-valid"
+expect = "valid"
+summary = "empty and literal dotted target keys are addressed with quoted schema paths"
+spec = "### Quoted and Special Keys"
+origin = "grok C28"
+document = true
+
+[[case]]
+id = "c29-array-of-inline-tables-valid"
+expect = "valid"
+summary = "an array of inline tables parses to the same kind as [[array of tables]]"
+spec = "##### Array Item Schemas and Arrays of Tables"
+origin = "grok C29"
+document = true
+
+[[case]]
+id = "c32-union-node-annotations-valid"
+expect = "valid"
+summary = "a union node may declare optional, default, and deprecated together"
+spec = "#### Alternative Types - `oneof` and `anyof`"
+origin = "grok C32"
+document = true
+
+[[case]]
+id = "c33-conditional-plus-type-selector-error"
+expect = "schema-load-error"
+summary = "combining a type selector with a conditional triple declares two selectors"
+spec = "### Selectors"
+origin = "grok C33"
+document = false
+
+[[case]]
+id = "keyword-unknown-property-error"
+expect = "schema-load-error"
+summary = "a misspelled property name is rejected; the schema keyword set is closed"
+spec = "### Schema Definition Properties"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "minmax-nan-boundary-error"
+expect = "schema-load-error"
+summary = "nan is not a valid min/max boundary because NaN is unordered"
+spec = "#### Minimum Value / Maximum Value - `min` and `max`"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "minmax-float-inf-boundary-valid"
+expect = "valid"
+summary = "inf is a valid float boundary"
+spec = "#### Minimum Value / Maximum Value - `min` and `max`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "allof-mixed-kinds-error"
+expect = "schema-load-error"
+summary = "a pure mixin whose components resolve to table and integer has no single kind"
+spec = "#### Composition Supplying the Local Skeleton"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "allof-duplicate-component-error"
+expect = "schema-load-error"
+summary = "allof = [\"types.a\",\"a\"] lists the same component twice"
+spec = "#### The Effective Definition"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "allof-intersection-valid"
+expect = "valid"
+summary = "two allowedvalues enumerations composed by allof intersect; a common member validates"
+spec = "#### Merging by TOML Kind"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "allof-intersection-fail"
+expect = "validation-failure"
+summary = "a value in only one composed enumeration fails the conjunctive intersection"
+spec = "#### Merging by TOML Kind"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-inline-valid"
+expect = "valid"
+summary = "inline min/max on an array constrain each item; in-range items validate"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-inline-fail"
+expect = "validation-failure"
+summary = "an item below the inline per-member min fails"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-double-declare-error"
+expect = "schema-load-error"
+summary = "the same constraint declared inline and on the resolved itemtype is exclusive-properties"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "permember-split-conjunctive-valid"
+expect = "valid"
+summary = "different constraints split across inline and itemtype apply conjunctively"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-itemtype-own-allof-exempt-valid"
+expect = "valid"
+summary = "a constraint the itemtype acquires from its own allof is exempt from the double-declare check"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-pair-inline-valid"
+expect = "valid"
+summary = "PAIR(inline): inline pattern on array accepts a matching item"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-pair-inline-fail"
+expect = "validation-failure"
+summary = "PAIR(inline): inline pattern on array rejects a non-matching item"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-pair-itemtype-valid"
+expect = "valid"
+summary = "PAIR(itemtype): same pattern on the itemtype definition accepts the same matching item"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "permember-pair-itemtype-fail"
+expect = "validation-failure"
+summary = "PAIR(itemtype): same pattern on the itemtype definition rejects the same non-matching item"
+spec = "#### Per-Member Value Constraints"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "length-container-count-fail"
+expect = "validation-failure"
+summary = "minlength on an array bounds the item count, not member length"
+spec = "#### Length - `minlength` and `maxlength`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "allowedvalues-string-minlength-consistency-error"
+expect = "schema-load-error"
+summary = "on a string, minlength participates in the allowedvalues per-entry consistency check"
+spec = "#### Allowed Values - `allowedvalues`"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "allowedvalues-container-minlength-exempt-valid"
+expect = "valid"
+summary = "on an array, minlength bounds the container and is not part of the allowedvalues check"
+spec = "#### Allowed Values - `allowedvalues`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "allowedvalues-container-min-consistency-error"
+expect = "schema-load-error"
+summary = "on an array, min still participates in the allowedvalues per-entry check"
+spec = "#### Allowed Values - `allowedvalues`"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "pattern-anchored-fail"
+expect = "validation-failure"
+summary = "an anchored portable pattern rejects a non-matching string"
+spec = "#### Pattern - `pattern`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "keypattern-nonportable-error"
+expect = "schema-load-error"
+summary = "keypattern obeys the same portable RE2 profile as pattern"
+spec = "#### Key Pattern - `keypattern`"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "conditional-then-branch-valid"
+expect = "valid"
+summary = "a closed then branch that declares the discriminator validates the selected shape"
+spec = "##### The Discriminator Key and Closed Branches"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "conditional-then-missing-required-fail"
+expect = "validation-failure"
+summary = "the selected then branch enforces its own required children"
+spec = "#### Tables"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "oneof-exactly-one-two-matches-fail"
+expect = "validation-failure"
+summary = "oneof requires exactly one alternative to match; two overlapping matches fail"
+spec = "#### Alternative Types - `oneof` and `anyof`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "anyof-two-matches-valid"
+expect = "valid"
+summary = "anyof requires at least one alternative; two overlapping matches validate"
+spec = "#### Alternative Types - `oneof` and `anyof`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "collection-missing-itemtype-error"
+expect = "schema-load-error"
+summary = "a collection with no effective itemtype is rejected at schema-load"
+spec = "#### Collection of Elements for Dynamic Keys"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "collection-itemtype-from-allof-valid"
+expect = "valid"
+summary = "a collection may obtain its required itemtype from a compatible allof component"
+spec = "#### Collection of Elements for Dynamic Keys"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "table-closed-unknown-key-fail"
+expect = "validation-failure"
+summary = "a closed table rejects an undeclared key"
+spec = "#### Tables"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "table-open-accepts-anything-valid"
+expect = "valid"
+summary = "a table with no fixed children is open and accepts any keys"
+spec = "#### Tables"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "version-major-zero-error"
+expect = "schema-load-error"
+summary = "a 0.y.z version is not a TOML Schema language version"
+spec = "### Schema Versioning"
+origin = "phase decision"
+document = false
+
+[[case]]
+id = "dependentrequired-fail"
+expect = "validation-failure"
+summary = "when a dependentrequired trigger is present its dependents must also be present"
+spec = "##### Dependencies - `dependentrequired`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "exactlyone-none-fail"
+expect = "validation-failure"
+summary = "exactlyone fails when no group member is present"
+spec = "##### Exactly One - `exactlyone`"
+origin = "phase decision"
+document = true
+
+[[case]]
+id = "mutuallyexclusive-fail"
+expect = "validation-failure"
+summary = "mutuallyexclusive fails when two group members are present"
+spec = "##### Mutual Exclusion - `mutuallyexclusive`"
+origin = "phase decision"
+document = true
+

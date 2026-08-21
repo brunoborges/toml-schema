@@ -1,0 +1,8 @@
+[toml-schema]
+version = "1.0.0"
+
+[types.foo]
+type = "string"
+
+[elements.x]
+oneof = [ "types.foo", "foo" ]
