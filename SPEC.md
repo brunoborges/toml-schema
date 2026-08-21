@@ -100,7 +100,9 @@ the other.
 - **Type reference** / **reference**. A string that names a built-in type or a
   named reusable definition, accepted by `type`, `itemtype`, `items`, `oneof`,
   `anyof`, `allof`, `then`, and `else`. The optional `types.` prefix is stripped
-  once before lookup. The resolution and edge-classification rules for references
+  once before lookup. Which reference each of those positions accepts is stated
+  under [Type Reference Restrictions](#type-reference-restrictions), and the
+  resolution and edge-classification rules for references
   are defined under [Reference Resolution](#reference-resolution) and
   [The Reference Graph](#the-reference-graph).
 
@@ -279,6 +281,7 @@ and the preferred term is the one to use in new text.
   - [Schema Versioning](#schema-versioning)
 - [Elements table - `[elements]`](#elements-table---elements)
 - [Types table - `[types]`](#types-table---types)
+  - [Type Reference Restrictions](#type-reference-restrictions)
   - [Schema Definition Properties](#schema-definition-properties)
     - [Local and Effective Checks](#local-and-effective-checks)
   - [Quoted and Special Keys](#quoted-and-special-keys)
@@ -626,6 +629,10 @@ Type references are strings accepted by `type`, `itemtype`, `items`, `oneof`,
 - a built-in type name such as `"string"`, `"boolean"`, or `"integer"`;
 - a named reusable definition from `[types]`, written either as `"types.<typename>"` or `"<typename>"`.
 
+Which references each of those positions accepts, and which recursion each
+permits, is stated once under
+[Type Reference Restrictions](#type-reference-restrictions).
+
 Each reusable type is a direct child of `[types]`, and its name is the exact
 decoded TOML key of that child. A dot in a type name is an ordinary character
 when the key is quoted, so `[types."network.endpoint"]` defines the reusable
@@ -640,21 +647,6 @@ unambiguous, a reusable type name MUST NOT begin with the literal characters
 `[types]` definition names. The reserved names are `any`, `string`, `integer`,
 `float`, `boolean`, `offset-date-time`, `local-date-time`, `local-date`,
 `local-time`, `array`, `table`, and `collection`.
-
-Two built-in names have context-specific restrictions:
-
-- `collection` is valid for `type` only when the effective definition obtains
-  an `itemtype` locally or from a compatible `allof` component. It MUST NOT be
-  used as a bare reference in `itemtype`, `items`, `oneof`, `anyof`, `allof`,
-  `then`, or `else`, because those locations cannot supply the collection's dynamic-value
-  rule. Schema loaders MUST reject such references at schema-load time.
-- `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
-  directly in `oneof`, `anyof`, `allof`, `then`, or `else`. Schema loaders MUST
-  reject a direct `any` component at schema-load time.
-
-These restrictions apply to bare built-in references, not to named reusable
-definitions. A named definition that declares a complete collection or selects
-`type = "any"` remains a valid reference.
 
 `type`, `oneof`, `anyof`, and the `if`/`then`/`else` triple are alternative
 ways to select the type of the current schema node. A definition MUST declare
@@ -682,24 +674,6 @@ built-in `table` or `collection` type, or when the node omits a selector and is
 therefore an implicit table. Schema loaders MUST reject child definitions attached to
 a scalar, `array`, named type reference, `oneof`, `anyof`, or conditional node rather than
 silently ignoring them.
-
-Every named reference used by `type`, `itemtype`, `items`, `oneof`, `anyof`,
-`allof`, `then`, or `else`
-MUST resolve to a definition in `[types]`. Schema loaders MUST reject unresolved
-references at schema-load time, including references in definitions that are
-optional or not exercised by the document being validated. The ordered algorithm
-that turns a reference string into a built-in type or a reusable definition is
-defined under [Reference Resolution](#reference-resolution), which is
-authoritative for how the restrictions above are applied.
-
-Type-selection and composition references MUST be acyclic. A cycle composed of
-named `type` aliases, `oneof` alternatives, `anyof` alternatives, conditional
-branches, or `allof` components cannot resolve to a concrete definition and
-schema loaders MUST reject it at schema-load time. Structural recursion through
-table or collection children, array `itemtype`, or tuple `items` remains valid
-because each recursive step consumes a nested document value.
-[Cycle Legality](#cycle-legality) states this classification in terms of the
-reference graph and is authoritative for deciding which cycles are legal.
 
 ```toml
 [types]
@@ -733,6 +707,64 @@ default = <toml-value>
 deprecated = true|false
 ```
 
+### Type Reference Restrictions
+
+This section is the single authority for which references each reference
+position accepts. Every other mention of these restrictions in this
+specification points here rather than restating them.
+
+| Position | Bare built-in name | Named `[types]` reference | Reference to a pure mixin | Reference edge |
+| --- | --- | --- | --- | --- |
+| `type` | Any built-in. `collection` only when the effective definition obtains an `itemtype` locally or from a compatible `allof` component | Yes | Yes | Non-consuming |
+| `itemtype` | Any built-in except `collection` | Yes | Yes | Consuming |
+| `items` | Any built-in except `collection` | Yes | Yes | Consuming |
+| `oneof`, `anyof` | Any built-in except `any` and `collection` | Yes | Yes | Non-consuming |
+| `allof` | Any built-in except `any` and `collection` | Yes | Yes | Non-consuming |
+| `then`, `else` | None; a bare built-in reference is invalid in either | Yes, and both branches MUST resolve to the same effective kind, which MUST be `table` or `collection` | Yes, subject to that same kind requirement | Non-consuming |
+
+The two restricted built-ins are restricted for one reason each:
+
+- `collection` is valid for `type` only when the effective definition obtains
+  an `itemtype` locally or from a compatible `allof` component. It MUST NOT be
+  used as a bare reference in `itemtype`, `items`, `oneof`, `anyof`, `allof`,
+  `then`, or `else`, because those locations cannot supply the collection's dynamic-value
+  rule. Schema loaders MUST reject such references at schema-load time.
+- `any` is valid for `type`, `itemtype`, and `items`, but it MUST NOT appear
+  directly in `oneof`, `anyof`, `allof`, `then`, or `else`. Schema loaders MUST
+  reject a direct `any` component at schema-load time.
+
+These restrictions apply to bare built-in references, not to named reusable
+definitions. A named definition that declares a complete collection or selects
+`type = "any"` remains a valid reference. A
+[pure mixin](#composition-supplying-the-local-skeleton) is an ordinary named
+definition once its components determine its effective type, so it may be
+referenced wherever any other named definition may be, subject to the same kind
+requirement the position imposes on a named reference. What a definition may
+declare *beside* a named reference is stated under
+[Type Reference](#type-reference).
+
+Every named reference used by `type`, `itemtype`, `items`, `oneof`, `anyof`,
+`allof`, `then`, or `else`
+MUST resolve to a definition in `[types]`. Schema loaders MUST reject unresolved
+references at schema-load time, including references in definitions that are
+optional or not exercised by the document being validated. The ordered algorithm
+that turns a reference string into a built-in type or a reusable definition is
+defined under [Reference Resolution](#reference-resolution), which is
+authoritative for how the restrictions above are applied. An element MUST NOT
+reference another element, as
+[Elements table](#elements-table---elements) requires.
+
+Type-selection and composition references MUST be acyclic. A cycle composed of
+named `type` aliases, `oneof` alternatives, `anyof` alternatives, conditional
+branches, or `allof` components — the positions the table above marks
+**non-consuming** — cannot resolve to a concrete definition and
+schema loaders MUST reject it at schema-load time. Structural recursion through
+table or collection children, array `itemtype`, or tuple `items` — the
+**consuming** positions — remains valid
+because each recursive step consumes a nested document value.
+[Cycle Legality](#cycle-legality) states this classification in terms of the
+reference graph and is authoritative for deciding which cycles are legal.
+
 ### Schema Definition Properties
 
 The following matrix summarizes where definition properties apply. The
@@ -740,8 +772,8 @@ detailed sections below remain authoritative.
 
 | Property | Applicable definition |
 | --- | --- |
-| `type` | Selects one built-in or named type; mutually exclusive with other selectors |
-| `oneof`, `anyof` | Select the current node from one or more alternatives; mutually exclusive with other selectors |
+| `type` | Selects one built-in or named type; at most one selector per definition, per [Types table](#types-table---types) |
+| `oneof`, `anyof` | Select the current node from one or more alternatives; at most one selector per definition, per [Types table](#types-table---types) |
 | `if`, `then`, `else` | Exhaustively select one of two named table-like definitions from a direct child's parsed value |
 | `allof` | Conjunctively applies one or more compatible type references in addition to the local definition; alone, it also supplies an omitted selector, per [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton) |
 | `description`, `optional`, `default`, `deprecated` | Any definition, including a named reference or alternative selector |
@@ -874,8 +906,9 @@ Target keys may have the same names as TOML Schema properties, such as `type`,
 definition is a schema property, while a table-header path segment below that
 definition is normally a target child definition.
 
-A schema definition with nested child definitions and no explicit selector is
-treated as `type = "table"`. This lets schemas describe target keys that would
+A schema definition with nested child definitions and no explicit selector is an
+implicit table, as [Types table](#types-table---types) defines. This lets
+schemas describe target keys that would
 otherwise share a name with schema properties when the parent does not also use
 the property.
 
@@ -1101,7 +1134,9 @@ The formats use the following portable rules:
 `string`, and, as a [per-member constraint](#per-member-value-constraints), on a
 non-tuple `array` or `collection` whose effective member type is the built-in
 `string`. It cannot be attached to another built-in type, an alternative
-selector, or a named type reference. A schema loader MUST reject an unsupported
+selector, or a named type reference, as
+[Schema Definition Properties](#schema-definition-properties) requires. A schema
+loader MUST reject an unsupported
 format name or incompatible use at schema-load time rather than ignoring it.
 
 When `format` is combined with `allowedvalues`, every allowed string MUST
@@ -1125,22 +1160,23 @@ format = "uuid"
 
 ### Minimum Value / Maximum Value - `min` and `max`
 
-These properties define inclusive value ranges. They may only be used for:
+These properties define inclusive value ranges. The **comparable kinds** are:
 
  - `float`
  - `integer`
  - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
- - `array` or `collection`, when `itemtype` resolves to `integer`, `float`, or one of the temporal types above
 
-For an `array` or a `collection`, `min` and `max` are
+`min` and `max` may be declared only on a definition whose type resolves to
+exactly one comparable kind, and on an `array` or a `collection` whose members
+do, as the next paragraph describes.
+
+On an `array` or a `collection`, `min` and `max` are
 [per-member constraints](#per-member-value-constraints) and apply to each item
-or each dynamic entry. `itemtype` MUST resolve to one
-comparable built-in kind: `integer`, `float`, `offset-date-time`,
-`local-date-time`, `local-date`, or `local-time`. Named references and aliases
-are resolved before this rule is checked, and all alternatives of a referenced
-`oneof` or `anyof` definition MUST resolve to that same kind.
-Schema loaders MUST reject container range constraints when the member schema can resolve to
-different kinds or to a non-comparable kind. The interaction between array range
+or each dynamic entry. That section is authoritative for the per-member reading,
+for how the member type is resolved through `itemtype` and through the
+alternatives of a referenced `oneof` or `anyof`, and for the schema-load
+rejection of a member type that is indeterminate or of the wrong kind. The
+interaction between array range
 boundaries and `allowedvalues` is defined under
 [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
 
@@ -1188,7 +1224,8 @@ Both `minlength` and `maxlength` MUST be integers `>= 0`. When both are present,
 
 `minlength` and `maxlength` are valid only on definitions whose selected type is
 the built-in `string`, `array`, or `collection`. They cannot be attached to
-another built-in type, an alternative selector, or a named type reference.
+another built-in type, an alternative selector, or a named type reference, as
+[Schema Definition Properties](#schema-definition-properties) requires.
 Schema loaders MUST reject an incompatible length constraint at schema-load time rather
 than silently ignoring it.
 
@@ -1216,7 +1253,8 @@ Table headers and inline tables produce the same value kind and are validated
 identically.
 
 If a schema definition has nested child definitions but does not declare a
-selector, schema loaders MUST treat it as if it declared `type = "table"`.
+selector, it is an implicit table, as
+[Types table](#types-table---types) defines.
 
 The **fixed children** of a table, for the purpose of the rules below, are its
 own nested child definitions together with the children contributed by every
@@ -1288,14 +1326,13 @@ colors=[ "red", "yellow", "green" ]
 ##### Observations on Conditions to Arrays
 
 The `min` and `max` conditions set an inclusive range for every array item.
-Their applicability rule, including how a named `itemtype` and its alternatives
-are resolved, and the ordering rules used for numeric and temporal items, are
-defined under
+[Per-Member Value Constraints](#per-member-value-constraints) is authoritative
+for that per-item reading, for the shared subset `min`, `max`, `allowedvalues`,
+`pattern`, and `format`, for how a named `itemtype` and its alternatives are
+resolved, and for the equivalence of an inline constraint to the same constraint
+written on the `itemtype` definition. The comparable kinds and the ordering
+rules used for numeric and temporal items are defined under
 [Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max).
-`min`, `max`, `allowedvalues`, `pattern`, and `format` all apply per item here,
-and [Per-Member Value Constraints](#per-member-value-constraints) is
-authoritative for that shared subset and for its equivalence to the same
-constraint written on the `itemtype` definition.
 
 When `allowedvalues` is present on an array, every array item MUST be a member
 of that enumeration. The enumeration does not have to be sorted. If `min` or
@@ -1304,9 +1341,9 @@ inclusive boundary, and a schema loader MUST reject an enumerated value that
 violates one; an enumerated value need not equal either boundary.
 
 When the array declares `itemtype`, every enumerated value MUST have a TOML
-kind permitted by the effective item type. Named references, aliases, and
-`oneof` or `anyof` alternatives are resolved before this check. An `itemtype`
-that permits `any` permits enumeration entries of any TOML kind. This
+kind permitted by the effective item type, as
+[Per-Member Value Constraints](#per-member-value-constraints) requires. An
+`itemtype` that permits `any` permits enumeration entries of any TOML kind. This
 schema-load check verifies the permitted TOML kind; constraints inside a named
 item definition still apply normally when a document array is validated.
 
@@ -1323,7 +1360,9 @@ permits non-array and array items to be mixed in the outer array.
 
 ##### Array Item Schemas and Arrays of Tables
 
-`itemtype` accepts the same built-in or named references as `type`. Use a
+`itemtype` accepts the references
+[Type Reference Restrictions](#type-reference-restrictions) permits at that
+position. Use a
 built-in reference such as `itemtype = "string"` for a homogeneous scalar
 array, or a reusable schema definition when members require constraints or
 structure. A reusable table definition is required for TOML arrays of tables
@@ -1459,8 +1498,9 @@ contributed by a compatible `allof` component; this is the collection instance
 of the general principle stated under
 [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton),
 not a rule peculiar to collections. Each dynamic child must be given
-a unique key in the TOML document. `itemtype` may reference a built-in type or a
-named reusable definition. A schema loader MUST reject an effective collection
+a unique key in the TOML document. `itemtype` accepts the references
+[Type Reference Restrictions](#type-reference-restrictions) permits at that
+position. A schema loader MUST reject an effective collection
 when neither its local definition nor any referenced or composed definition
 contributes an `itemtype`. This is a schema-load check, so it reads only the
 contributions that are determinate at schema-load time; which components make
@@ -1470,7 +1510,9 @@ checks that read the effective rather than the local view, as
 [Local and Effective Checks](#local-and-effective-checks) enumerates.
 
 The built-in `collection` cannot itself be used as `itemtype` or as an entry in
-`items`, `oneof`, `anyof`, or `allof`: those bare references provide no place to declare
+`items`, `oneof`, `anyof`, or `allof`, as
+[Type Reference Restrictions](#type-reference-restrictions) states: those bare
+references provide no place to declare
 the nested collection's required `itemtype`. Define a reusable collection with
 its own `itemtype` and reference that named definition instead.
 
@@ -1686,10 +1728,8 @@ occupied, not because container members are otherwise privileged.
 A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
 
 When `type` selects a named reusable definition, the reference inherits that
-definition's validation rules as-is. This inheritance includes `optional`: the
-referencing slot is optional when either the use site or the referenced
-definition declares `optional = true`. A use-site `optional = false` cannot
-make an optional referenced definition required. In version 1.0, the
+definition's validation rules as-is. This inheritance includes `optional`, as
+[Optionality](#optionality---optional) defines. In version 1.0, the
 referencing definition MAY additionally declare only `allof`, `description`,
 `optional`, `default`, and `deprecated`; it MUST NOT declare any other sibling
 property or child definition. `allof` adds conjunctive components rather than
@@ -1891,9 +1931,8 @@ same kind as the local definition. Structured components must all be `table` or
 all be `collection`; a `table` and a `collection` are not interchangeable for
 composition because they have different unknown-key semantics. A component
 whose alternatives resolve to different kinds is likewise indeterminate and
-MUST be rejected. The bare built-ins `any` and `collection` MUST NOT appear
-directly in `allof`; a complete named definition may resolve to either where it
-is otherwise compatible.
+MUST be rejected. Which references `allof` accepts at all is stated under
+[Type Reference Restrictions](#type-reference-restrictions).
 
 `allof` MUST NOT list the same component twice. Duplication is judged on
 resolved identity, after the optional `types.` prefix has been removed, exactly
@@ -1949,10 +1988,8 @@ MUST satisfy every contributed `keypattern`. A collection's required
 dynamic-entry constraint may therefore be supplied entirely by one or more
 `allof` components; it need not repeat a local `itemtype`.
 
-`optional` on the local definition determines whether the composed node may be
-absent. An `optional` value inside an `allof` component does not make the
-composed node optional; it only has meaning when that component is referenced
-normally with `type`.
+Whether a composed node may be absent is governed by `optional` on the local
+definition, as [Optionality](#optionality---optional) defines.
 
 #### Determinate Fixed-Child Set
 
@@ -2265,15 +2302,14 @@ Use `oneof` or `anyof` when a value may validate against alternative type refere
 - `oneof`: exactly one referenced type must validate.
 - `anyof`: at least one referenced type must validate.
 
-These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array or collection items. Alternatives may reference built-in type names directly or named definitions when a branch needs constraints.
-
-The bare built-in names `any` and `collection` MUST NOT appear directly in
-`oneof` or `anyof`. Use a named reusable definition when an alternative needs a
-fully defined collection or an intentionally unconstrained named branch.
+These properties can be used anywhere a schema definition can appear, including an `[elements]` field, a reusable `[types]` definition, and a type referenced through `itemtype` for array or collection items. Which references an alternative may name is stated under
+[Type Reference Restrictions](#type-reference-restrictions); use a named
+reusable definition when an alternative needs a fully defined collection, an
+intentionally unconstrained named branch, or any other constraint.
 
 `type`, `oneof`, `anyof`, and the conditional triple all select the current
-node's type and are mutually exclusive. A schema loader MUST reject a
-definition containing more than one selector.
+node's type, and a definition declares at most one of them, as
+[Types table](#types-table---types) requires.
 
 The array assigned to `oneof` or `anyof` MUST contain at least one type
 reference. A union definition MAY additionally declare only `description`,
@@ -2474,23 +2510,25 @@ the matched branch declares are known keys of that node, while keys declared
 only by the branch that was not selected are not.
 
 `then` and `else` MUST each be a string naming a reusable definition in
-`[types]`; bare built-in references are invalid. Both definitions MUST resolve
-to the same effective kind, and that kind MUST be `table` or `collection`.
+`[types]`, and both definitions MUST resolve
+to the same effective kind, which MUST be `table` or `collection`, as
+[Type Reference Restrictions](#type-reference-restrictions) states.
 Schema loaders MUST reject unresolved branches, different branch kinds,
 branches that do not resolve to a table-like kind, and cycles through
 conditional branches.
 
-The conditional triple is mutually exclusive with `type`, `oneof`, and
-`anyof`. A conditional definition MAY additionally declare only `allof`,
+The conditional triple is one of the four selectors a definition declares at
+most one of, as [Types table](#types-table---types) requires. A conditional
+definition MAY additionally declare only `allof`,
 `description`, `optional`, `default`, and `deprecated`; it MUST NOT contain
 kind-specific validation properties or nested child definitions. An `allof`
 component MUST be compatible with the common branch kind and is applied
 conjunctively with whichever branch is selected.
 
-Optionality belongs to the conditional definition. An `optional` annotation
-inside a branch does not make the conditional slot optional, because no branch
-is selected when the slot is absent. A default on the conditional definition
-MUST validate against the branch selected by that default at schema-load time.
+Optionality belongs to the conditional definition, as
+[Optionality](#optionality---optional) defines. A default on the conditional
+definition MUST validate against the branch selected by that default at
+schema-load time.
 
 Example with a multi-value condition:
 
@@ -2721,7 +2759,7 @@ was selected. The general precedence is:
 `deprecated` is an exception to point 2 and does not follow the general
 precedence: it combines disjunctively rather than resolving to a single
 declaration, so a contributing `deprecated = true` deprecates the location even
-when the use site declares `deprecated = false`. [Deprecation](#deprecation) is
+when the use site declares `deprecated = false`. [Deprecation](#deprecation---deprecated) is
 authoritative for it. The general precedence governs `description` and any
 future annotation that resolves to at most one value.
 
@@ -2884,16 +2922,23 @@ Validators MUST skip a definition only when it is optional and the corresponding
 value does not exist in the TOML document. In every other case, the validator
 MUST validate the value against the definition.
 
+This section is the single authority for how `optional` interacts with
+references, composition, alternatives, and conditional branches.
+
 For a named `type` reference, optionality is inherited: the referencing slot is
 optional if either the use site or any definition in the reference chain
 declares `optional = true`. An explicit `optional = false` cannot cancel an
-inherited `true`. In contrast, `optional` values contributed only through
-`allof` components do not affect presence, as defined under
-[Conjunctive Composition](#conjunctive-composition---allof). The presence of a
+inherited `true`. In contrast, `optional` on the local definition determines
+whether a composed node may be absent, and `optional` values contributed only
+through `allof` components do not affect presence; such a value has meaning only
+when that component is referenced normally with `type`. The presence of a
 `oneof` or `anyof` slot is governed only by `optional` on the union definition
 or inherited through a named `type` reference to that union. `optional`
 declared inside an alternative does not make the union slot optional because
-no alternative is selected when the slot is absent.
+no alternative is selected when the slot is absent. Optionality likewise belongs
+to a conditional definition rather than to its branches: an `optional`
+annotation inside a `then` or `else` branch does not make the conditional slot
+optional, because no branch is selected when the slot is absent.
 
 ### Pattern - `pattern`
 
@@ -2901,7 +2946,9 @@ This property is valid on a definition whose selected type is the built-in
 `string`, and, as a [per-member constraint](#per-member-value-constraints), on a
 non-tuple `array` or `collection` whose effective member type is the built-in
 `string`. It cannot be attached to another built-in type, an alternative
-selector, or a named type reference. Schema loaders MUST reject an incompatible
+selector, or a named type reference, as
+[Schema Definition Properties](#schema-definition-properties) requires. Schema
+loaders MUST reject an incompatible
 `pattern` at schema-load time rather than silently ignoring it. On a
 `collection`, `pattern` constrains dynamic entry values while
 [`keypattern`](#key-pattern---keypattern) constrains their keys.
@@ -3321,7 +3368,8 @@ decides the outcome.
    interpretation.
 3. **Context restrictions on built-ins.** If step 2 selected `any` or
    `collection`, apply the context restrictions defined under
-   [Types table](#types-table---types). These restrictions are applied to the
+   [Type Reference Restrictions](#type-reference-restrictions). These
+   restrictions are applied to the
    normalized name, so `"types.any"` and `"types.collection"` are restricted
    exactly as the bare spellings are. `then` and `else` accept no built-in at all,
    so any reference reaching step 2 from those properties is an error.
