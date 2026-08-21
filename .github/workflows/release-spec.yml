@@ -51,6 +51,12 @@ jobs:
           cp LICENSE "dist/${asset_name}/"
           cp -R examples "dist/${asset_name}/"
 
+          # Per-artifact digests, so a consumer can cite and verify the
+          # normative documents individually without unpacking the bundle.
+          ( cd "dist/${asset_name}" \
+            && shasum -a 256 SPEC.md toml-schema.abnf toml-schema.tosd > CHECKSUMS.txt )
+          cp "dist/${asset_name}/CHECKSUMS.txt" "dist/${asset_name}-CHECKSUMS.txt"
+
           tar -C dist -czf "dist/${asset_name}.tar.gz" "${asset_name}"
           cd dist
           shasum -a 256 "${asset_name}.tar.gz" > "${asset_name}-SHA256SUMS.txt"

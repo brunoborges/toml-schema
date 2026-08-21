@@ -4312,6 +4312,13 @@ declares no selector, no nested child definition, and no `allof` is the clearest
 example: the self-schema accepts it and this specification rejects it, and the
 schema is invalid.
 
+Each tagged specification release publishes `SPEC.md`, `toml-schema.abnf`, and
+`toml-schema.tosd` together as one versioned bundle, accompanied by a
+`CHECKSUMS.txt` listing a SHA-256 digest for each of those three documents. A
+consumer that needs to pin an exact revision of the self-schema SHOULD cite the
+release version together with that digest, which identifies one immutable
+document rather than a mutable branch path.
+
 ## Security Considerations
 
 TOML documents and TOML Schema documents are both potentially untrusted inputs,
