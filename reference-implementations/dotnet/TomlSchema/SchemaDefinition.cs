@@ -7,6 +7,9 @@ public record SchemaDefinition
 {
     internal string? Name { get; init; }
 
+    /// <summary>The schema path of this definition's table (e.g. <c>$.elements.port</c>).</summary>
+    internal string? SchemaPath { get; init; }
+
     /// <summary>The type of this definition (e.g., "string", "table")</summary>
     public SchemaType? Type { get; init; }
 

@@ -31,7 +31,7 @@ public class TableClosureTests : TestBase
             """));
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.Code == "unexpected-key" && e.Path == "$.parent.bogus");
+        Assert.Contains(result.Errors, e => e.Code == "unknown-key" && e.Path == "$.parent.bogus");
     }
 
     [Fact]
@@ -58,7 +58,7 @@ public class TableClosureTests : TestBase
             """));
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.Code == "unexpected-key" && e.Path == "$.outer.inner.bogus");
+        Assert.Contains(result.Errors, e => e.Code == "unknown-key" && e.Path == "$.outer.inner.bogus");
     }
 
     [Fact]
@@ -106,7 +106,7 @@ public class TableClosureTests : TestBase
             """));
 
         Assert.False(result.IsValid);
-        Assert.Contains(result.Errors, e => e.Code == "unexpected-key" && e.Path == "$.parent.bogus");
+        Assert.Contains(result.Errors, e => e.Code == "unknown-key" && e.Path == "$.parent.bogus");
     }
 
     [Fact]
@@ -145,7 +145,7 @@ public class TableClosureTests : TestBase
             bogus = "c"
             """));
         Assert.False(invalid.IsValid);
-        Assert.Contains(invalid.Errors, e => e.Code == "unexpected-key" && e.Path == "$.settings.bogus");
+        Assert.Contains(invalid.Errors, e => e.Code == "unknown-key" && e.Path == "$.settings.bogus");
     }
 
     [Fact]

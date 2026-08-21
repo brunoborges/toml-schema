@@ -182,7 +182,7 @@ public class ConditionalValidationTests : TestBase
 
         var invalidResult = schemaObj.Validate(invalidToml);
         Assert.False(invalidResult.IsValid);
-        Assert.Contains(invalidResult.Errors, e => e.Code == "duplicate-items");
+        Assert.Contains(invalidResult.Errors, e => e.Code == "uniqueitems");
     }
 
     [Fact]
@@ -344,7 +344,7 @@ public class ConditionalValidationTests : TestBase
 
         var invalidResult = schemaObj.Validate(invalidToml);
         Assert.False(invalidResult.IsValid);
-        Assert.Contains(invalidResult.Errors, e => e.Code == "pattern-mismatch");
+        Assert.Contains(invalidResult.Errors, e => e.Code == "pattern");
     }
 
     [Fact]

@@ -10,3 +10,11 @@ public enum DiagnosticSeverity
     /// <summary>A non-fatal validation diagnostic.</summary>
     Warning
 }
+
+/// <summary>Wire-spelling helpers for <see cref="DiagnosticSeverity"/>.</summary>
+public static class DiagnosticSeverityExtensions
+{
+    /// <summary>Returns the normative wire spelling (<c>error</c> or <c>warning</c>).</summary>
+    public static string WireName(this DiagnosticSeverity severity) =>
+        severity == DiagnosticSeverity.Error ? "error" : "warning";
+}

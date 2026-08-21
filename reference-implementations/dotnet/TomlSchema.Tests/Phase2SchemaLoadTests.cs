@@ -42,9 +42,9 @@ public class Phase2SchemaLoadTests : TestBase
         };
         foreach (var (name, body, expected) in cases)
         {
-            var error = Assert.ThrowsAny<Exception>(() => TomlSchema.Load(
+            var error = Assert.Throws<SchemaException>(() => TomlSchema.Load(
                 Schema($"phase2-{name}.tosd", "[elements.value]\n" + body)));
-            Assert.Contains(expected, error.Message);
+            Assert.Equal(expected, error.Code);
         }
     }
 

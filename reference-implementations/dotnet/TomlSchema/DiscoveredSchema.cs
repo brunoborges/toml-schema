@@ -17,7 +17,7 @@ using Tomlyn.Model;
 public sealed record DiscoveredSchema(
     TomlSchema Schema,
     TomlTable Document,
-    IReadOnlyList<ValidationWarning> Warnings)
+    IReadOnlyList<ValidationDiagnostic> Warnings)
 {
     /// <summary>
     /// Validates the discovered document against the discovered schema, including any
@@ -29,7 +29,7 @@ public sealed record DiscoveredSchema(
         if (Warnings.Count == 0)
             return result;
 
-        var combined = new List<ValidationWarning>(Warnings);
+        var combined = new List<ValidationDiagnostic>(Warnings);
         combined.AddRange(result.Warnings);
         return new ValidationResult(result.Errors, combined);
     }
