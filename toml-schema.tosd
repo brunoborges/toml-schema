@@ -638,7 +638,7 @@ minlength = 1
 # reason.
 [types.literalChildren]
 type = "collection"
-itemtype = "any"
+itemtype = "types.schemaDef"
 allof = [ "types.schemaDef" ]
 exactlyone = [ [ "type", "oneof", "anyof", "if" ] ]
 
