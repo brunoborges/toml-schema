@@ -936,3 +936,208 @@ summary = "a document that is not well-formed TOML never reaches the validator a
 spec = "a document that is not well-formed TOML never reaches a validator, and its parse failure is a parse error rather than a validation diagnostic"
 origin = "issue #169 diagnostics review"
 document = true
+
+# --- Phase 5: codes that no case previously exercised, and the schema-load
+# --- structure checks that let a real implementation diverge undetected.
+
+[[case]]
+id = "c15-metadata-closure-error"
+expect = "schema-load-error"
+summary = "a custom key directly under [toml-schema] is closed out; only version and meta are allowed"
+spec = "### Supported Properties"
+origin = "phase5 IM-3"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.toml-schema.custom"
+
+[[case]]
+id = "c15-missing-elements-error"
+expect = "schema-load-error"
+summary = "[elements] is REQUIRED; a schema with only [toml-schema] and [types] must not load"
+spec = "## Elements Table - `[elements]`"
+origin = "phase5 IM-1"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements"
+
+[[case]]
+id = "c15-minor-version-ceiling-error"
+expect = "schema-load-error"
+summary = "version 1.99.0 exceeds the implementation's supported minor version"
+spec = "### Schema Versioning"
+origin = "phase5 IM-2"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unsupported-version"
+  schema_path = "$.toml-schema.version"
+
+[[case]]
+id = "c15-major-version-zero-error"
+expect = "schema-load-error"
+summary = "0.9.0 is well-formed SemVer but is not a TOML Schema language version"
+spec = "### Schema Versioning"
+origin = "phase5 IM-2"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unsupported-version"
+  schema_path = "$.toml-schema.version"
+
+[[case]]
+id = "c16-siblinggroup-flat-array-error"
+expect = "schema-load-error"
+summary = "mutuallyexclusive must be an array of groups, not a flat array of names"
+spec = "##### Mutual Exclusion - `mutuallyexclusive`"
+origin = "phase5 IM-8"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.tbl.mutuallyexclusive"
+
+[[case]]
+id = "c16-siblinggroup-single-name-error"
+expect = "schema-load-error"
+summary = "a sibling-rule group needs at least two names; one name can never constrain anything"
+spec = "##### Mutual Exclusion - `mutuallyexclusive`"
+origin = "phase5 IM-8"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.tbl.mutuallyexclusive"
+
+[[case]]
+id = "c16-siblinggroup-duplicate-operand-error"
+expect = "schema-load-error"
+summary = "names within one sibling-rule group must be unique"
+spec = "##### Mutual Exclusion - `mutuallyexclusive`"
+origin = "phase5 IM-8"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.tbl.mutuallyexclusive"
+
+[[case]]
+id = "c16-siblinggroup-indeterminate-operand-error"
+expect = "schema-load-error"
+summary = "an exactlyone operand that is not in the determinate fixed-child set"
+spec = "##### Exactly One - `exactlyone`"
+origin = "phase5 coverage gap"
+document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "indeterminate-operand"
+  schema_path = "$.elements.tbl.exactlyone"
+
+[[case]]
+id = "c17-format-mismatch-fail"
+expect = "validation-failure"
+summary = "format = \"ipv4\" rejects an out-of-range dotted-quad"
+spec = "#### String Format - `format`"
+origin = "phase5 coverage gap"
+document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "format"
+  instance_path = "$.host"
+  schema_path = "$.elements.host.format"
+
+[[case]]
+id = "c17-max-exceeded-fail"
+expect = "validation-failure"
+summary = "max is inclusive; 65535 exceeds max = 1024"
+spec = "#### Minimum Value / Maximum Value - `min` and `max`"
+origin = "phase5 coverage gap"
+document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "max"
+  instance_path = "$.port"
+  schema_path = "$.elements.port.max"
+
+[[case]]
+id = "c17-maxlength-exceeded-fail"
+expect = "validation-failure"
+summary = "maxlength counts Unicode scalar values; a 4-scalar string exceeds maxlength = 3"
+spec = "#### Length - `minlength` and `maxlength`"
+origin = "phase5 coverage gap"
+document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "maxlength"
+  instance_path = "$.name"
+  schema_path = "$.elements.name.maxlength"
+
+[[case]]
+id = "c17-keypattern-mismatch-fail"
+expect = "validation-failure"
+summary = "a collection dynamic key that does not match keypattern"
+spec = "#### Key Pattern - `keypattern`"
+origin = "phase5 coverage gap"
+document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "keypattern"
+  instance_path = "$.plugins.Bad_Key"
+  schema_path = "$.elements.plugins.keypattern"
+
+[[case]]
+id = "c17-anyof-no-match-fail"
+expect = "validation-failure"
+summary = "anyof matches no alternative: one anyof error at the node, no inner branch diagnostics"
+spec = "#### Alternative Types - `oneof` and `anyof`"
+origin = "phase5 coverage gap"
+document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "anyof"
+  instance_path = "$.id"
+  schema_path = "$.elements.id.anyof"
+
+[[case]]
+id = "c18-path-control-character-fail"
+expect = "validation-failure"
+summary = "instance path escapes U+0009 as \\t and U+001F as lowercase \\u001f"
+spec = "### Instance Path"
+origin = "phase5 coverage gap"
+document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "unknown-key"
+  instance_path = '$."a\tb\u001fc"'
+  schema_path = "$.elements"

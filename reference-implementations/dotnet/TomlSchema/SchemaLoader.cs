@@ -97,12 +97,30 @@ public class SchemaLoader
                 DiagnosticCodes.UnsupportedVersion, "$.toml-schema.version",
                 $"[toml-schema].version must be valid SemVer 2.0.0: {version}");
 
-        // Enforce supported version (1.x.x)
+        // Enforce supported version. The supported TOML Schema language version is 1.0.0,
+        // so the major part must be 1 and the minor part must not exceed the supported
+        // minor version (0). A greater minor version is a forward-incompatible schema.
         var parts = version.Split('.');
         if (parts[0] != "1")
             throw new SchemaException(
                 DiagnosticCodes.UnsupportedVersion, "$.toml-schema.version",
                 $"Unsupported schema version: {version} (requires 1.x.x)");
+        if (parts[1] != "0")
+            throw new SchemaException(
+                DiagnosticCodes.UnsupportedVersion, "$.toml-schema.version",
+                $"Unsupported schema minor version: {version} (supported language version is 1.0.0)");
+
+        // The [toml-schema] table is closed: only `version` and the `meta` subtable are
+        // allowed. Any other key (custom metadata belongs under [toml-schema.meta]) is a
+        // malformed schema.
+        foreach (var (metaKey, _) in tomlSchema)
+        {
+            if (metaKey != "version" && metaKey != "meta")
+                throw new SchemaException(
+                    DiagnosticCodes.SchemaMalformed,
+                    "$.toml-schema." + PathEncoding.EncodeKey(metaKey),
+                    $"[toml-schema] does not allow the key \"{metaKey}\"; only version and meta are permitted");
+        }
 
         // Parse types and elements
         var types = new Dictionary<string, SchemaDefinition>();
@@ -129,7 +147,10 @@ public class SchemaLoader
         }
 
         var elements = new Dictionary<string, SchemaDefinition>();
-        if (schemaDoc.TryGetValue("elements", out var elementsObj) && elementsObj is TomlTable elementsDef)
+        if (!schemaDoc.TryGetValue("elements", out var elementsObj) || elementsObj is not TomlTable elementsDef)
+            throw new SchemaException(
+                DiagnosticCodes.SchemaMalformed, "$.elements",
+                "Schema must define an [elements] table");
         {
             foreach (var (elemName, elemValue) in elementsDef)
             {
@@ -336,11 +357,11 @@ public class SchemaLoader
         }
 
         var mutuallyExclusive = table.TryGetValue("mutuallyexclusive", out var meValue) && meValue is TomlArray meArray
-            ? ParseNameGroups(meArray)
+            ? ParseNameGroups(location, "mutuallyexclusive", meArray)
             : null;
 
         var exactlyOne = table.TryGetValue("exactlyone", out var eoValue) && eoValue is TomlArray eoArray
-            ? ParseNameGroups(eoArray)
+            ? ParseNameGroups(location, "exactlyone", eoArray)
             : null;
         var min = GetRangeValue(table, "min");
         var max = GetRangeValue(table, "max");
@@ -479,10 +500,44 @@ public class SchemaLoader
             _ => false
         };
 
-    private static List<List<string>> ParseNameGroups(TomlArray values) =>
-        values.All(value => value is string)
-            ? [values.Cast<string>().ToList()]
-            : values.Cast<object>().OfType<TomlArray>().Select(group => group.Cast<string>().ToList()).ToList();
+    private static List<List<string>> ParseNameGroups(string location, string property, TomlArray values)
+    {
+        var propertyPath = location + "." + property;
+        var groups = new List<List<string>>();
+        foreach (var value in values)
+        {
+            // A sibling rule is an array of groups; a flat array of names (or any other
+            // non-array member) means the author mis-shaped the rule.
+            if (value is not TomlArray groupArray)
+                throw new SchemaException(
+                    DiagnosticCodes.SchemaMalformed, propertyPath,
+                    $"{property} must be an array of groups, not a flat array of names");
+
+            var names = new List<string>();
+            var seen = new HashSet<string>(System.StringComparer.Ordinal);
+            foreach (var member in groupArray)
+            {
+                if (member is not string name)
+                    throw new SchemaException(
+                        DiagnosticCodes.SchemaMalformed, propertyPath,
+                        $"{property} group members must be strings");
+                if (!seen.Add(name))
+                    throw new SchemaException(
+                        DiagnosticCodes.SchemaMalformed, propertyPath,
+                        $"{property} group repeats the name \"{name}\"");
+                names.Add(name);
+            }
+
+            if (names.Count < 2)
+                throw new SchemaException(
+                    DiagnosticCodes.SchemaMalformed, propertyPath,
+                    $"{property} group must contain at least two names");
+
+            groups.Add(names);
+        }
+
+        return groups;
+    }
 
     private string? GetString(TomlTable table, string key)
     {
