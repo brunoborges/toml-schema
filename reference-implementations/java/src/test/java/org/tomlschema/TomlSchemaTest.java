@@ -353,13 +353,13 @@ class TomlSchemaTest {
 
                 [elements.id]
                 type = "string"
-                pattern = "\\\\d+"
+                pattern = "[0-9]+"
                 """);
-        // "abc123" contains digits, so unanchored pattern "\d+" should match
+        // "abc123" contains digits, so the unanchored digit pattern should match
         Path matchingDocument = write("pattern-unanchored-matching.toml", """
                 id = "abc123"
                 """);
-        // "abcdef" contains no digits, so pattern "\d+" should not match
+        // "abcdef" contains no digits, so the digit pattern should not match
         Path nonMatchingDocument = write("pattern-unanchored-nonmatching.toml", """
                 id = "abcdef"
                 """);

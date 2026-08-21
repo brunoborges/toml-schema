@@ -7,9 +7,13 @@
 ;; TOML 1.0 remains authoritative for base key, table, array, inline-table,
 ;; string, number, boolean, and date/time syntax.
 ;;
-;; The TOML Schema vocabulary defined below is independent of TOML version: the same
-;; schema keys and built-in type names apply when targeting TOML 1.1 documents,
-;; provided the underlying TOML parser supports TOML 1.1. See
+;; TOML Schema 1.0 pins TOML 1.0.0 as its baseline for both schema documents and
+;; validated documents; see SPEC.md ("TOML Language Version"), which is
+;; authoritative. The vocabulary defined below does not itself depend on a TOML
+;; revision -- the same schema keys and built-in type names would apply to a later
+;; revision -- but adopting a later baseline is a specification change, not an
+;; implementation choice. A parser that accepts input beyond TOML 1.0.0 is an
+;; implementation extension and does not make such input portable. See
 ;; REFERENCE_IMPLEMENTATIONS.md ("TOML version profile") for the current
 ;; reference-implementation parser profile.
 

@@ -151,15 +151,20 @@ type = "boolean"
 	}
 }
 
-func TestConditionalDiscriminatorDoesNotBecomeKnownBranchKey(t *testing.T) {
+func TestConditionalDeclaredDiscriminatorDoesNotOpenBranch(t *testing.T) {
 	schema := loadSemanticsSchema(t, `
 [types.selected]
 type = "table"
+[types.selected.engine]
+type = "string"
 [types.selected.value]
 type = "string"
 
 [types.fallback]
 type = "table"
+[types.fallback.engine]
+type = "string"
+optional = true
 [types.fallback.other]
 type = "string"
 
@@ -169,10 +174,10 @@ then = "types.selected"
 else = "types.fallback"
 `)
 	result := schema.Validate(map[string]any{"item": map[string]any{
-		"engine": "sqlite", "value": "ok",
+		"engine": "sqlite", "value": "ok", "unexpected": true,
 	}})
-	if result.Valid() || !hasPath(result, "$.item.engine") {
-		t.Fatalf("undeclared discriminator must remain unexpected in selected closed branch: %#v", result.Errors)
+	if result.Valid() || !hasPath(result, "$.item.unexpected") {
+		t.Fatalf("declaring the discriminator must not open the selected branch: %#v", result.Errors)
 	}
 }
 

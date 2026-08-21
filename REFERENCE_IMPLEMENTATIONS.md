@@ -381,7 +381,12 @@ Rust additionally exercises the canonical CLI end to end.
 
 ## TOML version profile
 
-TOML Schema targets the TOML logical value model (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, inline table, array of tables). That model is unchanged between [TOML 1.0.0](https://toml.io/en/v1.0.0) and [TOML 1.1.0](https://toml.io/en/v1.1.0); the TOML 1.1 changes are mostly parser/input-syntax clarifications and additions (for example `\e` and `\xHH` string escapes, optional seconds in date-times, multi-line inline tables, and trailing commas in inline tables). No new TOML Schema keywords or built-in type names are required to support TOML 1.1.
+TOML Schema 1.0 pins **TOML 1.0.0** as the baseline for both schema documents and
+validated documents. [`SPEC.md`](SPEC.md) ("TOML Language Version") is
+authoritative; this section records how the reference implementations line up
+against that baseline.
+
+TOML Schema targets the TOML logical value model (string, integer, float, boolean, offset-date-time, local-date-time, local-date, local-time, array, table, inline table, array of tables). That model is unchanged between [TOML 1.0.0](https://toml.io/en/v1.0.0) and [TOML 1.1.0](https://toml.io/en/v1.1.0); the TOML 1.1 changes are mostly parser/input-syntax clarifications and additions (for example `\e` and `\xHH` string escapes, optional seconds in date-times, multi-line inline tables, and trailing commas in inline tables). No new TOML Schema keywords or built-in type names would be required to support TOML 1.1. That is why moving the baseline is a specification decision rather than a vocabulary problem.
 
 The current reference implementations parse TOML with libraries that target TOML 1.0:
 
@@ -393,12 +398,18 @@ The current reference implementations parse TOML with libraries that target TOML
 - TypeScript: [`smol-toml`](https://github.com/squirrelchat/smol-toml) `1.8.0`,
   which supports TOML 1.1 while remaining compatible with TOML 1.0 documents.
 
-The shared baseline parser profile remains **TOML 1.0**. The TypeScript
-implementation also accepts TOML 1.1 syntax through its parser, but TOML 1.1
-syntax is not yet guaranteed across all reference implementations.
+The shared baseline parser profile is **TOML 1.0.0**, matching the specification.
+The TypeScript implementation's parser also accepts TOML 1.1 syntax. Per
+[`SPEC.md`](SPEC.md) ("TOML Language Version") that acceptance is an
+implementation extension: a document that parses only because of it MUST NOT be
+reported as conforming to TOML Schema 1.0, and conformance fixtures MUST use
+TOML 1.0.0 syntax only.
 
-Upgrading a reference implementation to a TOML 1.1-conformant parser is tracked separately. When that happens, the expected follow-up changes are:
+Moving the baseline to TOML 1.1 would be a **specification change**, not an
+implementation upgrade. It cannot be done by swapping parsers alone. If it is
+ever adopted, the expected follow-up changes are:
 
+1. Amend the "TOML Language Version" section of [`SPEC.md`](SPEC.md), which pins the baseline.
 1. Bump the TOML badge in [`README.md`](README.md) and the parser notes in the status table above to TOML 1.1.
 1. Update the ABNF preamble in [`toml-schema.abnf`](toml-schema.abnf) to reference TOML 1.1 as the underlying grammar.
 1. Add parser conformance fixtures exercising the new TOML 1.1 syntax (multi-line inline tables, trailing commas, omitted seconds, `\e` and `\xHH` escapes) against the checked-in schemas.

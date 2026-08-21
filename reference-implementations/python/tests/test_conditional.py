@@ -154,18 +154,23 @@ type = "boolean"
             result = schema.validate({"value": {"if": "condition", "then": 1, "else": True}})
             self.assertTrue(result.valid, msg=result.errors)
 
-    def test_conditional_discriminator_does_not_become_known_branch_key(self):
+    def test_declared_conditional_discriminator_does_not_open_branch(self):
         with tempfile.TemporaryDirectory() as tmp:
             schema = helpers.load_semantics_schema(
                 tmp,
                 """
 [types.selected]
 type = "table"
+[types.selected.engine]
+type = "string"
 [types.selected.value]
 type = "string"
 
 [types.fallback]
 type = "table"
+[types.fallback.engine]
+type = "string"
+optional = true
 [types.fallback.other]
 type = "string"
 
@@ -175,9 +180,11 @@ then = "types.selected"
 else = "types.fallback"
 """,
             )
-            result = schema.validate({"item": {"engine": "sqlite", "value": "ok"}})
+            result = schema.validate(
+                {"item": {"engine": "sqlite", "value": "ok", "unexpected": True}}
+            )
             self.assertFalse(result.valid)
-            self.assertTrue(helpers.has_path(result, "$.item.engine"))
+            self.assertTrue(helpers.has_path(result, "$.item.unexpected"))
 
     def test_conditional_selector_composes_with_allof(self):
         with tempfile.TemporaryDirectory() as tmp:

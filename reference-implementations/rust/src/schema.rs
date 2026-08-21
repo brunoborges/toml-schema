@@ -706,6 +706,33 @@ impl Schema {
                 }
             }
         }
+        if let Some(selector) = &definition.conditional {
+            for (property, reference) in [
+                ("then", &selector.then_reference),
+                ("else", &selector.else_reference),
+            ] {
+                let branch = self.types.get(reference).ok_or_else(|| {
+                    format!("{} contains unknown type reference: {reference}", definition.name)
+                })?;
+                if self.effective_kind(branch, &mut HashSet::new())?
+                    == SchemaType::Collection
+                {
+                    continue;
+                }
+                let mut children = HashSet::new();
+                self.collect_determinate_fixed_child_names(
+                    branch,
+                    &mut HashSet::new(),
+                    &mut children,
+                )?;
+                if !children.is_empty() && !children.contains(&selector.key) {
+                    return Err(format!(
+                        "{} {property} branch has a non-empty determinate fixed-child set that omits discriminator {}",
+                        definition.name, selector.key
+                    ));
+                }
+            }
+        }
         for child in definition.children.values() {
             self.validate_definition_semantic(child)?;
         }
@@ -1282,11 +1309,11 @@ fn parse_definition(
     context: SyntaxContext<'_>,
 ) -> Result<Definition, String> {
     let type_selector = get_string(name, table, "type")?;
-    let mut type_name = type_selector.as_deref().and_then(SchemaType::parse);
-    let reference = type_selector
+    let normalized_type_selector = type_selector.clone().map(normalize_reference);
+    let mut type_name = normalized_type_selector
         .as_deref()
-        .filter(|_| type_name.is_none())
-        .map(|selector| normalize_reference(selector.to_string()));
+        .and_then(SchemaType::parse);
+    let reference = normalized_type_selector.filter(|_| type_name.is_none());
     if reference.is_some() {
         for key in table.keys() {
             if !matches!(
@@ -1348,6 +1375,13 @@ fn parse_definition(
     } else {
         None
     };
+    if conditional.is_some()
+        && default_value
+            .as_ref()
+            .is_some_and(|value| !matches!(value, Value::Table(_)))
+    {
+        return Err(format!("{name} conditional default must be a table"));
+    }
     if has_one_of && one_of.is_empty() {
         return Err(format!(
             "{name} oneof must contain at least one type reference"
@@ -3254,9 +3288,55 @@ fn get_pattern_key(name: &str, table: &Table, key: &str) -> Result<Option<Regex>
     let Some(pattern) = get_string(name, table, key)? else {
         return Ok(None);
     };
+    validate_portable_pattern(name, key, &pattern)?;
     Regex::new(&pattern)
         .map(Some)
-        .map_err(|error| format!("{name} has invalid {key}: {error}"))
+        .map_err(|error| format!("invalid-pattern: {name} has invalid {key}: {error}"))
+}
+
+fn validate_portable_pattern(name: &str, key: &str, pattern: &str) -> Result<(), String> {
+    let chars: Vec<char> = pattern.chars().collect();
+    let mut index = 0;
+    let mut in_character_class = false;
+    while index < chars.len() {
+        if chars[index] == '\\' {
+            if let Some(escaped) = chars.get(index + 1) {
+                if !matches!(
+                    escaped,
+                    '\\' | '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{'
+                        | '}' | '|' | '-' | 't' | 'n' | 'r' | 'f' | 'v' | 'a'
+                ) {
+                    return Err(format!(
+                        "unsupported-pattern: {name} {key} uses non-portable escape \\{escaped}"
+                    ));
+                }
+                index += 2;
+                continue;
+            }
+        } else if chars[index] == '[' {
+            in_character_class = true;
+        } else if chars[index] == ']' {
+            in_character_class = false;
+        } else if !in_character_class
+            && chars[index] == '('
+            && chars.get(index + 1) == Some(&'?')
+        {
+            if chars.get(index + 2) != Some(&':') {
+                return Err(format!(
+                    "unsupported-pattern: {name} {key} uses non-portable group syntax"
+                ));
+            }
+        } else if !in_character_class
+            && matches!(chars[index], '?' | '*' | '+' | '}')
+            && matches!(chars.get(index + 1), Some('?' | '+'))
+        {
+            return Err(format!(
+                "unsupported-pattern: {name} {key} uses a non-greedy or possessive quantifier"
+            ));
+        }
+        index += 1;
+    }
+    Ok(())
 }
 
 fn get_array_values(name: &str, table: &Table, key: &str) -> Result<Vec<Value>, String> {

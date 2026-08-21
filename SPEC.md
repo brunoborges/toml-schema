@@ -7,7 +7,7 @@ TOML Schema validates the parsed input of a TOML file to:
 1. Eliminate or reduce misconfiguration that could cause damage if it were only detected when the configuration is evaluated in production,
 1. Be leveraged by editors and other tools to provide and enrich auto-completion and code hints for validation on the fly.
 
-The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document.
+The schema format follows the TOML specification, meaning that a TOML Schema is in itself a valid TOML document. The revision of TOML that this specification is defined against is pinned under [TOML Language Version](#toml-language-version).
 
 ## Conformance Terminology
 
@@ -21,12 +21,233 @@ schemas. A **validator** applies a successfully loaded schema to a TOML
 document. An **implementation** may provide both components in one API or
 command.
 
+## Terminology
+
+This section defines the domain terms the normative rules in this document are
+written with. It complements [Conformance Terminology](#conformance-terminology):
+that section fixes the BCP 14 keywords and the schema loader, validator, and
+implementation roles, and this one fixes the nouns those roles act on. Where an
+authoritative rule for a concept already exists, the entry below points at the
+section that owns it rather than restating it.
+
+Two sides are kept strictly apart, because most cross-term confusion comes from
+mixing them:
+
+- the **schema side** — the TOML Schema document and the definitions it
+  contains; and
+- the **document side** — the parsed TOML document under validation and its
+  values.
+
+A term that names something on one side MUST NOT be read as its counterpart on
+the other.
+
+### Schema-side terms
+
+- **Schema definition** (also **definition**). One coherent set of rules that
+  governs a single position. A definition is written as a TOML table or
+  key/value entry inside `[types]` or `[elements]`, or nested below one. Every
+  definition selects one type and MAY carry
+  [schema definition properties](#schema-definition-properties). "Definition" is
+  the preferred short form; "schema definition" is the same thing spelled in
+  full.
+
+- **Element**. A definition that is a direct child of `[elements]`; it describes
+  one top-level key of the validated document. See
+  [Elements table](#elements-table---elements). Elements follow the same rules as
+  `[types]` definitions except that an element MUST NOT reference another
+  element.
+
+- **Schema (definition) property**. A key/value pair written directly inside a
+  definition whose name is one of the closed set of keywords listed under
+  [Schema Definition Properties](#schema-definition-properties) (`type`, `oneof`,
+  `itemtype`, `optional`, `default`, and the rest). A schema property is metadata
+  on the schema side; it is never a key of the validated document. A same-named
+  document key is instead described by a **child definition** (see *fixed
+  child*), written through the reserved `children` namespace when the definition
+  also uses the property. Do not use "property" for a document key.
+
+- **Selector**. The property by which a definition chooses the type it governs:
+  `type`, `oneof`, `anyof`, or the `if`/`then`/`else` triple. Exactly one
+  selector applies to a definition, except that a definition with nested child
+  definitions and no explicit selector is an **implicit table**
+  (`type = "table"`). See [Types table](#types-table---types).
+
+- **Schema type**. The type a definition *selects* through `type`: a built-in
+  type name (`"string"`, `"integer"`, `"array"`, `"table"`, `"collection"`,
+  `"any"`, a temporal type, and so on) or a named reusable definition from
+  `[types]`. The schema type is what is written; it is not yet resolved through
+  references or composition.
+
+- **Effective type**. The type a definition *resolves to* after following every
+  named `type` reference to a concrete definition and composing every
+  [`allof`](#conjunctive-composition---allof) component. Compatibility of a
+  composition, the applicability of kind-specific properties such as `format`,
+  `min`, and `keypattern`, and the choice of merge rule are all decided from the
+  effective type, not from the written schema type. A definition's effective type
+  has a coarse category — a scalar of a specific scalar type, `array`, `table`,
+  or `collection` — and that category is what a composition MUST agree on and
+  what a parsed value's **TOML kind** (below) is checked against. Some existing
+  prose in this document spells this concept *effective kind* or *effective TOML
+  kind*; those are the same concept, and *effective type* is the preferred term.
+
+- **Named type** / **reusable definition**. A definition under `[types]`,
+  referenced by name from a selector, `itemtype`, `items`, or `allof`. See
+  [Types table](#types-table---types).
+
+- **Type reference** / **reference**. A string that names a built-in type or a
+  named reusable definition, accepted by `type`, `itemtype`, `items`, `oneof`,
+  `anyof`, `allof`, `then`, and `else`. The optional `types.` prefix is stripped
+  once before lookup. The resolution and edge-classification rules for references
+  are defined under [Reference Resolution](#reference-resolution) and
+  [The Reference Graph](#the-reference-graph).
+
+- **Use site**. The location at which a named definition is referenced, as
+  opposed to the named definition itself. A **use-site** annotation (`optional`,
+  `default`) is one written at the reference rather than on the referenced
+  definition; the interaction of use-site and referenced annotations is defined
+  under [Type Reference](#type-reference),
+  [Optionality](#optionality---optional), and [Default](#default---default).
+
+- **Participant** and **`allof` component**. In an
+  [`allof`](#conjunctive-composition---allof) composition, a *participant* is the
+  local definition or any one of its `allof` components, as defined in place
+  under [Merging by TOML Kind](#merging-by-toml-kind). An *`allof` component* is
+  one referenced definition contributed to the composition.
+
+- **Assertion**, **annotation**, and **applicator**. An *assertion* is a schema
+  property a document value must satisfy for the node to be valid. An
+  *annotation* never decides validity; `description`, `default`, and `deprecated`
+  are the annotations, as defined under [Annotations](#annotations). An
+  *applicator* applies other definitions to the same node without selecting its
+  type; `allof` is the only applicator in version 1.0, as described under
+  [Conjunctive Composition](#conjunctive-composition---allof).
+
+- **Alternative**. One entry of a `oneof` or `anyof` array — a candidate type the
+  value MAY validate against. See
+  [Alternative Types](#alternative-types---oneof-and-anyof). Distinct from
+  *branch*.
+
+- **Branch**. One of the two named table-like definitions selected by an
+  `if`/`then`/`else` conditional: `then` when the condition holds, `else`
+  otherwise. See
+  [Conditional Selection](#conditional-selection---if-then-and-else). Only the
+  selected branch is applied. Distinct from *alternative*: a branch belongs to a
+  conditional, an alternative belongs to a union.
+
+- **Fixed child**. A child that a definition names statically, as opposed to a
+  dynamically keyed **collection entry**. The fixed children of a definition are
+  its own nested child definitions — *including* those written through the
+  reserved `children` namespace — plus those contributed by `allof` components
+  and by the selected alternative or branch. Entries under `children` **are**
+  fixed children: `children` is a purely syntactic escape for target keys whose
+  names collide with schema property names, not a different kind of child, and
+  both spellings denote the same target key and validate identically (see
+  [Quoted and Special Keys](#quoted-and-special-keys)). The **operand** of a
+  sibling presence rule and of a conditional `key` is a fixed child's target key
+  name, never the literal string `children`. Which fixed children count for which
+  rule is governed by the two sets below.
+
+- **Determinate fixed-child set**. The fixed children a definition is known to
+  have *whatever* document value is later validated against it, computed at
+  schema-load time without reference to any document. `oneof`/`anyof`
+  alternatives and `if`/`then`/`else` branches contribute nothing to it. It is
+  the set every schema-load rule reads: sibling-rule operand resolution,
+  `exactlyone` applicability, and the collection `itemtype` requirement.
+  [Determinate Fixed-Child Set](#determinate-fixed-child-set) is authoritative.
+
+- **Effective closure set**. The fixed children in force for one particular
+  document node, computed at validation time: the determinate fixed-child set of
+  the node's definition plus the fixed children of whichever alternative or
+  branch was selected for that node. It is the set that unknown-key rejection,
+  requiredness, and per-child value validation read, and the set that decides
+  whether a table is open or closed. [Effective Closure Set](#effective-closure-set)
+  is authoritative. The two sets MUST NOT be conflated: a schema-load rule MUST
+  read the determinate set, and unknown-key rejection MUST read the effective
+  closure set.
+
+- **Effective definition**. The single merged definition `allof` produces by
+  combining the local definition with every component before any value is
+  validated; the document value is validated against it as a whole.
+  [The Effective Definition](#the-effective-definition) is authoritative.
+
+### Document-side terms
+
+- **Key**. A decoded TOML key of the parsed document — the identifier of a table
+  entry or the name of a top-level key. Keys are compared as decoded values, not
+  by lexical spelling (see [Parsed Value Equality](#parsed-value-equality)). A
+  **direct child key** is a key one level below the table currently being
+  validated.
+
+- **TOML kind** (also **parsed TOML kind**). The kind of an actual parsed TOML
+  value: a scalar of a specific type (string, integer, float, boolean, or one of
+  the temporal types), an array, or a table. `collection` is not a TOML kind; it
+  is a schema-level refinement of the table kind (see
+  [Container Types](#container-types)). Validation requires the parsed value's
+  TOML kind to match the coarse category of the governing definition's *effective
+  type* before any assertion is applied, as required by the kind check under
+  [Keyword Evaluation Order](#keyword-evaluation-order). "TOML kind" is a
+  document-side term and MUST NOT be substituted for "effective type".
+
+- **Node** (also **document node**). A value in the parsed document that a
+  definition governs — a present scalar, array, or table value at some path.
+  Validation is expressed as applying a definition to a node;
+  [The Validation Contract](#the-validation-contract) defines the
+  `validate(node, definition)` operation over this term. A node is always
+  present: a position where no value exists is a *slot*, not a node.
+
+- **Slot**. A position a definition governs, which MAY be absent. A slot is
+  filled by a node when the corresponding value is present in the document and is
+  empty when it is absent. This distinction is what makes requiredness and
+  [`optional`](#optionality---optional) statable: a required slot MUST be filled;
+  an optional slot MAY be empty, and an annotation such as a `default` attaches to
+  the slot even when no node fills it. Every node occupies a slot; not every slot
+  holds a node.
+
+- **Collection entry** / **dynamic entry**. A document key of a `collection` node
+  that is not a fixed child; its name is constrained by `keypattern` and its value
+  by `itemtype` rather than by a named child definition (see
+  [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)).
+  A collection entry is never a sibling-rule operand.
+
+- **Open table** / **closed table**. A document table node whose governing
+  definition contributes no fixed child (open: any keys accepted, contents
+  unvalidated) versus one that contributes at least one (closed: every key MUST
+  be a fixed child). Openness is decided from the node's effective closure set;
+  the authoritative rule is under [Tables](#tables).
+
+- **Instance path** and **schema path**. The serialized location of a document
+  node and of a schema location, respectively. Their grammars are defined under
+  [Instance Path](#instance-path) and [Schema Path](#schema-path).
+
+### Deprecated near-synonym mapping
+
+Some prose written before this section was added uses a near-synonym for one of
+the terms above. A later editorial pass SHOULD replace each deprecated spelling
+with its preferred term. Until then, the two spellings denote the same concept,
+and the preferred term is the one to use in new text.
+
+| Deprecated / conflated spelling | Preferred term | Notes |
+| --- | --- | --- |
+| schema node, current schema node | definition (current definition) | "node" is reserved for the document side |
+| effective kind, effective TOML kind | effective type | one concept, three spellings; keep "effective type" |
+| branch (of a `oneof`/`anyof`) | alternative | "branch" is reserved for `if`/`then`/`else` |
+| property (of a document table) | key (or child) | "property" is reserved for a schema keyword |
+| element (used for any definition) | definition | "element" is reserved for a direct child of `[elements]` |
+| schema type (used for the resolved type) | effective type | "schema type" is the *written* selected type only |
+| TOML kind (used for a definition's resolved type) | effective type | "TOML kind" is the parsed value's kind only |
+| component (bare, meaning an `allof` participant) | participant / `allof` component | see [Merging by TOML Kind](#merging-by-toml-kind) |
+
 ## Table of Contents
 
 - [Conformance Terminology](#conformance-terminology)
+- [Terminology](#terminology)
+  - [Schema-side terms](#schema-side-terms)
+  - [Document-side terms](#document-side-terms)
+  - [Deprecated near-synonym mapping](#deprecated-near-synonym-mapping)
 - [First Glance](#first-glance)
   - [TOML example](#toml-example)
   - [TOML Schema example](#toml-schema-example)
+- [TOML Language Version](#toml-language-version)
 - [Schema Structure Reference](#schema-structure-reference)
   - [Top-level Structure Conditions](#top-level-structure-conditions)
 - [Metadata Table - `[toml-schema]`](#metadata-table---toml-schema)
@@ -58,7 +279,12 @@ command.
     - [Composition Examples](#composition-examples)
   - [Alternative Types - `oneof` and `anyof`](#alternative-types---oneof-and-anyof)
   - [Conditional Selection - `if`, `then`, and `else`](#conditional-selection---if-then-and-else)
+    - [The discriminator key and closed branches](#the-discriminator-key-and-closed-branches)
   - [Sibling Presence Rules](#sibling-presence-rules)
+    - [Dependencies - `dependentrequired`](#dependencies---dependentrequired)
+    - [Mutual Exclusion - `mutuallyexclusive`](#mutual-exclusion---mutuallyexclusive)
+    - [Exactly One - `exactlyone`](#exactly-one---exactlyone)
+  - [Annotations](#annotations)
   - [Description - `description`](#description---description)
   - [Default - `default`](#default---default)
   - [Deprecation - `deprecated`](#deprecation---deprecated)
@@ -67,9 +293,45 @@ command.
   - [Key Pattern - `keypattern`](#key-pattern---keypattern)
 - [Validation and Data Model](#validation-and-data-model)
   - [Parsed Value Equality](#parsed-value-equality)
-  - [Validation Diagnostics](#validation-diagnostics)
   - [Expressiveness and Validation Scope](#expressiveness-and-validation-scope)
+- [Evaluation](#evaluation)
+  - [Evaluation Phases](#evaluation-phases)
+    - [Schema-Load Phase](#schema-load-phase)
+    - [Document-Validation Phase](#document-validation-phase)
+  - [Reference Resolution](#reference-resolution)
+    - [Resolution Algorithm](#resolution-algorithm)
+    - [Built-in Names Are Reserved](#built-in-names-are-reserved)
+  - [The Reference Graph](#the-reference-graph)
+    - [Consuming and Non-Consuming Edges](#consuming-and-non-consuming-edges)
+    - [Cycle Legality](#cycle-legality)
+  - [The Validation Contract](#the-validation-contract)
+    - [Results](#results)
+    - [The Unit of Validation](#the-unit-of-validation)
+    - [Slot Evaluation](#slot-evaluation)
+    - [Keyword Evaluation Order](#keyword-evaluation-order)
+    - [Error Reporting Completeness](#error-reporting-completeness)
+    - [Combining Results](#combining-results)
+  - [Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard)
+- [Diagnostics](#diagnostics)
+  - [Phases](#phases)
+  - [Diagnostic Record](#diagnostic-record)
+  - [Severity](#severity)
+  - [Instance Path](#instance-path)
+  - [Schema Path](#schema-path)
+  - [Aggregation, Ordering, and Branch Diagnostics](#aggregation-ordering-and-branch-diagnostics)
+  - [Extensibility](#extensibility)
+  - [Command-Line Exit Status](#command-line-exit-status)
+  - [Code Registry](#code-registry)
+    - [Discovery codes](#discovery-codes)
+    - [Schema-load codes](#schema-load-codes)
+    - [Validation codes](#validation-codes)
+  - [Informative examples](#informative-examples)
 - [Schema Self-Validation](#schema-self-validation)
+- [Security Considerations](#security-considerations)
+  - [Schema Discovery and Retrieval](#schema-discovery-and-retrieval)
+  - [Resource Limits](#resource-limits)
+  - [Regular-Expression Safety](#regular-expression-safety)
+  - [Safe Failure](#safe-failure)
 - [Filename Extension](#filename-extension)
 - [MIME Type](#mime-type)
 - [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema)
@@ -153,6 +415,57 @@ itemtype = "types.serverType"
 minlength = 1
 ```
 
+## TOML Language Version
+
+This specification is defined against [TOML 1.0.0](https://toml.io/en/v1.0.0).
+That revision fixes both the grammar a conforming parser accepts and the logical
+value model — the TOML kinds `string`, `integer`, `float`, `boolean`, offset
+date-time, local date-time, local date, local time, array, and table — that every
+rule in this document is written against.
+
+- A TOML Schema document MUST be a well-formed TOML 1.0.0 document. Schema
+  loaders MUST reject a schema document that is not.
+- A TOML document being validated MUST be parsed as TOML 1.0.0 before validation
+  begins. Parsing precedes validation: a document that is not well-formed TOML
+  never reaches a validator, and its parse failure is a parse error rather than
+  a validation diagnostic.
+
+This baseline is a property of the language, not of an individual schema. No
+schema property selects a TOML version, and a schema document cannot request a
+different one.
+
+A TOML parser MAY accept input beyond TOML 1.0.0, whether from a later TOML
+revision — multi-line inline tables, trailing commas in inline tables,
+additional string escapes, or omitted seconds in date-times, for example — or
+from a vendor extension. Such a parser MUST NOT silently change validation
+outcomes. An implementation built on one:
+
+- MUST NOT report a schema document or a validated document as conforming to
+  TOML Schema 1.0 when the document parses only because of an extension;
+- MUST NOT let an extension change the logical value produced for input that is
+  well-formed TOML 1.0.0, because every validation rule in this specification is
+  evaluated against that logical value; and
+- MUST document the extended profile it accepts and SHOULD provide a mode that
+  restricts parsing to TOML 1.0.0.
+
+An implementation that cannot restrict its parser MUST treat acceptance beyond
+TOML 1.0.0 as an implementation extension and MUST report it, so that a schema
+or document that depends on it is never mistaken for a portable one. Conformance
+suites MUST use only TOML 1.0.0 syntax.
+
+**This is not the schema language version.** The TOML version pinned here and
+the TOML Schema language version described under
+[Schema Versioning](#schema-versioning) are different numbers with different
+meanings, and conflating them is a misreading this specification explicitly
+rejects. `[toml-schema].version` states which revision of the *schema
+vocabulary* — the properties, built-in type names, and validation rules defined
+by this document — a schema document is written against. This section states
+which revision of *TOML itself* both the schema document and the validated
+document are parsed as. The two version numbers move independently: a schema
+document that declares `version = "1.0.0"` declares TOML Schema 1.0.0, not
+TOML 1.0.0, and a future TOML Schema version would not by itself change the
+pinned TOML version.
+
 ## Schema Structure Reference
 
 A TOML Schema file has the following structure:
@@ -209,6 +522,12 @@ Custom properties and tables MUST NOT appear directly under `toml-schema`; they
 MAY appear only inside the `toml-schema.meta` table.
 
 ### Schema Versioning
+
+This section is about the TOML Schema **language** version, which is unrelated
+to the TOML language version pinned under
+[TOML Language Version](#toml-language-version). A schema document declares the
+schema vocabulary it uses; it never declares which revision of TOML it is
+written in.
 
 TOML Schema follows the same version-numbering policy as the TOML specification: schema language versions use [Semantic Versioning](https://semver.org/).
 
@@ -333,7 +652,10 @@ Every named reference used by `type`, `itemtype`, `items`, `oneof`, `anyof`,
 `allof`, `then`, or `else`
 MUST resolve to a definition in `[types]`. Schema loaders MUST reject unresolved
 references at schema-load time, including references in definitions that are
-optional or not exercised by the document being validated.
+optional or not exercised by the document being validated. The ordered algorithm
+that turns a reference string into a built-in type or a reusable definition is
+defined under [Reference Resolution](#reference-resolution), which is
+authoritative for how the restrictions above are applied.
 
 Type-selection and composition references MUST be acyclic. A cycle composed of
 named `type` aliases, `oneof` alternatives, `anyof` alternatives, conditional
@@ -341,6 +663,8 @@ branches, or `allof` components cannot resolve to a concrete definition and
 schema loaders MUST reject it at schema-load time. Structural recursion through
 table or collection children, array `itemtype`, or tuple `items` remains valid
 because each recursive step consumes a nested document value.
+[Cycle Legality](#cycle-legality) states this classification in terms of the
+reference graph and is authoritative for deciding which cycles are legal.
 
 ```toml
 [types]
@@ -1019,8 +1343,10 @@ key that names a fixed child definition is validated by that definition. Every
 other key is a dynamic entry: its name MUST satisfy every applicable
 `keypattern` and its
 value MUST validate against every applicable `itemtype`. A collection therefore
-never produces an unknown-key error; an undeclared key that is not acceptable is
-reported as a `keypattern` or `itemtype` failure instead. Fixed children that
+never produces an `unknown-key` error; an undeclared key that is not acceptable is
+reported as a `keypattern` failure on the key, or as an ordinary failure of the
+entry's value against the item definition, as
+[Code Registry](#code-registry) requires. Fixed children that
 are not optional remain required, exactly as in a closed table.
 
 This difference in unknown-key semantics is why `table` and `collection` are not
@@ -1396,9 +1722,9 @@ collection.
 
 When no alternative matches, a key that belongs to the effective closure set of
 no candidate could not have been accepted by any of them. An implementation MAY
-report such a key as an unexpected key on the node in addition to, or instead
-of, the union's arity failure, as permitted under
-[Validation Diagnostics](#validation-diagnostics).
+report such a key as an `unknown-key` error on the node in addition to, or
+instead of, the union's arity failure, as permitted under
+[Aggregation, Ordering, and Branch Diagnostics](#aggregation-ordering-and-branch-diagnostics).
 
 Openness is likewise decided from the effective closure set. A table is open for
 a document node only when that node's effective closure set is empty, and is
@@ -1718,19 +2044,22 @@ the alternative declares is a known key of the node and MUST NOT be reported as
 unexpected. This is what lets a union be composed into a table with `allof`
 without the alternatives' own children becoming unknown keys.
 
-When alternatives contain annotations, only successful branches contribute
+When alternatives contain annotations, only successful alternatives contribute
 them, and only for a value that is present. Deprecation warnings follow the
-successful-branch rule: `oneof` reports the warning of its single successful
-branch, and `anyof` reports the warnings of every successful branch,
-deduplicated by code, path, and message. Consequently, a deprecated successful
-branch contributes a warning even when another successful `anyof` branch is not
-deprecated; this preserves all annotations attached to definitions that
-accepted the value. Alternative `default` annotations are governed by
-[Default](#default---default): they are never combined into the slot's
-effective default and never cause a schema-load conflict. For a present value,
-an implementation MAY surface the default of each successful branch as a hint,
-deduplicated by [Parsed Value Equality](#parsed-value-equality). A branch that
-fails validation contributes neither defaults nor deprecation warnings.
+successful-alternative rule: `oneof` reports the warning of its single
+successful alternative, and `anyof` reports the warnings of every successful
+alternative, deduplicated as [Diagnostics](#diagnostics) requires. Consequently,
+a deprecated successful alternative contributes a warning even when another
+successful `anyof` alternative is not deprecated; this preserves all annotations
+attached to definitions that accepted the value. Alternative `default`
+annotations are governed by [Default](#default---default): they are never
+combined into the slot's effective default and never cause a schema-load
+conflict. For a present value, an implementation MAY surface the default of each
+successful alternative as a hint, deduplicated by
+[Parsed Value Equality](#parsed-value-equality). An alternative that fails
+validation contributes neither defaults nor deprecation warnings; what happens to
+its diagnostics is defined under
+[Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard).
 
 ### Conditional Selection - `if`, `then`, and `else`
 
@@ -1739,14 +2068,50 @@ table-like node. The condition inspects one direct child of the current parsed
 table and selects one of two named reusable definitions:
 
 ```toml
+[types.sqliteDatabase]
+type = "table"
+
+    [types.sqliteDatabase.engine]
+    type = "string"
+    allowedvalues = [ "sqlite" ]
+
+    [types.sqliteDatabase.path]
+    type = "string"
+
+[types.serverDatabase]
+type = "table"
+
+    [types.serverDatabase.engine]
+    type = "string"
+    allowedvalues = [ "postgresql", "mysql" ]
+
+    [types.serverDatabase.host]
+    type = "string"
+
 [types.database]
 if = { key = "engine", equals = "sqlite" }
 then = "types.sqliteDatabase"
 else = "types.serverDatabase"
 ```
 
+Both branches declare `engine`, the key the condition reads. That is required
+rather than stylistic: see
+[The discriminator key and closed branches](#the-discriminator-key-and-closed-branches)
+below.
+
 `if` MUST be an inline table containing `key` and exactly one of `equals` or
 `in`. It MUST contain no other members.
+
+Because `if` is also a legal child key, an `if = { ... }` key/value entry is
+always the conditional selector, while a table header such as
+`[types.example.if]` is always a child definition named `if`. Consequently the
+condition MUST use inline-table syntax and can never be written as
+`[types.example.if]`. A definition that needs a target child named `if` writes
+that child through the `children` namespace, as described under
+[Quoted and Special Keys](#quoted-and-special-keys). A conditional definition
+has no nested child definitions of its own, so the two spellings never compete
+within one conditional definition, but a loader still MUST NOT infer the
+selector from a table-form `if`.
 
 - `key` MUST be a string naming one direct child key of the parsed table being
   validated. It is a decoded TOML key, not a dotted document path, and it does
@@ -1765,6 +2130,23 @@ Validation diagnostics and deprecation annotations come only from the selected
 branch. A branch default does not become the conditional slot's effective
 default; for a present value, an implementation MAY surface the selected
 branch's default as a hint.
+
+The condition reads a direct child of a parsed table. When the document value at
+a conditional node is not a table — a scalar, an array, or an array of tables —
+no direct child can be read, so the condition cannot be satisfied and is false,
+exactly as it is for an absent child. `else` is therefore the selected branch.
+Because both branches MUST resolve to the same table-like effective kind, that
+value cannot validate against either branch, and the node is invalid. A
+validator MUST report this as a kind mismatch against the common branch kind at
+the node's location, using the `type-mismatch` code defined under
+[Validation codes](#validation-codes), and MUST NOT report the branch's internal
+`missing-required` or `unknown-key` diagnostics for a value that is not a table
+at all. It MUST NOT report a diagnostic describing the condition, which never
+fails on its own.
+
+Consequently, a `default` on a conditional definition MUST be a table. A
+non-table default cannot satisfy either branch, so a schema loader MUST reject
+it at schema-load time under the default-validation rule stated below.
 
 Like a union, the conditional triple contributes nothing to the
 [determinate fixed-child set](#determinate-fixed-child-set) of the node it
@@ -1803,6 +2185,44 @@ else = "types.embeddedDatabase"
 
 Additional alternatives can be expressed by referencing another conditional
 definition from `then` or `else`.
+
+#### The discriminator key and closed branches
+
+The key named by `if.key` is ordinary application data. It is read to select a
+branch, and it is then validated by the selected branch like any other key. A
+conditional definition contributes no fixed children of its own, so nothing
+declares the discriminator on the node's behalf.
+
+A branch that declares fixed children is closed against exactly those children,
+as [Effective Closure Set](#effective-closure-set) defines. If such a branch
+omits the discriminator, the key the condition just read is not in the node's
+effective closure set and a validator MUST report it as an unknown key, so the
+conditional can never accept a document. Every closed branch MUST therefore
+declare the discriminator itself.
+
+Schema loaders MUST reject a conditional definition when a branch has a
+non-empty [determinate fixed-child set](#determinate-fixed-child-set) that does
+not contain the key named by `if.key`. That set is computed at schema-load time,
+so this check catches the common authoring mistake without resolving
+document-dependent shapes. A branch whose fixed children are contributed only by
+a nested union or conditional has an empty determinate set, and a loader cannot
+decide the question for it; the same unknown-key rule still applies at
+validation time, and authors remain responsible for declaring the discriminator
+in every shape a branch can take.
+
+Two branch shapes need no declaration and are not rejected: a branch that is an
+open table, whose effective closure set is empty and which therefore accepts the
+discriminator as arbitrary data, and a branch that is a `collection`, whose
+dynamic-entry rules accept the discriminator when its `keypattern` and
+`itemtype` permit it.
+
+The `else` branch is subject to the same rule as `then`. An `else` branch is
+selected both when the discriminator holds a different value and when it is
+absent, so a closed `else` branch typically declares the discriminator with
+`optional = true`, with `allowedvalues` excluding the value that selects `then`,
+or with both. In the example above, `types.serverDatabase` declares `engine`
+with `allowedvalues = [ "postgresql", "mysql" ]`, which both admits the key and
+rejects a value that should have selected the other branch.
 
 ### Sibling Presence Rules
 
@@ -1933,9 +2353,95 @@ Ordinary requiredness is evaluated together with these rules. An absent
 optional trigger has no effect. A non-optional child remains required even if a
 presence group would otherwise permit its absence.
 
+### Annotations
+
+`description`, `default`, and `deprecated` are **annotations**. Unlike the
+assertions defined above, an annotation never decides validity: it cannot make a
+document valid or invalid, and removing every annotation from a schema leaves
+the set of documents that schema accepts unchanged. The sections below define
+each annotation; this section defines what they attach to and how one effective
+value is obtained when a definition is reached indirectly.
+
+**Attachment.** An annotation attaches to the document node being validated —
+identified by its [instance path](#instance-path) — not to the schema definition
+that carries it. The same definition applied at several nodes annotates each node
+separately, and a definition applied to no node annotates nothing. Consequences:
+
+- A definition used as an array `itemtype` annotates every present item node, not
+  the array. A deprecated `itemtype` applied to an array of one hundred items
+  therefore produces one hundred warnings, one per item node, and never a single
+  warning for the array.
+- A definition used as a `collection` `itemtype` annotates every present
+  dynamically keyed entry, once per entry.
+- A definition reached through `items` annotates the one indexed node it
+  validates.
+- An absent optional slot holds no node, so it carries no annotation and produces
+  no deprecation warning.
+
+Every annotation-derived diagnostic therefore carries the instance path of the
+node it annotates. The severity and code of such a diagnostic are assigned by
+[Diagnostics](#diagnostics); this section defines only what annotations attach
+to.
+
+**Effective annotation.** For one document location, the participants that may
+carry an annotation are the use site, each definition along that use site's
+`type` reference chain, each `allof` component of the effective definition, the
+`oneof` or `anyof` alternative that succeeded, and the conditional branch that
+was selected. The general precedence is:
+
+1. an annotation declared at the use site takes precedence over the same
+   annotation obtained through that use site's `type` reference chain, and
+   within the chain the nearest declaration takes precedence over a more distant
+   one;
+2. `allof` components, union alternatives, and conditional branches contribute
+   annotations for the location they help validate, but never override an
+   annotation the use site or its reference chain already supplies.
+
+`deprecated` is an exception to point 2 and does not follow the general
+precedence: it combines disjunctively rather than resolving to a single
+declaration, so a contributing `deprecated = true` deprecates the location even
+when the use site declares `deprecated = false`. [Deprecation](#deprecation) is
+authoritative for it. The general precedence governs `description` and any
+future annotation that resolves to at most one value.
+
+Each annotation then resolves its own contributions as follows.
+
+`description` follows the general precedence and resolves to at most one value.
+A use-site `description` overrides the one carried by the definition it
+references, and the nearest description along a reference chain overrides a more
+distant one; the use site is the more specific statement about that location, so
+it wins. Descriptions carried by `allof` components, by the successful union
+alternative, and by the selected conditional branch never replace that value.
+Where a single description is required — an editor hover, for instance — the
+effective description is the use-site or reference-chain value if one exists,
+and otherwise nothing. An implementation MAY additionally expose the
+contributed descriptions as documentation, in a stable order: `allof`
+components in declaration order, then the successful alternative or selected
+branch. It MUST NOT merge or concatenate contributions into a value it presents
+as a single authored description, and it MUST NOT reject a schema because two
+participants carry different descriptions.
+
+`default` does not follow this general precedence alone, because it is
+machine-readable and must resolve to exactly one value. Its precedence and
+conflict rules, including the `allof` and union rules, are defined under
+[Default](#default---default) and are authoritative.
+
+`deprecated` is a per-node warning. It fires once for each present document node
+whose effective definition is deprecated, and duplicate warnings contributed by
+more than one successful path are deduplicated as
+[Diagnostics](#diagnostics) requires. It fires per node and never per definition,
+so the count follows the attachment rules above. Deprecation is not inherited
+downward: a deprecated parent produces one warning at the parent's instance path,
+and a descendant produces a warning only when its own effective definition is
+deprecated. When a union or conditional definition is itself deprecated, that
+warning is reported at the node's own instance path in addition to any warning
+contributed by the successful alternative or selected branch, and the two are
+distinct instance paths only when the alternative or branch annotates a
+descendant.
+
 ### Description - `description`
 
-`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation.
+`description` is an optional human-readable string that documents a schema definition. It may be used on reusable types, elements, and nested definitions. Implementations and tooling MAY use it for documentation, suggestions, and autocompletion; it does not affect validation. Its precedence when a definition is reached through a reference, composition, an alternative, or a conditional branch is defined under [Annotations](#annotations).
 
 ```toml
 [types.game]
@@ -1954,7 +2460,11 @@ itemtype = "types.game"
 
 ### Default - `default`
 
-`default` is a machine-readable annotation containing any TOML value.
+`default` is a machine-readable annotation containing any TOML value. Like the
+other annotations, it attaches to the document node a definition validates, and
+to the slot that node occupies, as described under [Annotations](#annotations);
+unlike them, it MUST resolve to exactly one value, and the rules below are
+authoritative for that resolution.
 
 ```toml
 [elements.retries]
@@ -2027,9 +2537,14 @@ optional = true
 ```
 
 Deprecation never makes a document invalid. A successfully validated present
-value produces a warning diagnostic; an absent optional value produces no
-warning. A deprecated parent produces one warning at the parent path rather
-than one warning for every descendant.
+value produces a warning diagnostic with the code `deprecated`; an absent
+optional value produces no warning. A deprecated parent produces one warning at
+the parent's instance path rather than one warning for every descendant. The
+instance path a deprecation warning is reported at, and how many warnings a
+deprecated array `itemtype` or collection `itemtype` produces, follow the
+attachment rules under [Annotations](#annotations). Whether a node counts as
+successfully validated for this purpose is decided by the annotation step of
+[Keyword Evaluation Order](#keyword-evaluation-order).
 
 Deprecation propagates through named references. Across `allof`, any
 contributing `deprecated = true` deprecates the location, and a local
@@ -2065,19 +2580,71 @@ selector, or a named type reference. Schema loaders MUST reject an incompatible
 `pattern` at schema-load time rather than silently ignoring it.
 
 The portable TOML Schema regular-expression profile consists of literals,
-escaped metacharacters, `.`, character classes and ranges, negated character
+escaped metacharacters, the character escapes `\t`, `\n`, `\r`, `\f`, `\v`, and
+`\a`, `.`, character classes and ranges, negated character
 classes, concatenation, alternation, capturing and non-capturing groups, the
 anchors `^` and `$`, and the greedy quantifiers `?`, `*`, `+`, `{n}`, `{n,}`,
 and `{n,m}`. These constructs use the syntax documented by the
 [RE2 syntax reference](https://github.com/google/re2/wiki/Syntax). Implementations MUST
 support this profile.
 
+The listed character escapes are portable because each denotes one fixed control
+character, so no engine can disagree about what it matches. They are portable
+both standalone and inside a character class, so `[ \t]` is a portable pattern.
+
 Character-class shorthands such as `\d`, `\s`, and `\w` are outside the
 portable profile because regular-expression engines disagree about whether
-they use ASCII or Unicode membership. Backreferences, look-around assertions,
-atomic groups, conditionals, and recursion are also outside the portable
-profile. Implementations MAY accept additional constructs, but schemas that use those
-extensions are not portable between TOML Schema implementations.
+they use ASCII or Unicode membership. Write the intended set explicitly instead:
+`[0-9]` rather than `\d`. Unicode property classes such as
+`\p{L}`, inline flag groups such as `(?i)`, backreferences, look-around
+assertions, atomic groups, conditionals, recursion, and the non-greedy and
+possessive quantifier forms such as `*?` and `*+` are also outside the
+portable profile.
+
+**Patterns are compiled at schema-load time.** A schema loader MUST compile
+every `pattern` value when it loads the schema, whether or not any document
+exercises it. A pattern that does not compile — `"["`, `"{2,1}"`, or a trailing
+backslash, for example — makes the schema malformed, and the loader MUST reject
+it at schema-load time with the `invalid-pattern` code. An implementation MUST
+NOT defer a compilation failure to match time, MUST NOT treat an uncompilable
+pattern as a failed match, and MUST NOT treat it as a satisfied constraint.
+
+A construct outside the portable profile is likewise a schema-load error,
+reported with the `unsupported-pattern` code. A loader operating in its
+conformant TOML Schema 1.0 mode MUST reject a `pattern`
+that uses one, even when the underlying engine could compile it. An
+implementation MAY offer an additional, explicitly named and documented extended
+pattern profile that accepts further constructs, but that profile MUST NOT be
+the default, and a schema accepted only under it is not a TOML Schema 1.0
+schema. Portability is the whole purpose of naming a profile: if a
+non-portable construct were merely discouraged, the same schema would be a
+load error on one implementation, an ASCII-only match on a second, and a
+Unicode match on a third, which is precisely the interoperability split the
+profile exists to prevent. Conformance suites MUST use only the portable
+profile. The engine an implementation matches these expressions with, and the
+resource limits it applies to compilation and matching, are additionally
+constrained by
+[Regular-Expression Safety](#regular-expression-safety).
+
+**Unicode semantics.** A pattern is compiled from, and matched against, the
+decoded parsed string: a sequence of Unicode scalar values. The TOML parser has
+already applied string escapes such as `\u00E9`, so a loader never sees TOML
+escape syntax in a pattern. Matching operates on Unicode scalar values, never on
+UTF-8 bytes, UTF-16 code units, or grapheme clusters, and the count semantics of
+`{n,m}` follow that same unit. `.` matches exactly one scalar value other than
+a line feed. A character class matches one scalar value from its members, and a
+range such as `[a-z]` or `[À-Ö]` is an inclusive range over Unicode code
+points; a range whose start code point is greater than its end code point does
+not compile and is therefore a schema-load error. A negated class matches any
+scalar value not listed, including a line feed.
+
+Matching is case-sensitive and applies no case folding. No Unicode
+normalization is applied to the pattern or to the subject before matching:
+both are compared as the exact decoded scalar sequences the TOML parser
+produced, consistent with the string rule under
+[Parsed Value Equality](#parsed-value-equality). Two strings that are
+canonically equivalent but differently composed are therefore distinct
+subjects, and an implementation MUST NOT normalize either operand.
 
 The pattern is not implicitly anchored. A value validates if the regular
 expression matches anywhere in the string. Authors who require a full-string
@@ -2104,7 +2671,15 @@ key-value pairs) are validated by their own definitions and are not subject to `
 dynamic, user-provided keys are matched against the pattern.
 
 Implementations MUST support the same portable RE2 regular-expression profile as
-[`pattern`](#pattern---pattern). Like `pattern`, `keypattern` is not implicitly
+[`pattern`](#pattern---pattern), and every rule that section states about
+regular expressions applies unchanged to `keypattern`: schema-load compilation,
+rejection of uncompilable patterns and of constructs outside the portable
+profile, Unicode scalar-value matching, character-class and range behavior,
+case sensitivity, and the absence of Unicode normalization. The subject is the
+decoded TOML key rather than a string value; keys are matched as the exact
+decoded scalar sequences the TOML parser produced, so a quoted key and a bare
+key that decode to the same characters are the same subject. Like `pattern`,
+`keypattern` is not implicitly
 anchored: a key validates if the regular expression matches anywhere in the key
 string. Authors who require a full-key match MUST anchor the expression with
 `^` and `$`.
@@ -2139,7 +2714,8 @@ parsed keys and values that would exist without schema validation.
 
 Schema loading additionally requires source-shape information for inline-table
 properties whose names may also name child definitions. In particular,
-`default = { ... }` and `dependentrequired = { ... }` cannot be distinguished
+`default = { ... }`, `dependentrequired = { ... }`, and `if = { ... }` cannot be
+distinguished
 from same-named child tables by their logical TOML values alone. A schema loader
 MUST use a parser that preserves key/value-versus-table syntax or exposes enough
 source-position information to recover it; a logical-value-only TOML API is
@@ -2174,29 +2750,6 @@ In particular, offset date-times that identify the same instant compare equal
 for a range boundary but remain unequal here when their retained local fields
 or offsets differ. Implementations MUST NOT reuse instant ordering as
 `allowedvalues`, `uniqueitems`, or default-comparison equality.
-
-### Validation Diagnostics
-
-Implementations MUST distinguish schema-load failures from document-validation
-diagnostics. A malformed schema, unsupported language version, unresolved
-reference, or invalid keyword application prevents validation from starting.
-
-Document-validation diagnostics have a severity, stable machine-readable code,
-document path, and human-readable message. Errors determine document validity.
-Warnings do not. Except for the `deprecated` code assigned below and any codes
-assigned by a future revision of this specification, diagnostic codes and path
-serialization are implementation-defined, but they MUST remain stable across
-compatible releases of that implementation.
-An implementation MAY expose additional diagnostic fields, but MUST provide
-separate access to errors and warnings. A command-line validator MUST exit
-successfully for a document whose only diagnostics are warnings.
-
-Deprecation produces a warning with the stable machine-readable code
-`deprecated`. Implementations MUST retain branch-local diagnostics while
-evaluating `oneof` and `anyof` so
-warnings from failed alternatives are not reported. Duplicate warnings
-contributed by multiple successful paths MUST be deduplicated by code, path,
-and message.
 
 ### Expressiveness and Validation Scope
 
@@ -2235,9 +2788,51 @@ define keywords for:
 - following arbitrary document paths or comparing values at different paths;
 - making a field absent precisely when its name appears in another array;
 - selecting array uniqueness by one field rather than the complete item value;
-- materializing defaults into parsed TOML data; or
+- materializing defaults into parsed TOML data;
 - overriding a constraint or modeling an application's runtime inheritance and
-  merge precedence.
+  merge precedence;
+- importing, including, or otherwise referencing a definition in another schema
+  document;
+- closing a `collection` against unknown dynamic keys; or
+- opening or dynamically keying the document root.
+
+The last three are capabilities a reader may reasonably expect, so they are
+stated explicitly rather than left to inference.
+
+**No cross-file composition.** Version 1.0 defines no import, include, or
+cross-document reference mechanism. Every named reference resolves within the
+`[types]` table of the same schema document, as
+[Types table](#types-table---types) requires, and the `location` metadata
+described under
+[TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema) binds one
+TOML document to one schema document rather than assembling several. A shared
+vocabulary must therefore be copied into each schema that needs it. This is a
+deliberate boundary for 1.0: a cross-document reference mechanism also requires
+retrieval, identity, caching, and trust rules for the referenced documents, and
+those are out of scope for this version.
+
+**No closed collection.** A `collection` is open to dynamic keys by
+construction, as [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
+states. `keypattern` constrains the shape of a dynamic key and `itemtype`
+constrains its value, but no keyword fixes a collection's key set the way a
+`table` with fixed children is closed. A schema that needs both dynamic entries
+and a bounded key set must either enumerate the keys as fixed children of a
+`table`, which gives up dynamic keying, or make the dynamic-entry rule
+unsatisfiable so that only the fixed children remain acceptable. The companion
+[`toml-schema.tosd`](toml-schema.tosd) uses the second technique, referencing a
+`types.never` definition as an `itemtype` to emulate a closed collection. That
+idiom works, but it is a workaround for a missing capability rather than a
+language feature, and schema authors SHOULD prefer a closed `table` when the key
+set really is fixed.
+
+**No open or dynamically keyed root.** The `[elements]` table is a closed,
+fixed-key table, as [Elements table](#elements-table---elements) requires. No
+schema property applies to `[elements]` itself, so the root cannot be declared a
+`collection`, cannot carry a `keypattern` or an `itemtype`, and cannot be left
+open to arbitrary top-level keys. A document format whose top-level keys are
+user-chosen cannot be described at the root in version 1.0; it can only be
+described one level down, by declaring a top-level key whose definition is a
+`collection`.
 
 For example, a schema can choose a database configuration shape from a sibling
 `engine` value. It still cannot compare values in different tables or follow an
@@ -2260,6 +2855,957 @@ A schema cannot require dotted-key notation instead of table headers, an inline
 table instead of a regular table, or a particular quoting, whitespace, or
 comment style when those forms produce the same TOML value tree.
 
+## Evaluation
+
+This section defines the normative evaluation model: when each decision is made,
+how a type reference resolves to a definition, which reference cycles are legal,
+what validating one node against one definition produces, and how those results
+combine. It uses the vocabulary fixed under [Terminology](#terminology) and the
+diagnostic shape and codes fixed under [Diagnostics](#diagnostics).
+
+The model is descriptive of required outcomes, not of implementation structure.
+An implementation MAY use any strategy — eager, lazy, memoized, compiled —
+provided it produces the results this section requires.
+
+### Evaluation Phases
+
+TOML Schema evaluation has exactly two phases. Every rule in this specification
+belongs to one of them, and the phase a rule belongs to is normative because it
+determines what information that rule is permitted to read. Schema discovery, the
+optional step that locates a schema from a document's `[toml-schema]` table,
+precedes both and is described under
+[TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema).
+
+#### Schema-Load Phase
+
+The schema-load phase reads one TOML Schema document and nothing else. No
+document being validated exists, and no rule in this phase may assume one. The
+phase either produces a **loaded schema** or fails.
+
+A schema loader MUST perform the following, and each step MUST be complete before
+the steps that depend on it begin:
+
+1. **Parse.** Parse the schema document as TOML, preserving
+   key/value-versus-table source shape as required under
+   [Validation and Data Model](#validation-and-data-model).
+2. **Document shape.** Verify the top-level structure and reject any other
+   top-level table or key/value pair, as required under
+   [Top-level Structure Conditions](#top-level-structure-conditions).
+3. **Language version.** Verify `[toml-schema].version` as required under
+   [Schema Versioning](#schema-versioning). A schema whose version is unsupported
+   MUST fail to load before any keyword is interpreted, because later steps depend
+   on the recognized keyword set for that version.
+4. **Keyword closure and applicability.** Reject any key/value pair inside a
+   schema definition whose name is not a defined schema property, reject a
+   recognized property applied to a definition that does not permit it, and reject
+   combinations excluded by
+   [Schema Definition Properties](#schema-definition-properties). This includes
+   selector exclusivity: exactly one of `type`, `oneof`, `anyof`, and the
+   conditional triple, except for the implicit-table case described under
+   [Types table](#types-table---types).
+5. **Reference resolution.** Resolve every type reference in the document, as
+   defined under [Reference Resolution](#reference-resolution). Every reference
+   MUST resolve, including references inside definitions that are optional or that
+   no document will exercise.
+6. **Cycle classification.** Build the reference graph and reject illegal cycles,
+   as defined under [The Reference Graph](#the-reference-graph). This step MUST
+   precede every step that traverses references, so that those traversals
+   terminate.
+7. **Determinate analysis.** Compute the
+   [determinate fixed-child set](#determinate-fixed-child-set) of every
+   definition, and apply every rule that reads it: sibling-rule operand resolution
+   and `exactlyone` applicability under
+   [Sibling Presence Rules](#sibling-presence-rules), and the collection
+   `itemtype` requirement under
+   [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+8. **Composition determinacy.** Verify that every `allof` composition agrees on
+   effective type, that no component is named twice, and that no local union or
+   conditional selector combined with `allof` is indeterminate, as required under
+   [Conjunctive Composition](#conjunctive-composition---allof).
+9. **Single-definition consistency.** Apply the remaining schema-load consistency
+   checks: `allowedvalues` entry kinds and their agreement with sibling
+   constraints, `min` not greater than `max`, `minlength` not greater than
+   `maxlength`, valid `format` names, compilable in-profile `pattern` and
+   `keypattern` values as required under [Pattern](#pattern---pattern), and the
+   validity of every declared `default` against its full effective definition as
+   required under [Default](#default---default).
+
+A schema-load failure is not a document diagnostic. When loading fails, a
+validator MUST NOT validate any document against that schema and MUST NOT report
+the failure as a document diagnostic; the phase distinction is normative under
+[Diagnostics](#diagnostics).
+
+A loaded schema is independent of any document. An implementation MAY cache and
+reuse it, and validating a document MUST NOT change it.
+
+#### Document-Validation Phase
+
+The document-validation phase applies one loaded schema to one parsed TOML
+document. Only this phase may read document values.
+
+Validation MUST be deterministic: the same loaded schema and the same parsed
+document MUST produce the same validity and the same set of errors, independent
+of document key order, of the order in which alternatives are evaluated, and of
+evaluation strategy. Validation MUST NOT modify the parsed document, as required
+under [Validation and Data Model](#validation-and-data-model).
+
+Validation begins with the document root. The root node is the parsed document's
+root table, and its definition is `[elements]`, applied as a closed table under
+the rules in [Elements table](#elements-table---elements). The reserved root
+`[toml-schema]` table is excluded from application-data validation unless
+`[elements.toml-schema]` is declared, as described under
+[TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema).
+
+A validator MUST NOT report a schema-load error during this phase. If a condition
+that the schema-load phase is required to reject is discovered while validating,
+the implementation's loader is non-conforming; a validator MUST NOT convert such
+a condition into a document error.
+
+### Reference Resolution
+
+A type reference is a string. Resolution maps it either to a built-in type or to
+one reusable definition in `[types]`, and it is performed entirely in the
+schema-load phase.
+
+#### Resolution Algorithm
+
+Given a reference string `R` appearing in `type`, `itemtype`, `items`, `oneof`,
+`anyof`, `allof`, `then`, or `else`, a schema loader MUST resolve it by the
+following ordered steps. The first step that produces a result or an error
+decides the outcome.
+
+1. **Normalize.** If `R` begins with the literal characters `types.`, remove that
+   prefix exactly once. Call the result `N`. Otherwise `N` is `R`. The prefix is
+   never removed twice: the reference `"types.types.x"` normalizes to `types.x`,
+   which no reusable type may be named, so it fails at step 4.
+2. **Built-in names.** If `N` is one of the built-in type names `any`, `string`,
+   `integer`, `float`, `boolean`, `offset-date-time`, `local-date-time`,
+   `local-date`, `local-time`, `array`, `table`, or `collection`, then `R` denotes
+   that built-in type. Built-in names take precedence over any other
+   interpretation.
+3. **Context restrictions on built-ins.** If step 2 selected `any` or
+   `collection`, apply the context restrictions defined under
+   [Types table](#types-table---types). These restrictions are applied to the
+   normalized name, so `"types.any"` and `"types.collection"` are restricted
+   exactly as the bare spellings are. `then` and `else` accept no built-in at all,
+   so any reference reaching step 2 from those properties is an error.
+4. **Named definitions.** Otherwise `N` MUST name a direct child of `[types]`,
+   compared against the exact decoded TOML key of that child. `N` is a whole name,
+   never a path: a dot in `N` is an ordinary character, so
+   `"types.network.endpoint"` and `"network.endpoint"` both name the single
+   definition `[types."network.endpoint"]`.
+5. **Unresolved.** If no such direct child exists, the reference is unresolved and
+   the schema loader MUST reject the schema with `unresolved-reference`.
+
+Two references are the **same reference** when they normalize to the same `N`.
+This is the identity used by the duplicate-component rule under
+[Conjunctive Composition](#conjunctive-composition---allof) and the
+distinct-alternative rule under
+[Alternative Types](#alternative-types---oneof-and-anyof).
+
+#### Built-in Names Are Reserved
+
+Because normalization happens before lookup and built-in names are tested first,
+`type = "types.string"` denotes the built-in `string`. It is a redundant but valid
+spelling of `type = "string"`, and a schema loader MUST NOT reject it. This is the
+only defensible resolution: [Types table](#types-table---types) already forbids a
+reusable definition from being named `string`, so the competing reading — treat
+`types.string` as a lookup for a user-defined type named `string` — could never
+resolve to anything and would make a valid schema fail for no expressible reason.
+Because the resolved reference is a built-in and not a named reference, the
+sibling-property restriction that
+[Type Reference](#type-reference) places on named references does not apply to it.
+
+Authors SHOULD spell a built-in bare. The `types.` prefix exists to make a
+reference to a reusable definition visually unambiguous; it grants no separate
+namespace and cannot be used to reach a user-defined type whose name collides with
+a built-in, because no such type can be declared.
+
+```toml
+[types.port]
+type = "integer"
+min = 1
+max = 65535
+
+[elements.retries]
+type = "types.integer"   # valid; identical to type = "integer"
+
+[elements.port]
+type = "types.port"
+```
+
+The following is invalid, because a reusable definition MUST NOT take a reserved
+built-in name:
+
+```toml
+[types.string]           # invalid: reserved built-in name
+type = "string"
+```
+
+### The Reference Graph
+
+The **reference graph** of a loaded schema has one vertex per definition — every
+direct or nested child of `[types]` and of `[elements]` — and one edge per
+reference from a definition to the definition or built-in it names. Built-in
+types are terminal vertices with no outgoing edges.
+
+#### Consuming and Non-Consuming Edges
+
+Every edge is exactly one of two kinds. The distinction is whether following the
+edge requires descending into a nested document value.
+
+A **non-consuming edge** is traversed immediately, against the same document node.
+Determining the node's effective definition requires following it. Non-consuming
+edges are:
+
+- `type`, when it names a reusable definition (aliasing);
+- each entry of `oneof` and of `anyof`;
+- `then` and `else`;
+- each component of `allof`.
+
+A **consuming edge** is traversed only after descending to a nested document node,
+and that node may or may not exist. Traversal is therefore deferred until a
+document value is present. Consuming edges are:
+
+- a nested child definition of a `table` or `collection`, including one written
+  through the reserved `children` namespace;
+- `itemtype` on an `array`, applied to each item;
+- `itemtype` on a `collection`, applied to each dynamic entry;
+- each entry of `items`, applied to one array position.
+
+#### Cycle Legality
+
+A cycle in the reference graph is legal or illegal according to the edges it
+contains, and a schema loader MUST decide this at schema-load time.
+
+- A cycle composed **entirely of non-consuming edges** is unsatisfiable: computing
+  the effective definition of any vertex on it requires computing its own
+  effective definition first, and no document value is consumed to make progress.
+  Schema loaders MUST reject it with `cyclic-reference`.
+- A cycle that passes through **at least one consuming edge** is legal. It
+  describes a recursive document structure: each traversal of the cycle requires
+  one more level of nesting in the document, and a finite document terminates the
+  recursion.
+
+The rule for non-consuming cycles is deliberately conservative for `oneof` and
+`anyof`: a cycle through a union alternative is rejected even when a sibling
+alternative is terminal. Selecting the alternative to try is a schema-structural
+decision, and a self-referential alternative offers no document value to consume
+when it is tried.
+
+A legal recursive structure. The cycle from `types.node` back to `types.node`
+passes through the consuming edge `itemtype`, so each level of recursion consumes
+one more array item:
+
+```toml
+[types.node]
+type = "table"
+
+    [types.node.name]
+    type = "string"
+
+    [types.node.subnodes]
+    type = "array"
+    itemtype = "types.node"
+    optional = true
+
+[elements.tree]
+type = "types.node"
+```
+
+An illegal cycle. Both edges are `type` aliases, so neither definition can ever be
+reduced to a concrete one, and a schema loader MUST reject this schema:
+
+```toml
+[types.a]
+type = "types.b"   # invalid
+
+[types.b]
+type = "types.a"   # invalid
+```
+
+The same rejection applies to a cycle through `oneof`, `anyof`, `then`, `else`,
+`allof`, or any mixture of them, and to a self-edge such as `[types.a]` with
+`type = "types.a"`.
+
+### The Validation Contract
+
+#### Results
+
+Validating one node against one definition produces a **result** with four parts:
+
+- a validity verdict, valid or invalid;
+- **errors**, zero or more diagnostics that determine invalidity;
+- **warnings**, zero or more diagnostics that do not affect validity; and
+- **annotations**, zero or more non-diagnostic values that an implementation MAY
+  surface, such as the effective `default` of a slot.
+
+A result is valid when its error list is empty and invalid otherwise. Diagnostics
+carry the phase, severity, code, instance path, and schema path required by
+[Diagnostics](#diagnostics).
+
+Results **combine** associatively: the combination is valid when every combined
+result is valid, and its errors, warnings, and annotations are the concatenation
+of the combined ones, deduplicated under the identity
+[Diagnostics](#diagnostics) defines. Every rule below that says results combine
+means this operation.
+
+#### The Unit of Validation
+
+The unit of validation is one **node** — one parsed TOML value at one instance
+path — paired with one effective definition. It is written
+`validate(node, definition)`.
+
+`validate` is defined only for a node that exists. Whether a node has to exist is
+a property of its **slot**, not of the node, and is decided by the parent as
+described next. Keys are never validated by `validate`: a key is validated by the
+node that contains it, through unknown-key classification for a `table` and
+through `keypattern` for a `collection`'s dynamic entries.
+
+`validate` MUST be a pure function of the loaded schema and the node's parsed
+value. It MUST NOT depend on the node's position among its siblings, on the order
+in which nodes are visited, or on results computed for unrelated nodes.
+
+#### Slot Evaluation
+
+Before descending into a fixed child, a validator evaluates the slot:
+
+1. Determine the slot's effective optionality, inheriting through the named `type`
+   reference chain as required under [Optionality](#optionality---optional).
+2. If the corresponding key is absent from the parsed parent and the slot is
+   optional, the slot produces an empty valid result. No assertion, annotation, or
+   deprecation warning is produced for an absent optional slot.
+3. If the key is absent and the slot is required, the slot produces one
+   `missing-required` error at the child's instance path and no descent occurs.
+4. If the key is present, the slot's result is
+   `validate(child node, child definition)`.
+
+#### Keyword Evaluation Order
+
+For a present node `N` and definition `D`, a validator MUST evaluate in the
+following order. The order is normative because each group either depends on the
+groups before it or governs which diagnostics the groups after it may produce.
+
+1. **Effective definition.** Follow `D`'s `type` reference chain and merge `D`
+   with every `allof` component into the effective definition, as required under
+   [The Effective Definition](#the-effective-definition). A validator MUST NOT
+   validate `N` separately against `D` and against each component.
+2. **Kind check.** Determine the effective type. When the selector is `type` or
+   the conditional triple, `N`'s TOML kind MUST match the coarse category of that
+   effective type; `any` selects no category and imposes no restriction. A
+   mismatch produces exactly one `type-mismatch` error, and the validator MUST NOT
+   evaluate any group below, MUST NOT descend into `N`, and MUST NOT apply sibling
+   rules. When the selector is `oneof` or `anyof`, the kind check belongs to each
+   alternative and is performed in group 3.
+3. **Alternative and branch selection.** For the conditional triple, evaluate `if`
+   against `N` — the condition is false when the named direct child is absent, and
+   otherwise compares by [Parsed Value Equality](#parsed-value-equality) — and
+   evaluate only the selected branch, as required under
+   [Conditional Selection](#conditional-selection---if-then-and-else). For `oneof`
+   and `anyof`, evaluate each alternative. In both cases the alternative or branch
+   is evaluated as the effective definition formed from it together with the local
+   definition's `allof` components, and its fixed children join `N`'s
+   [effective closure set](#effective-closure-set) for that evaluation. Results are
+   combined as required under
+   [Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard).
+4. **Value assertions.** Evaluate every assertion that applies to `N`'s own value:
+   `format`, `pattern`, `minlength`, `maxlength`, `uniqueitems`, and, for a scalar
+   or temporal node, `min` and `max`. Every such assertion is evaluated; none gates
+   another, and a failure of one does not suppress another. On an `array`, `min`
+   and `max` are item-level assertions and belong to group 6.
+5. **Allowed values.** Evaluate `allowedvalues` membership. Groups 2, 4, and 5 of
+   this list are the general-case statement of the ordering that
+   [Allowed Values](#allowed-values---allowedvalues) fixes for enumerations, and
+   that section is authoritative: membership is evaluated after the kind check and
+   after every other applicable assertion, and never instead of either.
+6. **Structural application.** Apply the node's structure and descend:
+   - **table** — form the [effective closure set](#effective-closure-set), then
+     evaluate every fixed-child slot as described under
+     [Slot Evaluation](#slot-evaluation) and report every document key outside that
+     set as an `unknown-key` error, as required under [Tables](#tables);
+   - **collection** — classify every document key against the effective closure
+     set; fixed children take precedence and are evaluated as slots; every
+     remaining key is a dynamic entry whose key MUST satisfy every applicable
+     `keypattern` and whose value MUST validate against every applicable
+     `itemtype`, as required under
+     [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+     A collection never produces an `unknown-key` error;
+   - **array** — with `items`, check arity first and then validate each position;
+     with `itemtype`, validate every item; with neither, items are unconstrained.
+     Item-level `min`, `max`, and `allowedvalues` apply to each item.
+
+   Each descent is itself a `validate` call and MUST apply groups 1 through 8 to
+   the nested node. Results from descent combine into `N`'s result.
+7. **Sibling presence rules.** Evaluate `dependentrequired`, `mutuallyexclusive`,
+   and `exactlyone` against the parsed key presence of `N`, as required under
+   [Sibling Presence Rules](#sibling-presence-rules). They inspect presence only,
+   so a validator MUST evaluate them regardless of whether the corresponding child
+   values validated, and MUST resolve their operands against the
+   [determinate fixed-child set](#determinate-fixed-child-set) computed at
+   schema-load time.
+8. **Annotations.** If groups 2 through 7 produced no error for `N`, emit the
+   `deprecated` warning when the effective definition is deprecated, and expose the
+   effective `default` as an annotation. When `N`'s result is invalid, a validator
+   MUST NOT emit its deprecation warning; the warning describes a value that
+   validated, as required under [Deprecation](#deprecation---deprecated). A
+   deprecated parent emits one warning at the parent's instance path and never one
+   per descendant.
+
+#### Error Reporting Completeness
+
+Validity MUST NOT depend on a validator's reporting strategy. A validator MAY stop
+at the first error, and it SHOULD report every independent error it can determine,
+as [Aggregation, Ordering, and Branch Diagnostics](#aggregation-ordering-and-branch-diagnostics)
+describes.
+
+Whatever the strategy:
+
+- an invalid document MUST produce at least one error;
+- every reported error MUST be an error that complete evaluation would also
+  produce, so a short-circuiting validator reports a subset and never an additional
+  or different error; and
+- the **mandatory suppressions** below are not a reporting strategy. They are
+  normative, and a validator that reports all errors MUST still suppress them, so
+  that two complete implementations report the same errors.
+
+The mandatory suppressions are:
+
+1. a kind mismatch suppresses every group below the kind check for that node, as
+   required in group 2 above;
+2. an absent optional slot produces nothing;
+3. a missing required slot produces one `missing-required` error and no descent;
+4. an `unknown-key` error produces no value validation for that key, because no
+   definition applies to it;
+5. a tuple arity mismatch produces one `tuple-length` error; positions present in
+   both the document array and `items` are still validated, and no diagnostic is
+   produced for a position that exists in only one of them; and
+6. diagnostics produced inside a discarded alternative or branch are suppressed
+   entirely, as required under
+   [Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard).
+
+#### Combining Results
+
+- **`allof`** does not combine results. Components are merged into one effective
+  definition before validation, and the node is validated once against that
+  definition. Errors therefore describe the composed shape, never a per-component
+  evaluation. See [The Effective Definition](#the-effective-definition).
+- **`oneof`** is valid when exactly one alternative's result is valid. **`anyof`**
+  is valid when at least one alternative's result is valid. See
+  [Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard)
+  for what happens to their diagnostics.
+- **`if`/`then`/`else`** evaluates exactly one branch, and that branch's result is
+  the node's result for the branch. The branch that was not selected is never
+  evaluated, and the condition itself produces no diagnostic.
+- **`itemtype`** combines the results of every item or dynamic entry. The container
+  is valid only when every member is valid, and member errors carry the member's
+  instance path.
+- **`items`** combines the arity check with the result of every validated position.
+- **`collection`** combines the results of its fixed-child slots with the results
+  of its dynamic entries, including `keypattern` failures on keys.
+
+In every case the container's own assertions and its members' results combine: a
+node is valid only when its own assertions hold and every node below it is valid.
+
+### Alternative and Branch Commit and Discard
+
+One rule governs both a `oneof` or `anyof` **alternative** and a `then` or `else`
+**branch** of the conditional triple, so this subsection states it once for both.
+
+An alternative or branch is evaluated **speculatively**. It is **committed** when
+its diagnostics and annotations become part of the node's result, and
+**discarded** when they do not.
+
+Speculative evaluation MUST be free of side effects. A discarded alternative or
+branch MUST NOT contribute to the node's
+[effective closure set](#effective-closure-set), MUST NOT influence how the node's
+keys are classified for the committed one, and MUST NOT leave any diagnostic in
+the node's result. A validator that accumulates diagnostics into a shared buffer
+MUST scope that buffer to the alternative or branch being evaluated.
+
+The rules are:
+
+1. **`oneof`, exactly one successful alternative.** The node is valid. That
+   alternative is committed: its warnings and annotations surface, including its
+   `deprecated` warning. Every other alternative is discarded.
+2. **`anyof`, at least one successful alternative.** The node is valid. Every
+   successful alternative is committed, and their warnings and annotations are
+   deduplicated under the identity [Diagnostics](#diagnostics) defines. A
+   deprecated successful alternative therefore contributes a warning even when
+   another successful alternative is not deprecated. Failed alternatives are
+   discarded. This is the successful-alternative rule stated under
+   [Alternative Types](#alternative-types---oneof-and-anyof), which is
+   authoritative for which annotations an alternative contributes.
+3. **No successful alternative.** The node is invalid. Every alternative is
+   discarded, and the validator MUST report the failure on the union node itself:
+   `oneof` for a `oneof` definition and `anyof` for an `anyof` definition. A
+   validator MAY attach the discarded alternatives' errors as subordinate
+   explanatory detail of that node-level error — this is often the most useful
+   diagnostic a user can get — but MUST NOT surface them as independent top-level
+   errors, and MUST NOT report any warning or annotation from a failed
+   alternative.
+4. **`oneof`, more than one successful alternative.** The node is invalid, because
+   `oneof` requires exactly one match. The validator MUST report the failure on the
+   union node itself with the code `oneof`, and every alternative is discarded, so
+   no successful alternative's warning or annotation surfaces.
+5. **Conditional triple.** No discard occurs. The condition selects one branch,
+   only that branch is evaluated, and its result is committed unconditionally —
+   including its errors when it fails. The unselected branch is never evaluated, so
+   it can produce nothing to discard.
+
+One exception to rule 3 is already defined by this specification and is the only
+diagnostic permitted to escape a discarded alternative: when no alternative
+matches, a document key that belongs to the effective closure set of no candidate
+could not have been accepted by any of them, and an implementation MAY report it
+as an `unknown-key` error on the node in addition to, or instead of, the union's
+failure, as permitted under [Effective Closure Set](#effective-closure-set). No
+other alternative-local or branch-local diagnostic may be promoted this way in
+version 1.0.
+
+Because selection also selects the selected definition's fixed children,
+discarding is what keeps composition sound. In the following schema, `types.named`
+and `types.labelled` each declare a key the other rejects:
+
+```toml
+[types.base]
+type = "table"
+
+    [types.base.id]
+    type = "integer"
+
+[types.named]
+type = "table"
+
+    [types.named.name]
+    type = "string"
+
+[types.labelled]
+type = "table"
+
+    [types.labelled.label]
+    type = "string"
+
+[types.identity]
+oneof = [ "types.named", "types.labelled" ]
+
+[elements.item]
+type = "table"
+allof = [ "types.base", "types.identity" ]
+```
+
+For the document node `{ id = 1, name = "a" }`, the `types.labelled` alternative
+produces an `unknown-key` error for `name` and a `missing-required` error for
+`label`. Both are discarded, because `types.named` succeeded and committed.
+Reporting the discarded alternative's errors would make every valid variant table
+look invalid.
+
+For the document node `{ id = 1, other = true }` no alternative succeeds, so the
+node is invalid. `other` belongs to no candidate's effective closure set, so a
+validator MAY report it as an `unknown-key` error under the exception above, in
+addition to or instead of the union's failure.
+
+## Diagnostics
+
+An implementation produces **diagnostics** while discovering a schema, while
+loading a schema, and while validating a document. This section defines the
+diagnostic record, the two severities, the instance-path and schema-path
+encodings, aggregation and branch-reporting rules, and the stable code registry.
+It is authoritative for every diagnostic code, severity, and path this
+specification names.
+
+Human-readable messages, output formatting, locale, and additional
+implementation fields are **presentation**. They are not a conformance target.
+Implementations MUST NOT be compared, and MUST NOT compare themselves, by message
+text. Conformance is judged on phase, severity, code, instance path, schema path,
+and the validity result.
+
+### Phases
+
+Every diagnostic belongs to exactly one phase:
+
+- **discovery** — resolving a schema from a document's `[toml-schema]` table,
+  including URI policy and retrieval;
+- **schema-load** — parsing a schema document and applying every schema-load rule
+  in this specification, including self-schema validation and reference-aware
+  checks, as enumerated under [Schema-Load Phase](#schema-load-phase);
+- **validation** — applying a successfully loaded schema to a TOML document, as
+  described under [Document-Validation Phase](#document-validation-phase).
+
+Implementations MUST distinguish the three phases. A discovery or schema-load
+**error** prevents validation from starting: there is no validity result for the
+document. A discovery **warning** does not prevent validation.
+`resource-limit-exceeded` may be produced in any phase; if it is produced during
+validation, the document MUST be reported as not successfully validated even when
+no constraint had yet failed, as required by
+[Security Considerations](#security-considerations).
+
+TOML parse failures of the document or of the schema source are parser errors, not
+TOML Schema diagnostics. An implementation SHOULD surface them as such and MUST
+NOT assign them a registry code.
+
+### Diagnostic Record
+
+A diagnostic has these fields:
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `phase` | MUST | `discovery`, `schema-load`, or `validation` |
+| `severity` | MUST | `error` or `warning` |
+| `code` | MUST | a registry code or a namespaced extension code |
+| `instance_path` | MUST for validation; MUST NOT for discovery and schema-load, except `resource-limit-exceeded` produced during validation | where in the **document** the condition was observed |
+| `schema_path` | MUST when the condition is attributable to a location in a schema document | where in the **schema** the failing rule is declared |
+| `message` | MUST | human-readable text; content is implementation-defined |
+
+An implementation MAY add fields such as source line and column, a keyword name,
+or nested `causes`. Nested causes are presentation. They MUST NOT affect validity
+and MUST NOT be counted as additional result diagnostics unless they would
+independently satisfy this section as committed diagnostics.
+
+A **validation result** contains zero or more diagnostics. The document is
+**valid** if and only if the result contains no diagnostic of severity `error`.
+Warnings do not affect validity. Implementations MUST provide separate access to
+errors and warnings. A command-line validator MUST exit successfully when the
+document is valid, including when the only diagnostics are warnings.
+
+### Severity
+
+This version defines two severities.
+
+**error.** The condition makes the input unusable for the phase that detected it.
+A discovery or schema-load error means no schema is loaded. A validation error
+means the document is invalid.
+
+**warning.** The condition is reported and the phase continues. The only
+validation warning defined by this version is `deprecated`. The only discovery
+warning defined by this version is `version-mismatch`. Schema-load produces no
+warnings in this version: a malformed schema is an error.
+
+Normative assignment:
+
+- A present node whose effective definition is deprecated MUST produce a
+  `deprecated` warning and MUST NOT, by deprecation alone, produce an error. An
+  absent optional slot MUST produce no deprecation warning. A deprecated parent
+  produces one warning at the parent's instance path, not one warning per
+  descendant. These rules are those of
+  [Deprecation](#deprecation---deprecated) and [Annotations](#annotations); this
+  section only names the diagnostic.
+- A referencing document whose `[toml-schema].version` differs from the loaded
+  schema's language version without a major-version incompatibility MUST produce a
+  `version-mismatch` warning and MUST NOT, by that mismatch alone, fail discovery
+  or validation, as required by
+  [TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema).
+- Every other condition in the registry is an error.
+- `resource-limit-exceeded` is always an error.
+
+### Instance Path
+
+An **instance path** identifies a node in the parsed TOML document. The grammar is
+a restricted JSONPath-like dotted form. It is not JSONPath: there are no filters,
+slices, wildcards, or descendant segments.
+
+- The root document table is `$`.
+- A table or collection child whose decoded key *K* is appended as `.` followed by
+  `EncodeKey(K)`.
+- An array element at zero-based index *i* is appended as `[`, the decimal digits
+  of *i* with no sign and no leading zeros except for `0` itself, and `]`. There is
+  no dot before `[`.
+
+`EncodeKey(K)`:
+
+- If *K* is non-empty and every Unicode scalar value in *K* is an ASCII letter,
+  digit, `_`, or `-`, *K* is written literally.
+- Otherwise *K* is written as a JSON string per RFC 8259: surrounded by `"`, with
+  `"` and `\` escaped, with `U+0008`, `U+0009`, `U+000A`, `U+000C`, and `U+000D`
+  escaped as `\b`, `\t`, `\n`, `\f`, and `\r`, and with every other
+  `U+0000`-`U+001F` scalar escaped as `\u00XX`.
+
+Examples:
+
+| Document node | Instance path |
+| --- | --- |
+| the document root | `$` |
+| top-level key `host` | `$.host` |
+| `composed.host` | `$.composed.host` |
+| index `0` of `direct` | `$.direct[0]` |
+| key `google.com` under `site` | `$.site."google.com"` |
+| the empty key at the root | `$.""` |
+| key `children` under `parent` | `$.parent.children` |
+
+The reserved `children` escape namespace is a schema-document spelling. It is
+never a segment of an instance path. A child declared as
+`[elements.plugin.children.type]` is instance path `$.plugin.type`.
+
+The reserved root `[toml-schema]` table of a target document is not an
+application-data node unless `[elements.toml-schema]` is present. When it is
+ignored during application-data validation, implementations MUST NOT emit instance
+paths under `$.toml-schema` for ordinary unknown-key or requiredness rules.
+
+Instance paths use decoded TOML keys, not lexical spellings. Dotted keys, quoted
+keys, table headers, and inline tables that produce the same parsed node have the
+same path, consistent with [Parsed Value Equality](#parsed-value-equality).
+
+### Schema Path
+
+A **schema path** identifies a node in the parsed schema document with the same
+encoding algorithm as an instance path, applied to the schema's value tree, also
+starting at `$`.
+
+Typical prefixes are `$.toml-schema`, `$.elements`, and `$.types`. A schema
+property written as a key/value pair on a definition is a final path segment named
+after that property. A child definition's path is that child's table. When a child
+is written through the reserved `children` namespace, the schema path includes the
+`children` segment and the instance path does not.
+
+Examples:
+
+| Schema location | Schema path |
+| --- | --- |
+| unrecognized property `patttern` on `elements.port` | `$.elements.port.patttern` |
+| reversed bounds on `elements.port` | `$.elements.port` |
+| `min` on reusable `types.boundedInteger` | `$.types.boundedInteger.min` |
+| escaped child `type` under `elements.plugin` | `$.elements.plugin.children.type` |
+| `oneof` array on `elements.id` | `$.elements.id.oneof` |
+
+When a named type reference is applied, the schema path of a failed assertion is
+the location at which that assertion is declared, which is the referenced
+definition when the constraint lives there, not the use site. The use site appears
+in the schema path of failures of use-site annotations such as a local
+`deprecated` or `optional`.
+
+Discovery diagnostics whose condition is in the target document's `[toml-schema]`
+table use that document as the schema-path tree for this purpose, so a missing
+`location` is `$.toml-schema.location`. They still MUST NOT set `instance_path`;
+discovery is not document validation.
+
+### Aggregation, Ordering, and Branch Diagnostics
+
+**Completeness.** A validator MAY stop after the first validation error
+(fail-fast) or collect further errors. Stopping is a presentation and performance
+choice. If it stops, it MUST have emitted at least one error that justifies
+invalidity. A validator SHOULD, when it continues, report independent errors at
+the same node — every unknown key, every missing required fixed child, and every
+failed sibling-presence group — rather than only the first. The mandatory
+suppressions under
+[Error Reporting Completeness](#error-reporting-completeness) still apply.
+Resource limits in [Security Considerations](#security-considerations) MAY
+truncate the result; truncation MUST itself be reported as
+`resource-limit-exceeded` and MUST NOT be presented as a complete successful
+validation.
+
+Schema-load and discovery MAY likewise stop at the first error. They SHOULD report
+independent property errors on the same definition when doing so is cheap, for
+example both an unrecognized property and an inapplicable one, but a single
+schema-load error is sufficient to reject the schema.
+
+**Order.** Diagnostic order is not significant for conformance. Two
+implementations that emit the same set of
+`(phase, severity, code, instance_path, schema_path)` tuples conform even if they
+sort differently. Implementations SHOULD emit a stable order: pre-order of the
+instance tree, and at a table, document source order when the parser preserves it.
+
+**Validity.** Presence of any validation error makes the document invalid. Absence
+of validation errors makes it valid, even when warnings are present.
+
+**Unions (`oneof`, `anyof`).**
+[Alternative and Branch Commit and Discard](#alternative-and-branch-commit-and-discard)
+defines which alternatives are committed and which are discarded. This section
+requires:
+
+- Diagnostics produced while evaluating a **discarded** alternative MUST NOT
+  appear in the validation result. This includes both errors and warnings. A naive
+  validator that surfaces every alternative's inner failures floods the user with
+  constraints that were never meant to apply and is not conforming.
+- When `oneof` matches no alternative, or matches more than one, the validator
+  MUST emit one error at the node's instance path with code `oneof`. When `anyof`
+  matches no alternative, it MUST emit one error at the node's instance path with
+  code `anyof`. Inner diagnostics of the unsuccessful alternatives stay discarded.
+- When `oneof` matches exactly one alternative, that alternative is committed: its
+  warnings are result diagnostics. A successful match has no errors.
+- When `anyof` matches one or more alternatives, every successful alternative is
+  committed for annotation purposes, and the warnings of every successful
+  alternative are result diagnostics.
+- An implementation MAY attach discarded diagnostics as nested `causes` on the
+  union-level error. Nested causes are presentation.
+- As already permitted under
+  [Effective Closure Set](#effective-closure-set), when no alternative matches, an
+  implementation MAY also emit `unknown-key` for a document key that belongs to no
+  candidate's effective closure set, in addition to the union-level error. It MUST
+  NOT emit `unknown-key` for a key that some candidate would have accepted.
+
+**Conditionals (`if` / `then` / `else`).** The condition itself emits no validation
+diagnostic. Only the selected branch is committed. Diagnostics of the unselected
+branch MUST NOT appear in the result. There is no wrapper `conditional` validation
+code: a selected branch that rejects the node produces that branch's ordinary
+codes (`type-mismatch`, `unknown-key`, `missing-required`, constraint codes, and
+so on) as if the branch were the node's definition.
+
+**`allof`.** Validation is against the effective definition, not against each
+component in isolation. Mixin composition MUST NOT produce `unknown-key` errors
+for fixed children contributed by other participants. When several participants
+contribute assertions that independently reject the same value, each assertion MAY
+produce a diagnostic at its own schema path. Diagnostics that share code, instance
+path, and schema path MUST be emitted once.
+
+**Deduplication.** The identity of a diagnostic for deduplication is
+`(code, instance_path, schema_path)`. Message text does not participate.
+Implementations MUST drop duplicates under this identity, including duplicate
+`deprecated` warnings contributed by multiple successful `anyof` alternatives or
+multiple `allof` participants. An absent path field compares equal to another
+absent path field.
+
+### Extensibility
+
+Codes in the registry are lowercase ASCII letters, digits, and hyphens, and they
+do not contain `.`. This version's set is closed.
+
+A future MINOR or PATCH revision of this specification MAY add codes in that
+unprefixed namespace. Implementations MUST treat an unrecognized unprefixed code
+emitted by a newer validator as an unknown standard code, not as an error in the
+diagnostic itself.
+
+Implementations MAY emit additional codes for implementation-specific checks.
+Every such code MUST begin with `x-`, followed by an implementation token of
+`[a-z][a-z0-9]*`, a hyphen, and a name, for example `x-tosd-internal`. Extension
+codes MUST NOT collide with the unprefixed registry. Consumers that do not
+recognize an extension code MUST still honor its severity for validity and exit
+status.
+
+Implementations MUST NOT emit an unprefixed code that is not in this registry.
+
+### Command-Line Exit Status
+
+A command-line validator MUST use distinct exit statuses for the three outcomes
+that callers need to tell apart:
+
+- **0** — a schema was loaded and the document is valid (warnings permitted);
+- **1** — a schema was loaded and the document is invalid;
+- **2** — discovery or schema-load failed, or the invocation itself was unusable
+  (usage, missing files, TOML parse failure of the schema).
+
+The canonical `tosd` CLI uses this mapping. Other command-line validators SHOULD
+match it. Library APIs have no exit status; they MUST still distinguish the
+phases.
+
+### Code Registry
+
+Each code denotes one condition. Several document nodes may produce several
+diagnostics with the same code. The message an implementation prints is not
+specified here; the condition is.
+
+Constraint failures are **subdivided by schema property**, not collapsed into a
+single generic constraint code. One catch-all would be cheaper to implement and
+useless to consume: an editor cannot highlight `min` versus `pattern`, and a CI
+filter cannot ignore one family of failures. Per-property codes match the schema
+property names and keep the registry small. `min` and `max` remain distinct
+because "too small" and "too large" are different user actions; likewise
+`minlength` and `maxlength`. There is no additional umbrella code, and an
+implementation MUST NOT substitute one.
+
+There is no `itemtype` validation code. A collection or array entry that fails its
+item definition produces that definition's ordinary codes at the entry's instance
+path. Collections never produce `unknown-key`; an unacceptable dynamic entry is a
+`keypattern` failure or an item-definition failure, as required under
+[Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+
+There is no `conditional` validation code and no `allof` validation code, for the
+reasons given under
+[Aggregation, Ordering, and Branch Diagnostics](#aggregation-ordering-and-branch-diagnostics).
+Composition failures that make a schema malformed are schema-load codes; document
+failures against the effective definition use the ordinary validation codes.
+
+#### Discovery codes
+
+| Code | Severity | Condition |
+| --- | --- | --- |
+| `discovery-missing-location` | error | Discovery was requested and the document has no usable `[toml-schema].location`. |
+| `discovery-invalid-metadata` | error | `[toml-schema]` in the target document violates the scalar-only restriction, carries a malformed `version` or `location`, or is otherwise not schema-reference metadata. |
+| `discovery-unresolved-location` | error | A relative `location` cannot be resolved because the document has no base URI, or the resolved reference is not a usable URI. |
+| `schema-retrieval-refused` | error | Retrieval is disabled, or policy rejects the scheme, target, redirect, credentials, or filesystem path. Defined under [Schema Discovery and Retrieval](#schema-discovery-and-retrieval). |
+| `schema-retrieval-failed` | error | An authorized retrieval does not yield a usable schema, including transport failure, redirect exhaustion, or an unusable response. Defined under [Schema Discovery and Retrieval](#schema-discovery-and-retrieval). |
+| `version-mismatch` | warning | The document's `[toml-schema].version` and the loaded schema's language version differ without a major-version incompatibility. |
+| `unsupported-version` | error | The document requests, or the schema declares, a language version the implementation must reject (unsupported major, greater minor, or `0.y.z`). Also a schema-load code when no discovery is involved. |
+
+#### Schema-load codes
+
+| Code | Severity | Condition |
+| --- | --- | --- |
+| `unrecognized-property` | error | A key/value pair written directly inside a schema definition is not one of the closed property set for this language version, for example `patttern`. |
+| `inapplicable-property` | error | A recognized property appears on a definition to which this specification does not permit it, for example `pattern` on `integer`, `keypattern` on `table`, `minlength` on `boolean`, or a kind-specific constraint beside a named `type` reference. |
+| `exclusive-properties` | error | Two properties that this specification makes mutually exclusive appear together: the selectors `type`, `oneof`, `anyof`, and `if`; `items` with `itemtype`, `allowedvalues`, `min`, `max`, `minlength`, or `maxlength`; `if.equals` with `if.in`; or an incomplete `if`/`then`/`else` triple. |
+| `unresolved-reference` | error | A type reference in `type`, `itemtype`, `items`, `oneof`, `anyof`, `allof`, `then`, or `else` does not name a built-in type or a definition in `[types]`, as defined under [Reference Resolution](#reference-resolution). |
+| `duplicate-reference` | error | Two entries of `oneof`, `anyof`, or `allof` have the same resolved identity after the optional `types.` prefix is stripped, for example `"types.foo"` and `"foo"`. |
+| `inverted-range` | error | `min` is greater than `max`, or `minlength` is greater than `maxlength`, under the ordering this specification defines for that pair. |
+| `invalid-boundary` | error | A `min` or `max` value is not a valid boundary for the comparable kind: NaN, a temporal value of the wrong TOML temporal type, a non-numeric boundary on a numeric kind, or an infinite bound on an integer kind. |
+| `indeterminate-operand` | error | A `dependentrequired`, `mutuallyexclusive`, or `exactlyone` operand does not name a member of the definition's [determinate fixed-child set](#determinate-fixed-child-set). |
+| `invalid-pattern` | error | A `pattern` or `keypattern` cannot be compiled under the active profile, as required under [Pattern](#pattern---pattern). |
+| `unsupported-pattern` | error | A `pattern` or `keypattern` uses syntax outside the portable profile without an explicitly enabled extension profile, as required under [Pattern](#pattern---pattern). |
+| `cyclic-reference` | error | The reference graph contains a cycle classified as illegal under [Cycle Legality](#cycle-legality). Structural recursion through a consuming edge is not this code. |
+| `incompatible-composition` | error | `allof` participants do not agree on effective type, a multi-kind local union is combined with `allof`, or a `table` is composed with a `collection`. |
+| `invalid-default` | error | A declared `default` does not validate against the full effective definition at schema-load time, or `allof` participants contribute unequal defaults with no local default. |
+| `unsupported-version` | error | `[toml-schema].version` is missing, is not a SemVer string, is not a TOML Schema language version, or is not supported by the implementation. |
+| `schema-malformed` | error | Any other schema-load failure required by this specification: missing `[toml-schema]` or `[elements]`, an empty `oneof`, `anyof`, `allof`, `allowedvalues`, or `items` array, a reserved type name, an invalid `children` escape entry, a non-boolean `deprecated`, and similar. Implementations SHOULD prefer a more specific code from this table when one applies. |
+| `resource-limit-exceeded` | error | A configured limit was reached while loading. Also a discovery and validation code. |
+
+#### Validation codes
+
+| Code | Severity | Condition |
+| --- | --- | --- |
+| `unknown-key` | error | A document key of a closed table, including the document root, is not in the node's [effective closure set](#effective-closure-set). Never produced for a `collection` dynamic entry. |
+| `missing-required` | error | A fixed child that is not optional is absent. The instance path is the missing child's path even though no node is there. |
+| `type-mismatch` | error | The node's TOML kind does not match the coarse category of the effective type, including an array or collection entry whose value is not the item definition's kind. |
+| `allowedvalues` | error | The node's parsed value is not a member of `allowedvalues` under [Parsed Value Equality](#parsed-value-equality). |
+| `pattern` | error | A string does not match `pattern`. |
+| `format` | error | A string does not match the required `format`. |
+| `min` | error | A comparable value, or a comparable array item, is less than `min`, or is NaN. The instance path is the value that failed, so an array item is `$.arr[i]`. |
+| `max` | error | A comparable value, or a comparable array item, is greater than `max`, or is NaN. |
+| `minlength` | error | A string, array, or collection is shorter than `minlength`. For a collection, length counts dynamic entries only. |
+| `maxlength` | error | A string, array, or collection is longer than `maxlength`. |
+| `uniqueitems` | error | An array with `uniqueitems = true` contains two items equal under [Parsed Value Equality](#parsed-value-equality). The instance path is the later duplicate, `$.arr[i]`. |
+| `tuple-length` | error | An array validated by `items` does not have exactly that arity. The instance path is the array, not an index. Positions present in both the array and `items` are still validated and report their own codes at `$.arr[i]`; a position present in only one of them produces no additional diagnostic. |
+| `keypattern` | error | A collection's dynamic entry key does not match `keypattern`. The instance path is the entry, `$.collection.key`. Fixed children are not subject to `keypattern`. |
+| `oneof` | error | The number of matching `oneof` alternatives is not exactly one, that is zero matches or more than one. The instance path is the node whose type is being selected. |
+| `anyof` | error | No `anyof` alternative matches. |
+| `dependentrequired` | error | A trigger child is present and a listed dependent child is absent. The instance path is the missing dependent. |
+| `mutuallyexclusive` | error | More than one member of a `mutuallyexclusive` group is present. The instance path is the parent table or collection. |
+| `exactlyone` | error | An `exactlyone` group does not have exactly one present member. The instance path is the parent table or collection. |
+| `deprecated` | warning | A present node is deprecated. An absent optional slot does not produce this code. |
+| `resource-limit-exceeded` | error | A configured limit was reached during validation. The document is not successfully validated. |
+
+### Informative examples
+
+Unrecognized schema property, schema-load:
+
+```text
+phase:        schema-load
+severity:     error
+code:         unrecognized-property
+schema_path:  $.elements.port.patttern
+message:      (implementation-defined)
+```
+
+Closed-table misspelling, validation:
+
+```text
+phase:          validation
+severity:       error
+code:           unknown-key
+instance_path:  $.item.bogus
+schema_path:    $.elements.item
+```
+
+Deprecated present value, validation:
+
+```text
+phase:          validation
+severity:       warning
+code:           deprecated
+instance_path:  $.legacy-timeout
+schema_path:    $.elements.legacy-timeout.deprecated
+```
+
+These examples are not a serialization format. Implementations MAY print
+diagnostics as text, JSON, or API objects, provided the normative fields are
+available.
+
 ## Schema Self-Validation
 
 The companion [`toml-schema.tosd`](toml-schema.tosd) is a TOML Schema document
@@ -2281,20 +3827,189 @@ that way and remain schema-load semantics:
  - reference existence and cycles;
  - effective `allof` compatibility;
  - conditional branch kinds;
+ - the presence of the `if.key` discriminator in a branch's determinate
+   fixed-child set;
  - collection `itemtype` inherited through composition;
  - defaults against effective types;
  - duplicate `oneof`, `anyof`, and `allof` entries after type-reference resolution;
  - allowed values against resolved constraints; and
  - sibling-rule operands against the determinate fixed-child set.
 
+A second group of rules needs no reference graph but is still beyond what a
+schema document can assert about a value, and so also remains schema-load
+semantics:
+
+ - `version` rejecting a major-version-zero value, which the Semantic Versioning
+   `pattern` in the self-schema necessarily accepts;
+ - `min` being less than or equal to `max`, `minlength` being less than or equal
+   to `maxlength`, and a boundary's TOML kind agreeing with the type it
+   constrains; and
+ - `pattern` and `keypattern` values compiling at schema-load time and staying
+   inside the portable regular-expression profile, as
+   [Pattern](#pattern---pattern) requires.
+
 Schema loading also depends on the source-form information required under
 [Validation and Data Model](#validation-and-data-model). That information is what
-lets a loader distinguish the inline-table properties `default` and
-`dependentrequired` from direct child tables with those names, and validate the
-latter recursively.
+lets a loader distinguish the inline-table properties `default`,
+`dependentrequired`, and `if` from direct child tables with those names, and
+validate the latter recursively.
 
 A conforming implementation MUST apply both the self-schema validation and these
 reference-aware and source-aware schema-load checks.
+
+## Security Considerations
+
+TOML documents and TOML Schema documents are both potentially untrusted inputs,
+but they present different threats. The common case is a trusted, locally
+selected schema validating an untrusted TOML document. In that case,
+implementations MUST bound parsing, recursive structural validation,
+collection-key matching, alternative evaluation, and diagnostics. An untrusted
+schema additionally controls the reference graph, regular expressions,
+annotations, defaults, and the work performed by schema loading. Implementations
+accepting an untrusted schema MUST apply the self-schema and all reference-aware
+and source-aware schema-load checks required under
+[Schema Self-Validation](#schema-self-validation) before validation, and MUST
+apply resource limits during those checks as well as during validation.
+
+Schema values are data. An implementation MUST NOT execute or interpolate
+`description`, `default`, `[toml-schema.meta]`, pattern text, type names, or any
+other schema content as program code, shell input, a template, or a filesystem or
+network operation. Loading an untrusted schema MUST NOT grant access to files,
+environment variables, processes, plugins, or network resources beyond the access
+separately authorized to retrieve the schema itself. Version 1.0 type references
+are local references into the loaded schema's `[types]` table, as
+[Reference Resolution](#reference-resolution) requires; resolving them MUST NOT
+perform additional retrieval, and nothing in this section may be read as defining
+a cross-file schema import.
+
+### Schema Discovery and Retrieval
+
+A `[toml-schema].location` is controlled by the TOML document being validated, as
+described under
+[TOML Reference of a TOML Schema](#toml-reference-of-a-toml-schema). Merely
+parsing a document or observing that property MUST NOT cause retrieval.
+Implementations SHOULD disable document-directed schema retrieval by default and
+require the caller to opt in. Callers SHOULD be able to supply a trusted schema
+directly instead of enabling discovery. Enabling discovery MUST NOT disable the
+checks in this section.
+
+An implementation that retrieves schemas MUST use an explicit URI-scheme
+allowlist. The default allowlist SHOULD contain only `file` for explicitly
+authorized local discovery and `https` for explicitly authorized remote
+discovery. Other schemes, including `http`, MUST NOT be enabled without a caller
+decision that names the scheme and accepts its security properties. A URI with a
+scheme that is not allowlisted MUST produce a `schema-retrieval-refused` error. A
+relative reference inherits the scheme and authority of its base after resolution
+and is subject to the same policy. HTTPS retrieval MUST perform normal certificate
+and host-name verification; certificate errors MUST NOT be ignored.
+
+Remote discovery MUST enforce a target policy before connecting. Unless the caller
+explicitly authorizes a specific internal target, implementations MUST reject
+loopback, link-local, private-use, multicast, unspecified, and other non-public
+network destinations. This check MUST cover literal addresses, every address
+returned by name resolution, and the address of the connected peer, and MUST be
+repeated for each redirect. Implementations SHOULD prevent DNS rebinding by
+binding authorization to the addresses checked for the connection. These
+requirements prevent an untrusted document from using schema discovery as
+server-side request forgery to reach local services or cloud metadata endpoints.
+
+Retrieval MUST NOT attach cookies, HTTP authentication, client certificates, proxy
+credentials, ambient cloud identity, or other caller authority by default. A
+caller MAY explicitly provide credentials for a specific origin. Credentials
+authorized for one origin MUST NOT be forwarded to another origin, including
+across a redirect, without separate explicit authorization. Implementations SHOULD
+reject URI user-information unless the caller has explicitly permitted that
+credential source, and MUST avoid including credentials in diagnostics.
+
+Redirect following MUST be configurable and bounded. An implementation MUST either
+reject redirects or enforce a finite redirect limit; the default limit SHOULD be
+no greater than five. Before following each redirect, the implementation MUST
+resolve the target and reapply the scheme, network-target, credential, and
+resource policies in this section. A redirect to a disallowed target MUST produce
+`schema-retrieval-refused`; exhausting the redirect limit MUST produce
+`schema-retrieval-failed`. A redirect is a retrieval response and does not rewrite
+the declared `location`.
+
+Local schema discovery MUST be confined to a caller-authorized base directory. For
+a relative `location`, resolution still begins at the referencing TOML document's
+parent directory, but access MUST be refused unless the resulting schema is within
+the authorized base. An absolute `file` URI is likewise subject to that base.
+Implementations MUST reject encoded or decoded parent-traversal segments and MUST
+normalize the path, resolve symbolic links or equivalent filesystem indirections,
+and verify containment before opening the file. They SHOULD use filesystem
+operations that prevent a link or path component from being replaced between
+authorization and opening. A path that cannot be proven to remain within the base
+MUST produce `schema-retrieval-refused`.
+
+### Resource Limits
+
+Implementations MUST enforce finite, configurable limits appropriate to their
+environment. At minimum, limits MUST cover:
+
+- the encoded and decoded size of a retrieved schema, including decompressed
+  response data;
+- the size, parse depth, and parsed-node count of the target TOML document;
+- retrieval duration, including name resolution, connection establishment,
+  redirects, and response reading;
+- schema parse depth and size, the number of definitions and references,
+  reference-resolution work, and regular-expression length and compilation
+  resources;
+- recursion depth and total work while resolving the reference graph and applying
+  the required [`toml-schema.tosd`](toml-schema.tosd) self-schema;
+- recursion depth and total work while validating nested tables, collections,
+  arrays, structural recursion, `allof`, `oneof`, `anyof`, and conditional
+  branches; and
+- the number and aggregate size of validation diagnostics retained or emitted.
+
+Limits MUST be active before work begins and MUST apply cumulatively to a single
+schema-load or validation operation; dividing input among nested definitions or
+speculatively evaluated alternatives MUST NOT reset them. Implementations SHOULD
+expose limits to callers and SHOULD choose conservative defaults for
+network-facing and editor integrations. They MAY stop evaluating after the
+diagnostic limit is reached, but MUST indicate that diagnostics were truncated and
+that validation did not complete.
+
+Reaching any limit MUST terminate the affected operation with a
+`resource-limit-exceeded` error. A schema whose loading or self-validation exceeds
+a limit MUST remain unloaded. A document whose validation exceeds a limit MUST be
+reported as not successfully validated, even if no constraint violation had been
+found before the limit was reached.
+
+### Regular-Expression Safety
+
+[Pattern](#pattern---pattern) defines the portable regular-expression profile for
+`pattern` and `keypattern`, requires every expression to be compiled at
+schema-load time, and confines out-of-profile constructs to an explicitly enabled
+extension profile. That profile is based on RE2 syntax so that matching can be
+implemented without backtracking and with time linear in the parsed string or key
+length. This section adds the engine and failure requirements that make that
+property real.
+
+Restricting syntax alone is insufficient if the host engine applies a backtracking
+algorithm to otherwise portable expressions. Implementations MUST evaluate
+portable patterns with an RE2-equivalent non-backtracking engine or mode that
+provides the same worst-case linear-time matching property. An implementation
+whose host engine cannot provide that property MUST use a separate safe engine; it
+MUST NOT pass untrusted patterns and values directly to a potentially exponential
+backtracking matcher.
+
+An expression that cannot be compiled MUST fail schema loading with
+`invalid-pattern`, and an out-of-profile expression accepted by no enabled
+extension profile MUST fail schema loading with `unsupported-pattern`. An enabled
+extension profile MUST still provide a documented worst-case execution bound and
+MUST remain subject to pattern-length, compilation-time, memory, and match-time
+limits. Pattern compilation or profile errors MUST NOT be deferred until a
+document value or dynamic key happens to exercise the pattern.
+
+### Safe Failure
+
+Security policy is part of the validation outcome, not an advisory. Any refusal or
+incomplete operation required by this section MUST be surfaced as an explicit
+error through the diagnostic model defined under [Diagnostics](#diagnostics). An
+implementation MUST NOT substitute an empty schema, skip the refused check,
+suppress a limit error, fall back from a rejected URI to a local path, or report
+successful validation when schema discovery, schema loading, self-validation,
+reference resolution, or document validation did not complete.
 
 ## Filename Extension
 
@@ -2319,7 +4034,13 @@ version = "1.0.0" # optional
 
 `location` identifies the schema document. It is REQUIRED when a validator is asked to discover a schema from the TOML document. Its value MUST be a non-empty string containing either an absolute URI, such as an HTTPS URL, or a relative URI reference, such as a local schema filename.
 
-An absolute `location` MUST be used unchanged. A relative `location` MUST be resolved against the referencing TOML document's location, not against the validator's current working directory or the resolved schema's location. For a TOML document stored in a local file, this means resolving a relative location from the document's parent directory.
+An absolute `location` MUST be used unchanged. That requirement governs URI
+resolution and identity only: the declared absolute URI is the schema's identity
+and MUST NOT be rewritten, re-based, or reinterpreted before use. It is not an
+authorization to retrieve. Whether the resolved URI may be retrieved at all is
+decided by the retrieval policy required under
+[Schema Discovery and Retrieval](#schema-discovery-and-retrieval), which MAY
+refuse it. A relative `location` MUST be resolved against the referencing TOML document's location, not against the validator's current working directory or the resolved schema's location. For a TOML document stored in a local file, this means resolving a relative location from the document's parent directory.
 
 A validator that receives a TOML document without a base location, for example through standard input, cannot resolve a relative `location`. It MUST either obtain an explicit base URI from the caller or report that schema discovery failed. An absolute `location` does not require a document base. Implementations MAY limit the URI schemes they can retrieve, but MUST report an unsupported scheme rather than reinterpret its value as a relative local path.
 
@@ -2338,7 +4059,7 @@ Semantic Versioning 2.0.0 value: the `MAJOR.MINOR.PATCH` core is required, and
 valid pre-release and build suffixes are optional, as defined by
 [Schema Versioning](#schema-versioning).
 
-After resolving and loading the schema, a validator MUST compare these two language versions when the referencing document provides `version`. A different major version is incompatible and schema discovery MUST fail. Any other unequal version, including a minor, patch, pre-release, or build metadata difference, MUST produce a warning but MUST NOT by itself cause validation to fail. Compatibility between the resolved schema and the validator remains governed by [Schema Versioning](#schema-versioning).
+After resolving and loading the schema, a validator MUST compare these two language versions when the referencing document provides `version`. A different major version is incompatible and schema discovery MUST fail with `unsupported-version`. Any other unequal version, including a minor, patch, pre-release, or build metadata difference, MUST produce a `version-mismatch` warning but MUST NOT by itself cause validation to fail. Compatibility between the resolved schema and the validator remains governed by [Schema Versioning](#schema-versioning).
 
 In a target TOML document, the root `[toml-schema]` table is reserved for
 schema-reference metadata. This is a different context from the metadata table
@@ -2349,8 +4070,8 @@ Implementations MAY permit additional extension keys, but every direct value in
 this table MUST be a TOML scalar: string, integer, float, boolean, offset
 date-time, local date-time, local date, or local time. Arrays, inline tables,
 subtables, and arrays of tables are not schema-reference metadata and MUST be
-rejected during schema discovery. Implementations MUST ignore extension keys
-they do not recognize.
+rejected during schema discovery with `discovery-invalid-metadata`.
+Implementations MUST ignore extension keys they do not recognize.
 
 When `[elements.toml-schema]` is omitted, validators MUST ignore the reserved
 metadata table during application-data validation. When

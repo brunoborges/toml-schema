@@ -346,6 +346,25 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
       `${definition.name} conditional selector requires compatible table or collection branches`,
     );
   }
+  if (definition.condition) {
+    for (const [property, reference] of [
+      ["then", definition.thenReference],
+      ["else", definition.elseReference],
+    ] as const) {
+      const branch = data.types[reference ?? ""];
+      if (!branch) {
+        throw new SchemaError(`${definition.name} contains unknown type reference: ${reference}`);
+      }
+      const branchKind = effectiveKind(data, branch, new Set());
+      if (branchKind.resolved && branchKind.kind === "collection") continue;
+      const fixed = determinateFixedChildren(data, branch, new Set());
+      if (fixed.size > 0 && !fixed.has(definition.condition.key)) {
+        throw new SchemaError(
+          `${definition.name} ${property} branch has a non-empty determinate fixed-child set that omits discriminator "${definition.condition.key}"`,
+        );
+      }
+    }
+  }
   for (const child of Object.values(definition.children)) {
     validateDefinitionSemantics(data, child);
   }

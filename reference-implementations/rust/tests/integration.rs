@@ -918,10 +918,10 @@ version = "1.0.0"
 
 [elements.id]
 type = "string"
-pattern = "\\d+"
+pattern = "[0-9]+"
 "#,
     );
-    // "abc123" contains digits, so unanchored pattern "\d+" should match
+    // "abc123" contains digits, so the unanchored digit pattern should match
     let matching_path = write_file(
         &directory,
         "matching.toml",
@@ -929,7 +929,7 @@ pattern = "\\d+"
 id = "abc123"
 "#,
     );
-    // "abcdef" contains no digits, so pattern "\d+" should not match
+    // "abcdef" contains no digits, so the digit pattern should not match
     let non_matching_path = write_file(
         &directory,
         "nonmatching.toml",
@@ -1636,11 +1636,18 @@ type = "table"
 [types.closedSqlite]
 type = "table"
 
+    [types.closedSqlite.engine]
+    type = "string"
+
     [types.closedSqlite.file]
     type = "string"
 
 [types.closedServer]
 type = "table"
+
+    [types.closedServer.engine]
+    type = "string"
+    optional = true
 
     [types.closedServer.host]
     type = "string"
@@ -1740,19 +1747,20 @@ label = "primary"
     let result = schema.validate_file(unknown_branch_key);
     assert!(has_path(&result, "$.database.host"), "{:?}", result.errors);
 
-    let undeclared_discriminator = write_file(
+    let unknown_closed_branch_key = write_file(
         &directory,
-        "undeclared-discriminator.toml",
+        "unknown-closed-branch-key.toml",
         r#"
 [undeclared]
 engine = "sqlite"
 file = "app.db"
+unknown = true
 "#,
     );
-    let result = schema.validate_file(undeclared_discriminator);
+    let result = schema.validate_file(unknown_closed_branch_key);
     assert!(
-        has_path(&result, "$.undeclared.engine"),
-        "the discriminator must undergo ordinary selected-branch validation: {:?}",
+        has_path(&result, "$.undeclared.unknown"),
+        "closed selected branches must still reject unrelated keys: {:?}",
         result.errors
     );
 }
@@ -1778,6 +1786,10 @@ type = "table"
 
 [types.emptyFallback]
 type = "table"
+
+    [types.emptyFallback.""]
+    type = "string"
+    optional = true
 
     [types.emptyFallback.host]
     type = "string"
@@ -4002,6 +4014,109 @@ fn rejects_unknown_or_incompatible_string_formats() {
         "[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\ntype = \"string\"\nformat = \"ipv4\"\nallowedvalues = [\"01.2.3.4\"]\n",
     );
     Schema::load(allowed_path).expect_err("invalid formatted allowed value must be rejected");
+}
+
+#[test]
+fn normalizes_prefixed_builtins_before_selector_classification() {
+    let directory = tempfile_dir("prefixed-builtins");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        "[toml-schema]\nversion = \"1.0.0\"\n[elements.port]\ntype = \"types.integer\"\nmin = 1\nmax = 65535\n",
+    );
+    Schema::load(schema_path).expect("prefixed built-in must allow kind-specific siblings");
+
+    let invalid = write_file(
+        &directory,
+        "types-any.tosd",
+        "[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\noneof = [\"types.any\"]\n",
+    );
+    Schema::load(invalid).expect_err("types.any must remain forbidden in oneof");
+}
+
+#[test]
+fn rejects_invalid_and_non_portable_patterns_at_schema_load_time() {
+    let directory = tempfile_dir("portable-patterns");
+    for (name, definition, expected) in [
+        ("invalid", "type = \"string\"\npattern = \"[\"", "invalid-pattern"),
+        (
+            "shorthand",
+            "type = \"string\"\npattern = \"\\\\d+\"",
+            "unsupported-pattern",
+        ),
+        (
+            "lookaround-key",
+            "type = \"collection\"\nitemtype = \"string\"\nkeypattern = \"(?=x)\"",
+            "unsupported-pattern",
+        ),
+    ] {
+        let schema_path = write_file(
+            &directory,
+            &format!("{name}.tosd"),
+            &format!("[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\n{definition}\n"),
+        );
+        let error = Schema::load(&schema_path).expect_err("pattern must fail during schema loading");
+        assert!(error.contains(expected), "{error}");
+    }
+
+    let schema_path = directory.join("invalid.tosd");
+    let document_path = write_file(&directory, "document.toml", "");
+    let (code, _, _) = capture(&[
+        "validate",
+        schema_path.to_str().expect("schema path"),
+        document_path.to_str().expect("document path"),
+    ]);
+    assert_eq!(code, 2, "pattern error must be a CLI schema-load error");
+}
+
+#[test]
+fn loads_portable_character_escapes_and_escaped_metacharacters() {
+    let directory = tempfile_dir("portable-pattern-escapes");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        "[toml-schema]\nversion = \"1.0.0\"\n\
+         [elements.whitespace]\ntype = \"string\"\npattern = '[ \\t]'\n\
+         [elements.controls]\ntype = \"string\"\npattern = '\\t\\n\\r\\f\\v\\a'\n\
+         [elements.dot]\ntype = \"string\"\npattern = '\\.'\n",
+    );
+    Schema::load(schema_path).expect("portable character and metacharacter escapes must load");
+}
+
+#[test]
+fn rejects_closed_conditional_branches_that_omit_the_discriminator() {
+    let directory = tempfile_dir("conditional-discriminator");
+    for missing_branch in ["then", "else"] {
+        let then_child = if missing_branch == "then" { "value" } else { "engine" };
+        let else_child = if missing_branch == "else" { "value" } else { "engine" };
+        let schema_path = write_file(
+            &directory,
+            &format!("{missing_branch}.tosd"),
+            &format!(
+                "[toml-schema]\nversion = \"1.0.0\"\n\
+                 [types.selected]\ntype = \"table\"\n[types.selected.{then_child}]\ntype = \"string\"\n\
+                 [types.fallback]\ntype = \"table\"\n[types.fallback.{else_child}]\ntype = \"string\"\n\
+                 [elements.item]\nif = {{ key = \"engine\", equals = \"sqlite\" }}\n\
+                 then = \"types.selected\"\nelse = \"types.fallback\"\n"
+            ),
+        );
+        Schema::load(schema_path).expect_err("closed branch must declare the discriminator");
+    }
+}
+
+#[test]
+fn rejects_non_table_conditional_defaults_at_schema_load_time() {
+    let directory = tempfile_dir("conditional-default");
+    let schema_path = write_file(
+        &directory,
+        "schema.tosd",
+        "[toml-schema]\nversion = \"1.0.0\"\n\
+         [types.selected]\ntype = \"table\"\n\
+         [types.fallback]\ntype = \"table\"\n\
+         [elements.item]\nif = { key = \"engine\", equals = \"sqlite\" }\n\
+         then = \"types.selected\"\nelse = \"types.fallback\"\ndefault = \"sqlite\"\n",
+    );
+    Schema::load(schema_path).expect_err("conditional default must be a table");
 }
 
 fn tempfile_dir(name: &str) -> PathBuf {
