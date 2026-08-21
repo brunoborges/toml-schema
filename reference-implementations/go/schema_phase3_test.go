@@ -1,6 +1,9 @@
 package tomlschema
 
-import "testing"
+import (
+	"strconv"
+	"testing"
+)
 
 func TestLoadsPureAllOfMixin(t *testing.T) {
 	dir := t.TempDir()
@@ -128,6 +131,37 @@ min = -10
 `)
 	if _, err := LoadSchema(path); err == nil {
 		t.Fatal("duplicate member constraint must fail at load")
+	}
+}
+
+func TestRejectsPerMemberAllowedValuesOnContainers(t *testing.T) {
+	dir := t.TempDir()
+	cases := []string{
+		"[elements.value]\ntype = \"array\"\nitemtype = \"integer\"\nallowedvalues = [5, 50]\nmin = 10\n",
+		"[elements.value]\ntype = \"collection\"\nitemtype = \"integer\"\nallowedvalues = [5, 50]\nmin = 10\n",
+		"[elements.value]\ntype = \"array\"\nitemtype = \"integer\"\nallowedvalues = [2, 3]\nmax = 2\n",
+		"[elements.value]\ntype = \"array\"\nitemtype = \"string\"\nallowedvalues = [\"ok@example.com\", \"nope\"]\nformat = \"email\"\n",
+		"[elements.value]\ntype = \"collection\"\nitemtype = \"string\"\nallowedvalues = [\"ok@example.com\", \"nope\"]\nformat = \"email\"\n",
+	}
+	for i, def := range cases {
+		path := write(t, dir, "invalid-container-"+strconv.Itoa(i)+".tosd", "[toml-schema]\nversion = \"1.0.0\"\n"+def)
+		if _, err := LoadSchema(path); err == nil {
+			t.Fatalf("case %d: container enumeration violating a per-member constraint must fail at load", i)
+		}
+	}
+
+	// minlength/maxlength bound the container, not its members, so an
+	// enumeration of longer strings must still load.
+	schema := loadSemanticsSchema(t, `
+[elements.value]
+type = "array"
+itemtype = "string"
+allowedvalues = ["aaaa", "bbbbb"]
+maxlength = 2
+`)
+	valid := write(t, dir, "container-length.toml", `value = ["aaaa"]`)
+	if result := schema.ValidateFile(valid); !result.Valid() {
+		t.Fatalf("container with maxlength enumeration rejected: %#v", result.Errors)
 	}
 }
 

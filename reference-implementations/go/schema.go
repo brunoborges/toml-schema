@@ -1643,9 +1643,10 @@ func validateAllowedValuesConstraints(
 	min, max any,
 	minLength, maxLength *int,
 ) error {
-	if len(allowedValues) == 0 || typeName == TypeArray || typeName == TypeCollection {
+	if len(allowedValues) == 0 {
 		return nil
 	}
+	isContainer := typeName == TypeArray || typeName == TypeCollection
 	for index, allowed := range allowedValues {
 		entry := fmt.Sprintf("%s allowedvalues[%d]", name, index)
 		if pattern != nil {
@@ -1681,7 +1682,7 @@ func validateAllowedValuesConstraints(
 				return fmt.Errorf("%s is greater than max", entry)
 			}
 		}
-		if minLength != nil || maxLength != nil {
+		if !isContainer && (minLength != nil || maxLength != nil) {
 			stringValue, ok := allowed.(string)
 			if !ok {
 				return fmt.Errorf("%s does not satisfy string length constraints", entry)

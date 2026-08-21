@@ -2095,14 +2095,13 @@ fn validate_allowed_values_constraints(
     min_length: Option<i64>,
     max_length: Option<i64>,
 ) -> Result<(), String> {
-    if allowed_values.is_empty()
-        || matches!(
-            type_name,
-            Some(SchemaType::Array | SchemaType::Collection)
-        )
-    {
+    if allowed_values.is_empty() {
         return Ok(());
     }
+    let is_container = matches!(
+        type_name,
+        Some(SchemaType::Array | SchemaType::Collection)
+    );
     for (index, allowed) in allowed_values.iter().enumerate() {
         let entry = format!("{name} allowedvalues[{index}]");
         if let Some(pattern) = pattern {
@@ -2138,7 +2137,7 @@ fn validate_allowed_values_constraints(
                 return Err(format!("{entry} is greater than max"));
             }
         }
-        if min_length.is_some() || max_length.is_some() {
+        if !is_container && (min_length.is_some() || max_length.is_some()) {
             let Some(string_value) = allowed.as_str() else {
                 return Err(format!(
                     "{entry} does not satisfy string length constraints"

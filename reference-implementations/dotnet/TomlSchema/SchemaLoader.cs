@@ -265,15 +265,6 @@ public class SchemaLoader
 
         if (format != null)
         {
-            if (allowedValues != null)
-            {
-                foreach (var allowedValue in allowedValues)
-                {
-                    if (allowedValue is not string text || !StringFormatValidator.IsValid(format, text))
-                        throw new InvalidOperationException(
-                            $"{location}.allowedvalues contains a value that does not satisfy format {format}");
-                }
-            }
             if (type == SchemaType.String && table.ContainsKey("default")
                 && (defaultValue is not string defaultText
                     || !StringFormatValidator.IsValid(format, defaultText)))
@@ -300,6 +291,8 @@ public class SchemaLoader
         if (minLength.HasValue && maxLength.HasValue && minLength > maxLength)
             throw new InvalidOperationException(
                 $"{location} minlength must not be greater than maxlength");
+        ValidateAllowedValuesConstraints(
+            location, type, allowedValues, pattern, format, min, max, minLength, maxLength);
         if (children.Count == 0 && type == null && reference == null
             && !hasOneOf && !hasAnyOf && !hasConditional && (allOf?.Count ?? 0) == 0)
             throw new InvalidOperationException(
@@ -619,6 +612,49 @@ public class SchemaLoader
         return types.TryGetValue(normalized, out var target)
             ? EffectiveKind(target, types, new HashSet<string>())
             : null;
+    }
+
+    private static void ValidateAllowedValuesConstraints(
+        string location,
+        SchemaType? type,
+        List<object?>? allowedValues,
+        string? pattern,
+        string? format,
+        object? min,
+        object? max,
+        long? minLength,
+        long? maxLength)
+    {
+        if (allowedValues == null || allowedValues.Count == 0)
+            return;
+        var isContainer = type is SchemaType.Array or SchemaType.Collection;
+        for (var index = 0; index < allowedValues.Count; index++)
+        {
+            var allowed = allowedValues[index];
+            var entry = $"{location} allowedvalues[{index}]";
+            if (pattern != null
+                && (allowed is not string patternText || !Regex.IsMatch(patternText, pattern)))
+                throw new InvalidOperationException($"{entry} does not satisfy pattern");
+            if (format != null
+                && (allowed is not string formatText || !StringFormatValidator.IsValid(format, formatText)))
+                throw new InvalidOperationException($"{entry} does not satisfy format {format}");
+            if ((min != null || max != null) && allowed is double nan && double.IsNaN(nan))
+                throw new InvalidOperationException($"{entry} does not satisfy min or max");
+            if (min != null && allowed != null && ValueSemantics.Compare(allowed, min) < 0)
+                throw new InvalidOperationException($"{entry} is less than min");
+            if (max != null && allowed != null && ValueSemantics.Compare(allowed, max) > 0)
+                throw new InvalidOperationException($"{entry} is greater than max");
+            if (!isContainer && (minLength.HasValue || maxLength.HasValue))
+            {
+                if (allowed is not string lengthText)
+                    throw new InvalidOperationException($"{entry} does not satisfy string length constraints");
+                var length = lengthText.EnumerateRunes().Count();
+                if (minLength.HasValue && length < minLength)
+                    throw new InvalidOperationException($"{entry} is shorter than minlength");
+                if (maxLength.HasValue && length > maxLength)
+                    throw new InvalidOperationException($"{entry} is longer than maxlength");
+            }
+        }
     }
 
     private static void ValidateBoundary(

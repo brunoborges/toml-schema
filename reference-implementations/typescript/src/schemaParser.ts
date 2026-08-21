@@ -293,7 +293,8 @@ function validateAllowedValuesConstraints(
   minLength: number | undefined,
   maxLength: number | undefined,
 ): void {
-  if (allowedValues.length === 0 || typeName === "array" || typeName === "collection") return;
+  if (allowedValues.length === 0) return;
+  const isContainer = typeName === "array" || typeName === "collection";
   allowedValues.forEach((allowed, index) => {
     const entry = `${name} allowedvalues[${index}]`;
     if (pattern !== undefined) {
@@ -331,7 +332,7 @@ function validateAllowedValuesConstraints(
       }
       if (comparison > 0) throw new SchemaError(`${entry} is greater than max`);
     }
-    if (minLength !== undefined || maxLength !== undefined) {
+    if (!isContainer && (minLength !== undefined || maxLength !== undefined)) {
       if (typeof allowed !== "string") {
         throw new SchemaError(`${entry} does not satisfy string length constraints`);
       }

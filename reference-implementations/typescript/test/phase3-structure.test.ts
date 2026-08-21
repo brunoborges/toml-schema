@@ -116,6 +116,36 @@ min = -10
 `));
 });
 
+test("rejects a container enumeration that violates a per-member constraint", () => {
+  const cases = [
+    `[elements.value]\ntype = "array"\nitemtype = "integer"\nallowedvalues = [5, 50]\nmin = 10\n`,
+    `[elements.value]\ntype = "collection"\nitemtype = "integer"\nallowedvalues = [5, 50]\nmin = 10\n`,
+    `[elements.value]\ntype = "array"\nitemtype = "integer"\nallowedvalues = [2, 3]\nmax = 2\n`,
+    `[elements.value]\ntype = "array"\nitemtype = "string"\nallowedvalues = ["ok@example.com", "nope"]\nformat = "email"\n`,
+    `[elements.value]\ntype = "collection"\nitemtype = "string"\nallowedvalues = ["ok@example.com", "nope"]\nformat = "email"\n`,
+  ];
+  cases.forEach((definition, index) => {
+    assert.throws(() =>
+      loadSchemaFromSource(
+        `invalid-container-${index}.tosd`,
+        `[toml-schema]\nversion = "1.0.0"\n${definition}`,
+      ),
+    );
+  });
+
+  // minlength/maxlength bound the container, not its members.
+  const schema = loadSchemaFromSource("container-length.tosd", `
+[toml-schema]
+version = "1.0.0"
+[elements.value]
+type = "array"
+itemtype = "string"
+allowedvalues = ["aaaa", "bbbbb"]
+maxlength = 2
+`);
+  assert.equal(schema.validate({ value: ["aaaa"] }).valid, true);
+});
+
 test("allows an inline constraint matching one acquired by itemtype allof", () => {
   const schema = loadSchemaFromSource("inherited-constraint.tosd", `
 [toml-schema]

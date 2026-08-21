@@ -437,6 +437,7 @@ def _validate_allowed_values_constraints(
     type_name: Optional[SchemaType],
     allowed_values: List[Any],
     pattern: Optional[re.Pattern],
+    format_name: str,
     min_value: Any,
     max_value: Any,
     min_length: Optional[int],
@@ -444,13 +445,17 @@ def _validate_allowed_values_constraints(
 ) -> None:
     from ._compare import IncomparableError, compare
 
-    if not allowed_values or type_name in (SchemaType.ARRAY, SchemaType.COLLECTION):
+    if not allowed_values:
         return
+    is_container = type_name in (SchemaType.ARRAY, SchemaType.COLLECTION)
     for index, allowed in enumerate(allowed_values):
         entry = f"{name} allowedvalues[{index}]"
         if pattern is not None:
             if not isinstance(allowed, str) or not pattern.search(allowed):
                 raise SchemaError(f"{entry} does not satisfy pattern")
+        if format_name:
+            if not isinstance(allowed, str) or not matches_format(allowed, format_name):
+                raise SchemaError(f"{entry} does not satisfy format {format_name}")
         if (min_value is not None or max_value is not None) and is_nan(allowed):
             raise SchemaError(f"{entry} does not satisfy min or max")
         if min_value is not None:
@@ -467,7 +472,7 @@ def _validate_allowed_values_constraints(
                 raise SchemaError(f"{entry} cannot be compared with max: {exc}") from exc
             if comparison > 0:
                 raise SchemaError(f"{entry} is greater than max")
-        if min_length is not None or max_length is not None:
+        if not is_container and (min_length is not None or max_length is not None):
             if not isinstance(allowed, str):
                 raise SchemaError(f"{entry} does not satisfy string length constraints")
             length = len(allowed)
@@ -698,14 +703,8 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
 
     _validate_range_constraints(name, type_name, min_value, max_value)
     _validate_allowed_values_constraints(
-        name, type_name, allowed_values, pattern, min_value, max_value, min_length, max_length
+        name, type_name, allowed_values, pattern, format_name, min_value, max_value, min_length, max_length
     )
-    if format_name:
-        for index, allowed in enumerate(allowed_values):
-            if not isinstance(allowed, str) or not matches_format(allowed, format_name):
-                raise SchemaError(
-                    f"{name} allowedvalues[{index}] does not satisfy format {format_name}"
-                )
 
     dependent_required = _get_dependent_required(name, path, table, source)
     mutually_exclusive = _get_key_groups(name, path, table, "mutuallyexclusive", source)

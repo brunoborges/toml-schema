@@ -868,6 +868,82 @@ maxlength = 2
 }
 
 #[test]
+fn enforces_per_member_allowed_values_on_containers_at_schema_load_time() {
+    let directory = tempfile_dir("container-allowedvalues");
+    let malformed_definitions = [
+        r#"
+type = "array"
+itemtype = "integer"
+allowedvalues = [ 5, 50 ]
+min = 10
+"#,
+        r#"
+type = "collection"
+itemtype = "integer"
+allowedvalues = [ 5, 50 ]
+min = 10
+"#,
+        r#"
+type = "array"
+itemtype = "integer"
+allowedvalues = [ 2, 3 ]
+max = 2
+"#,
+        r#"
+type = "array"
+itemtype = "string"
+allowedvalues = [ "ok@example.com", "nope" ]
+format = "email"
+"#,
+        r#"
+type = "collection"
+itemtype = "string"
+allowedvalues = [ "ok@example.com", "nope" ]
+format = "email"
+"#,
+    ];
+
+    for (index, definition) in malformed_definitions.iter().enumerate() {
+        let content = format!(
+            r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+{definition}
+"#
+        );
+        let schema_path = write_file(
+            &directory,
+            &format!("invalid-container-allowedvalues-{index}.tosd"),
+            &content,
+        );
+        Schema::load(&schema_path)
+            .expect_err("expected malformed container allowedvalues schema");
+    }
+
+    // `minlength`/`maxlength` bound the container, not its members, so an
+    // enumeration of longer strings must still load successfully.
+    let schema_path = write_file(
+        &directory,
+        "container-length.tosd",
+        r#"
+[toml-schema]
+version = "1.0.0"
+
+[elements.value]
+type = "array"
+itemtype = "string"
+allowedvalues = [ "aaaa", "bbbbb" ]
+maxlength = 2
+"#,
+    );
+    let schema = Schema::load(&schema_path).expect("load container with maxlength enumeration");
+    let valid_document = write_file(&directory, "container-length.toml", r#"value = [ "aaaa" ]"#);
+    assert!(schema.validate_file(valid_document).valid());
+}
+
+#[test]
 fn validates_array_allowedvalues_without_itemtype() {
     let directory = tempfile_dir("array-allowedvalues");
     let schema_path = write_file(

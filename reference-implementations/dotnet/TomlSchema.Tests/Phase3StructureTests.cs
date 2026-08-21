@@ -154,4 +154,35 @@ public class Phase3StructureTests : TestBase
         Assert.False(schema.Validate(Write("phase3-inline-invalid.toml", "values = [\"a\"]\n")).IsValid);
         Assert.False(schema.Validate(Write("phase3-inherited-invalid.toml", "values = [\"c\"]\n")).IsValid);
     }
+
+    [Fact]
+    public void RejectsPerMemberAllowedValuesOnContainers()
+    {
+        var cases = new[]
+        {
+            "[elements.value]\ntype = \"array\"\nitemtype = \"integer\"\nallowedvalues = [5, 50]\nmin = 10\n",
+            "[elements.value]\ntype = \"collection\"\nitemtype = \"integer\"\nallowedvalues = [5, 50]\nmin = 10\n",
+            "[elements.value]\ntype = \"array\"\nitemtype = \"integer\"\nallowedvalues = [2, 3]\nmax = 2\n",
+            "[elements.value]\ntype = \"array\"\nitemtype = \"string\"\nallowedvalues = [\"ok@example.com\", \"nope\"]\nformat = \"email\"\n",
+            "[elements.value]\ntype = \"collection\"\nitemtype = \"string\"\nallowedvalues = [\"ok@example.com\", \"nope\"]\nformat = \"email\"\n",
+        };
+        for (var i = 0; i < cases.Length; i++)
+        {
+            var path = Write($"phase3-invalid-container-{i}.tosd",
+                "[toml-schema]\nversion = \"1.0.0\"\n" + cases[i]);
+            Assert.ThrowsAny<Exception>(() => global::TomlSchema.TomlSchema.Load(path));
+        }
+
+        var schema = global::TomlSchema.TomlSchema.Load(Write("phase3-container-length.tosd", """
+            [toml-schema]
+            version = "1.0.0"
+            [elements.value]
+            type = "array"
+            itemtype = "string"
+            allowedvalues = ["aaaa", "bbbbb"]
+            maxlength = 2
+            """));
+        Assert.True(schema.Validate(Write("phase3-container-length.toml", "value = [\"aaaa\"]\n")).IsValid);
+    }
 }
+

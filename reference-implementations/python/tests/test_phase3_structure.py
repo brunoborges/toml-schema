@@ -145,6 +145,38 @@ min = -10
             with self.assertRaises(SchemaError):
                 load_schema(path)
 
+    def test_rejects_per_member_allowed_values_on_containers(self):
+        cases = [
+            '[elements.value]\ntype = "array"\nitemtype = "integer"\nallowedvalues = [5, 50]\nmin = 10\n',
+            '[elements.value]\ntype = "collection"\nitemtype = "integer"\nallowedvalues = [5, 50]\nmin = 10\n',
+            '[elements.value]\ntype = "array"\nitemtype = "integer"\nallowedvalues = [2, 3]\nmax = 2\n',
+            '[elements.value]\ntype = "array"\nitemtype = "string"\nallowedvalues = ["ok@example.com", "nope"]\nformat = "email"\n',
+            '[elements.value]\ntype = "collection"\nitemtype = "string"\nallowedvalues = ["ok@example.com", "nope"]\nformat = "email"\n',
+        ]
+        for index, definition in enumerate(cases):
+            with tempfile.TemporaryDirectory() as tmp:
+                path = helpers.write_file(
+                    tmp,
+                    f"invalid-container-{index}.tosd",
+                    '[toml-schema]\nversion = "1.0.0"\n' + definition,
+                )
+                with self.assertRaises(SchemaError):
+                    load_schema(path)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            schema = helpers.load_semantics_schema(
+                tmp,
+                """
+[elements.value]
+type = "array"
+itemtype = "string"
+allowedvalues = ["aaaa", "bbbbb"]
+maxlength = 2
+""",
+            )
+            valid = helpers.write_file(tmp, "valid.toml", 'value = ["aaaa"]\n')
+            self.assertTrue(schema.validate_file(valid).valid)
+
     def test_allows_inline_constraint_matching_itemtype_allof_constraint(self):
         with tempfile.TemporaryDirectory() as tmp:
             schema = helpers.load_semantics_schema(

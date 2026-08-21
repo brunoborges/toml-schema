@@ -1891,15 +1891,17 @@ equality between integers and floats does not make their TOML kinds
 interchangeable for this schema-load check. A malformed enumeration MUST be
 rejected at schema-load time.
 
-For a definition that is neither an `array` nor a `collection`, when
-`allowedvalues` is combined with `pattern`, `format`,
-`min`, `max`, `minlength`, or `maxlength` on the same definition, every entry in
-`allowedvalues` MUST satisfy every applicable constraint. A schema containing an
-entry that violates one of those constraints is malformed, and schema loaders
-MUST reject it at schema-load time. This is a consistency check on the
-enumeration itself; it describes nothing about how a document value is
-validated. For offset date-times, this boundary check uses instant
-ordering even though subsequent `allowedvalues` membership uses parsed-value
+For every definition, when `allowedvalues` is combined on the same definition
+with a constraint that applies to the same values the enumeration describes,
+every entry in `allowedvalues` MUST satisfy that constraint, and schema loaders
+MUST reject a violating entry at schema-load time. The constraints in scope are
+`pattern`, `format`, `min`, and `max` for every definition, plus `minlength` and
+`maxlength` for a definition that is neither an `array` nor a `collection`. On an
+`array` or a `collection`, `minlength` and `maxlength` bound the container itself
+rather than its members, so they are not part of this per-entry check. This is a
+consistency check on the enumeration itself; it describes nothing about how a
+document value is validated. For offset date-times, this boundary check uses
+instant ordering even though subsequent `allowedvalues` membership uses parsed-value
 equality; equivalent instants with different retained local fields or offsets
 therefore compare equal for a boundary but remain distinct enumeration values.
 
@@ -2291,10 +2293,11 @@ rules used for numeric and temporal items are defined under
 [Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max).
 
 When `allowedvalues` is present on an array, every array item MUST be a member
-of that enumeration. The enumeration does not have to be sorted. If `min` or
-`max` is also present, every enumerated value MUST satisfy the applicable
-inclusive boundary, and a schema loader MUST reject an enumerated value that
-violates one; an enumerated value need not equal either boundary.
+of that enumeration. The enumeration does not have to be sorted.
+[Allowed Values](#allowed-values---allowedvalues) is authoritative for the
+schema-load consistency check between `allowedvalues` and a sibling per-member
+constraint such as `min` or `max`, including the requirement that a loader
+reject an enumerated value violating an applicable inclusive boundary.
 
 When the array declares `itemtype`, every enumerated value MUST have a TOML
 kind permitted by the effective item type, as

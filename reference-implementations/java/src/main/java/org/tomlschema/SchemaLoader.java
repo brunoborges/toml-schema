@@ -929,9 +929,10 @@ final class SchemaLoader {
             Integer minLength,
             Integer maxLength
     ) {
-        if (allowedValues.isEmpty() || type == SchemaType.ARRAY) {
+        if (allowedValues.isEmpty()) {
             return;
         }
+        boolean isContainer = type == SchemaType.ARRAY || type == SchemaType.COLLECTION;
         for (int i = 0; i < allowedValues.size(); i++) {
             Object allowed = allowedValues.get(i);
             String entry = name + " allowedvalues[" + i + "]";
@@ -950,7 +951,7 @@ final class SchemaLoader {
             if (max != null && ValueSemantics.compare(allowed, max) > 0) {
                 throw new SchemaException(entry + " is greater than max");
             }
-            if (minLength != null || maxLength != null) {
+            if (!isContainer && (minLength != null || maxLength != null)) {
                 if (!(allowed instanceof String stringValue)) {
                     throw new SchemaException(entry + " does not satisfy string length constraints");
                 }
