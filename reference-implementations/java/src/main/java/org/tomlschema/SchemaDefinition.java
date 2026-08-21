@@ -33,7 +33,8 @@ record SchemaDefinition(
         boolean hasDefault,
         Object defaultValue,
         boolean deprecated,
-        Map<String, SchemaDefinition> children
+        Map<String, SchemaDefinition> children,
+        String schemaPath
 ) {
     SchemaDefinition {
         allowedValues = List.copyOf(allowedValues);

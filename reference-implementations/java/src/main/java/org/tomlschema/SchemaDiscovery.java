@@ -49,16 +49,19 @@ final class SchemaDiscovery {
         Path schemaPath = resolveSchemaLocation(documentPath, location);
         TomlSchema schema = TomlSchema.load(schemaPath);
 
-        List<ValidationWarning> warnings = new ArrayList<>();
+        List<ValidationDiagnostic> warnings = new ArrayList<>();
         if (metadata.contains("version")) {
             TomlSchemaVersion.Version expected = TomlSchemaVersion.parseDocumentVersion(metadata.get("version"));
             TomlSchemaVersion.Version actual = TomlSchemaVersion.parseDocumentVersion(schema.version());
             if (!expected.major().equals(actual.major())) {
-                throw new SchemaException("document expects TOML Schema major version " + expected.value()
+                throw new SchemaException(DiagnosticPhase.DISCOVERY, DiagnosticCodes.UNSUPPORTED_VERSION,
+                        "$.toml-schema.version",
+                        "document expects TOML Schema major version " + expected.value()
                         + ", but resolved schema uses " + schema.version());
             }
             if (!expected.value().equals(schema.version())) {
-                warnings.add(new ValidationWarning("schema-version", "$",
+                warnings.add(ValidationDiagnostic.warning(DiagnosticPhase.DISCOVERY,
+                        DiagnosticCodes.VERSION_MISMATCH, null, "$.toml-schema.version",
                         "document expects TOML Schema version " + expected.value()
                                 + ", but resolved schema uses " + schema.version()));
             }

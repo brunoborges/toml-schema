@@ -64,7 +64,7 @@ class ConditionalValidationTest {
                 """));
         assertFalse(missingRequired.isValid());
         assertTrue(missingRequired.errors().stream().anyMatch(error ->
-                error.code().equals("required") && error.path().equals("$.database.file")));
+                error.code().equals("missing-required") && error.path().equals("$.database.file")));
 
         ValidationResult branchUnknown = schema.validate(write("wrong-branch-key.toml", """
                 [database]
@@ -74,7 +74,7 @@ class ConditionalValidationTest {
                 """));
         assertFalse(branchUnknown.isValid());
         assertTrue(branchUnknown.errors().stream().anyMatch(error ->
-                error.code().equals("unexpected-key") && error.path().equals("$.database.host")));
+                error.code().equals("unknown-key") && error.path().equals("$.database.host")));
     }
 
     @Test
@@ -116,7 +116,7 @@ class ConditionalValidationTest {
                 write("missing-else-field.toml", "[database]\n"));
         assertFalse(missingElseField.isValid());
         assertTrue(missingElseField.errors().stream().anyMatch(error ->
-                error.code().equals("required") && error.path().equals("$.database.file")));
+                error.code().equals("missing-required") && error.path().equals("$.database.file")));
     }
 
     @Test
@@ -152,7 +152,7 @@ class ConditionalValidationTest {
 
         assertFalse(result.isValid());
         assertTrue(result.errors().stream().anyMatch(error ->
-                error.code().equals("unexpected-key") && error.path().equals("$.database.unexpected")));
+                error.code().equals("unknown-key") && error.path().equals("$.database.unexpected")));
     }
 
     @Test
