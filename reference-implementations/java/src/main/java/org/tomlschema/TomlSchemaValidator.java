@@ -347,6 +347,7 @@ final class TomlSchemaValidator {
                 validateNode(childPath, entry.getValue(),
                         reference(definition.itemReference(), new HashSet<>()));
             }
+            validateMemberValueConstraints(childPath, entry.getValue(), definition);
         }
         validateLength(path, dynamicEntries, definition);
     }
@@ -411,6 +412,17 @@ final class TomlSchemaValidator {
                     && boundariesAreComparableWith(item, definition)) {
                 validateRange(itemPath, item, definition);
             }
+            if (item instanceof String stringValue) {
+                if (definition.pattern() != null
+                        && !definition.pattern().matcher(stringValue).find()) {
+                    add("pattern", itemPath,
+                            "does not match pattern " + definition.pattern().pattern());
+                }
+                if (definition.format() != null && !definition.format().isValid(stringValue)) {
+                    add("format", itemPath,
+                            "does not match format " + definition.format().schemaName());
+                }
+            }
         }
     }
 
@@ -428,6 +440,9 @@ final class TomlSchemaValidator {
 
     private void validateCommonConstraints(String path, Object value, SchemaDefinition definition) {
         if (value instanceof TomlArray) {
+            return;
+        }
+        if (value instanceof TomlTable && definition.type() == SchemaType.COLLECTION) {
             return;
         }
         validateAllowedValues(path, value, definition);
@@ -453,6 +468,30 @@ final class TomlSchemaValidator {
                 && definition.allowedValues().stream()
                 .noneMatch(allowed -> ValueSemantics.valuesEqual(allowed, value))) {
             add("allowedvalues", path, "value is not in allowedvalues");
+        }
+    }
+
+    private void validateMemberValueConstraints(
+            String path,
+            Object value,
+            SchemaDefinition definition
+    ) {
+        validateAllowedValues(path, value, definition);
+        if (definition.allowedValues().isEmpty()
+                && (definition.min() != null || definition.max() != null)
+                && boundariesAreComparableWith(value, definition)) {
+            validateRange(path, value, definition);
+        }
+        if (value instanceof String stringValue) {
+            if (definition.pattern() != null
+                    && !definition.pattern().matcher(stringValue).find()) {
+                add("pattern", path,
+                        "does not match pattern " + definition.pattern().pattern());
+            }
+            if (definition.format() != null && !definition.format().isValid(stringValue)) {
+                add("format", path,
+                        "does not match format " + definition.format().schemaName());
+            }
         }
     }
 
@@ -578,7 +617,14 @@ final class TomlSchemaValidator {
             }
             return kind == null ? SchemaType.ANY : kind;
         }
-        return definition.type() == null ? SchemaType.ANY : definition.type();
+        if (definition.type() != null) {
+            return definition.type();
+        }
+        if (!definition.allOf().isEmpty()) {
+            return effectiveKind(
+                    reference(definition.allOf().getFirst(), visiting), new HashSet<>(visiting));
+        }
+        return SchemaType.ANY;
     }
 
     private boolean resolvesToUnionSelector(SchemaDefinition definition, Set<String> visiting) {

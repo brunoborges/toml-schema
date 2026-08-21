@@ -100,15 +100,16 @@ export function effectiveKind(
   }
   const allOf = definition.allOf ?? [];
   if (allOf.length === 0) return result;
-  if (!result.resolved || result.kind === "any") {
-    throw new SchemaError("allof requires a determinate effective kind");
-  }
   for (const reference of allOf) {
     const component = definitionForReference(data, reference);
     const componentResult = effectiveKind(data, component, visiting);
-    if (!componentResult.resolved || componentResult.kind === "any" || componentResult.kind !== result.kind) {
+    if (!componentResult.resolved || componentResult.kind === "any") {
+      throw new SchemaError(`allof component ${reference} has indeterminate effective kind`);
+    }
+    if (result.resolved && componentResult.kind !== result.kind) {
       throw new SchemaError(`allof component ${reference} has incompatible effective kind`);
     }
+    if (!result.resolved) result = componentResult;
   }
   return { kind: result.kind, resolved: true };
 }
@@ -341,6 +342,9 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
       throw new SchemaError(`${definition.name} effective collection must define at least one itemtype`);
     }
   }
+  if (definition.typeName === "array" || definition.typeName === "collection") {
+    validateMemberConstraints(data, definition);
+  }
   if (definition.condition && (!resolved || (kind !== "table" && kind !== "collection"))) {
     throw new SchemaError(
       `${definition.name} conditional selector requires compatible table or collection branches`,
@@ -364,9 +368,81 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
         );
       }
     }
+
   }
   for (const child of Object.values(definition.children)) {
     validateDefinitionSemantics(data, child);
+  }
+}
+
+function validateMemberConstraints(data: SchemaData, definition: RawDefinition): void {
+  const hasRange = definition.min !== undefined || definition.max !== undefined;
+  const hasStringConstraint = definition.pattern !== undefined || definition.format !== undefined;
+  if (hasRange || hasStringConstraint) {
+    const itemResult = resolveItemKind(data, definition.itemReference, new Set());
+    if (!itemResult.resolved) {
+      throw new SchemaError(
+        hasRange
+          ? `${definition.name} can only define min or max when itemtype resolves to one comparable built-in type`
+          : `${definition.name} per-member constraints require a determinate itemtype`,
+      );
+    }
+    if (hasRange && !isRangeComparable(itemResult.kind)) {
+      throw new SchemaError(
+        `${definition.name} can only define min or max when itemtype resolves to one comparable built-in type`,
+      );
+    }
+    if (hasStringConstraint && itemResult.kind !== "string") {
+      throw new SchemaError(`${definition.name} can only define pattern or format when itemtype resolves to string`);
+    }
+  }
+  for (const [property, present] of [
+    ["allowedvalues", (definition.allowedValues?.length ?? 0) > 0],
+    ["min", definition.min !== undefined],
+    ["max", definition.max !== undefined],
+    ["pattern", definition.pattern !== undefined],
+    ["format", definition.format !== undefined],
+  ] as const) {
+    if (
+      present &&
+      definition.itemReference &&
+      referenceHasConstraint(data, definition.itemReference, property, new Set())
+    ) {
+      throw new SchemaError(
+        `${definition.name} defines ${property} both inline and on its resolved itemtype`,
+      );
+    }
+  }
+}
+
+function referenceHasConstraint(
+  data: SchemaData,
+  reference: string,
+  property: string,
+  visiting: Set<string>,
+): boolean {
+  if (isBuiltIn(reference)) return false;
+  if (visiting.has(reference)) throw new SchemaError(`cyclic type reference: ${reference}`);
+  const definition = data.types[reference];
+  if (!definition) throw new SchemaError(`unknown type reference: ${reference}`);
+  visiting.add(reference);
+  try {
+    const local =
+      (property === "allowedvalues" && (definition.allowedValues?.length ?? 0) > 0) ||
+      (property === "min" && definition.min !== undefined) ||
+      (property === "max" && definition.max !== undefined) ||
+      (property === "pattern" && definition.pattern !== undefined) ||
+      (property === "format" && definition.format !== undefined);
+    if (local) return true;
+    const references = [
+      ...(definition.reference ? [definition.reference] : []),
+      ...(definition.oneOf ?? []),
+      ...(definition.anyOf ?? []),
+      ...(definition.condition ? [definition.thenReference ?? "", definition.elseReference ?? ""] : []),
+    ];
+    return references.some((nested) => nested !== "" && referenceHasConstraint(data, nested, property, visiting));
+  } finally {
+    visiting.delete(reference);
   }
 }
 
@@ -432,7 +508,10 @@ function validateSelectorCycle(
 
 export function validateArrayRanges(data: SchemaData): void {
   const validateDefinition = (definition: RawDefinition): void => {
-    if (definition.typeName === "array" && (definition.min !== undefined || definition.max !== undefined)) {
+    if (
+      (definition.typeName === "array" || definition.typeName === "collection") &&
+      (definition.min !== undefined || definition.max !== undefined)
+    ) {
       let itemResult: EffectiveKindResult;
       try {
         itemResult = resolveItemKind(data, definition.itemReference, new Set());
@@ -465,7 +544,7 @@ export function validateAllowedValueTypes(data: SchemaData): void {
     const allowedValues = definition.allowedValues ?? [];
     if (allowedValues.length > 0) {
       const permittedTypes = new Set<SchemaType>();
-      if (definition.typeName === "array") {
+      if (definition.typeName === "array" || definition.typeName === "collection") {
         if (definition.itemReference) {
           collectReferenceTypes(data, definition.itemReference, new Set(), permittedTypes);
         }

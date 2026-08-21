@@ -226,7 +226,7 @@ func LoadSchema(path string) (*Schema, error) {
 	if err := schema.validateSemantics(); err != nil {
 		return nil, err
 	}
-	if err := schema.validateArrayRanges(); err != nil {
+	if err := schema.validateMemberConstraints(); err != nil {
 		return nil, err
 	}
 	if err := schema.validateDefaults(); err != nil {
@@ -428,9 +428,6 @@ func (s *Schema) effectiveKind(definition Definition, visiting map[string]bool) 
 	if len(definition.allOf) == 0 {
 		return kind, resolved, nil
 	}
-	if !resolved || kind == TypeAny {
-		return "", false, fmt.Errorf("allof requires a determinate effective kind")
-	}
 	for _, reference := range definition.allOf {
 		component, err := s.definitionForReference(reference)
 		if err != nil {
@@ -440,8 +437,14 @@ func (s *Schema) effectiveKind(definition Definition, visiting map[string]bool) 
 		if err != nil {
 			return "", false, err
 		}
-		if !ok || componentKind == TypeAny || componentKind != kind {
+		if !ok || componentKind == TypeAny {
+			return "", false, fmt.Errorf("allof component %s has indeterminate effective kind", reference)
+		}
+		if resolved && componentKind != kind {
 			return "", false, fmt.Errorf("allof component %s has incompatible effective kind", reference)
+		}
+		if !resolved {
+			kind, resolved = componentKind, true
 		}
 	}
 	return kind, true, nil
@@ -1035,9 +1038,12 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	}
 	if typeName == "" && reference == "" && !hasOneOf && !hasAnyOf && condition == nil {
 		if len(children) == 0 {
-			return Definition{}, fmt.Errorf("%s must define type, oneof, anyof, or child definitions", name)
+			if len(allOf) == 0 {
+				return Definition{}, fmt.Errorf("%s must define type, oneof, anyof, or child definitions", name)
+			}
+		} else {
+			typeName = TypeTable
 		}
-		typeName = TypeTable
 	}
 	if len(children) > 0 && typeName != TypeTable && typeName != TypeCollection {
 		return Definition{}, fmt.Errorf("%s can only define children when type is table or collection", name)
@@ -1061,6 +1067,9 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		if propertyValue(table, "min") != nil || propertyValue(table, "max") != nil {
 			return Definition{}, fmt.Errorf("%s cannot define min or max together with items", name)
 		}
+		if pattern != nil || format != "" {
+			return Definition{}, fmt.Errorf("%s cannot define pattern or format together with items", name)
+		}
 	}
 	min := propertyValue(table, "min")
 	max := propertyValue(table, "max")
@@ -1070,13 +1079,13 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	if keyPattern != nil && typeName != TypeCollection {
 		return Definition{}, fmt.Errorf("%s can only define keypattern when type is collection", name)
 	}
-	if pattern != nil && typeName != TypeString {
+	if pattern != nil && typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {
 		return Definition{}, fmt.Errorf("%s can only define pattern when type is string", name)
 	}
-	if format != "" && typeName != TypeString {
+	if format != "" && typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {
 		return Definition{}, fmt.Errorf("%s can only define format when type is string", name)
 	}
-	if hasAllowedValues && (typeName == TypeTable || typeName == TypeCollection) {
+	if hasAllowedValues && typeName == TypeTable {
 		return Definition{}, fmt.Errorf("%s can only define allowedvalues for scalar, unconstrained, or array types", name)
 	}
 	if (minLength != nil || maxLength != nil) &&
@@ -1264,7 +1273,7 @@ func validateRangeConstraints(name string, typeName SchemaType, min, max any) er
 	if typeName == TypeAny {
 		return fmt.Errorf("%s cannot define min or max when type is any", name)
 	}
-	if typeName == TypeArray {
+	if typeName == TypeArray || typeName == TypeCollection {
 		return nil
 	}
 	if typeName != "" && !isRangeComparable(typeName) {
@@ -1304,24 +1313,42 @@ func validateOrderedRange(name string, min, max any, comparableKind SchemaType) 
 	return nil
 }
 
-func (s *Schema) validateArrayRanges() error {
+func (s *Schema) validateMemberConstraints() error {
 	var validateDefinition func(Definition) error
 	validateDefinition = func(definition Definition) error {
-		if definition.typeName == TypeArray && (definition.min != nil || definition.max != nil) {
-			itemType, ok, err := s.resolveItemKind(definition.itemReference, map[string]bool{})
-			if err != nil {
-				return fmt.Errorf("%s has invalid itemtype: %w", definition.name, err)
+		if definition.typeName == TypeArray || definition.typeName == TypeCollection {
+			hasRange := definition.min != nil || definition.max != nil
+			hasStringConstraint := definition.pattern != nil || definition.format != ""
+			if hasRange || hasStringConstraint {
+				itemType, ok, err := s.resolveItemKind(definition.itemReference, map[string]bool{})
+				if err != nil {
+					return fmt.Errorf("%s has invalid itemtype: %w", definition.name, err)
+				}
+				if !ok {
+					if hasRange {
+						return fmt.Errorf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name)
+					}
+					return fmt.Errorf("%s per-member constraints require a determinate itemtype", definition.name)
+				}
+				if hasStringConstraint && itemType != TypeString {
+					return fmt.Errorf("%s can only define pattern or format when itemtype resolves to string", definition.name)
+				}
+				if hasRange && !isRangeComparable(itemType) {
+					return fmt.Errorf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name)
+				}
+				if hasRange {
+					if err := validateBoundaryMatchesType(definition.name, "min", definition.min, itemType); err != nil {
+						return err
+					}
+					if err := validateBoundaryMatchesType(definition.name, "max", definition.max, itemType); err != nil {
+						return err
+					}
+					if err := validateOrderedRange(definition.name, definition.min, definition.max, itemType); err != nil {
+						return err
+					}
+				}
 			}
-			if !ok || !isRangeComparable(itemType) {
-				return fmt.Errorf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name)
-			}
-			if err := validateBoundaryMatchesType(definition.name, "min", definition.min, itemType); err != nil {
-				return err
-			}
-			if err := validateBoundaryMatchesType(definition.name, "max", definition.max, itemType); err != nil {
-				return err
-			}
-			if err := validateOrderedRange(definition.name, definition.min, definition.max, itemType); err != nil {
+			if err := s.validateDuplicateMemberConstraints(definition); err != nil {
 				return err
 			}
 		}
@@ -1342,12 +1369,80 @@ func (s *Schema) validateArrayRanges() error {
 	return nil
 }
 
+func (s *Schema) validateDuplicateMemberConstraints(definition Definition) error {
+	if definition.itemReference == "" {
+		return nil
+	}
+	constraints := map[string]bool{
+		"allowedvalues": len(definition.allowedValues) > 0,
+		"min":           definition.min != nil, "max": definition.max != nil,
+		"pattern": definition.pattern != nil, "format": definition.format != "",
+	}
+	for property, present := range constraints {
+		if present {
+			found, err := s.referenceHasConstraint(
+				definition.itemReference, property, map[string]bool{})
+			if err != nil {
+				return err
+			}
+			if found {
+				return fmt.Errorf("%s defines %s both inline and on its resolved itemtype", definition.name, property)
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Schema) referenceHasConstraint(
+	reference string,
+	property string,
+	seen map[string]bool,
+) (bool, error) {
+	if _, builtin := parseSchemaType(reference); builtin {
+		return false, nil
+	}
+	if seen[reference] {
+		return false, fmt.Errorf("cyclic type reference: %s", reference)
+	}
+	definition, ok := s.types[reference]
+	if !ok {
+		return false, fmt.Errorf("unknown type reference: %s", reference)
+	}
+	seen[reference] = true
+	defer delete(seen, reference)
+	local := map[string]bool{
+		"allowedvalues": len(definition.allowedValues) > 0,
+		"min":           definition.min != nil,
+		"max":           definition.max != nil,
+		"pattern":       definition.pattern != nil,
+		"format":        definition.format != "",
+	}[property]
+	if local {
+		return true, nil
+	}
+	references := append([]string{}, definition.oneOf...)
+	references = append(references, definition.anyOf...)
+	if definition.reference != "" {
+		references = append(references, definition.reference)
+	}
+	if definition.condition != nil {
+		references = append(references, definition.thenReference, definition.elseReference)
+	}
+	for _, nested := range references {
+		found, err := s.referenceHasConstraint(nested, property, seen)
+		if err != nil || found {
+			return found, err
+		}
+	}
+	return false, nil
+}
+
 func (s *Schema) validateAllowedValueTypes() error {
 	var validateDefinition func(Definition) error
 	validateDefinition = func(definition Definition) error {
 		permittedTypes := map[SchemaType]bool{}
 		if len(definition.allowedValues) > 0 {
-			if definition.typeName == TypeArray {
+			if definition.typeName == TypeArray || definition.typeName == TypeCollection {
 				if definition.itemReference != "" {
 					if err := s.collectReferenceTypes(
 						definition.itemReference,
@@ -1548,7 +1643,7 @@ func validateAllowedValuesConstraints(
 	min, max any,
 	minLength, maxLength *int,
 ) error {
-	if len(allowedValues) == 0 || typeName == TypeArray {
+	if len(allowedValues) == 0 || typeName == TypeArray || typeName == TypeCollection {
 		return nil
 	}
 	for index, allowed := range allowedValues {
@@ -1829,6 +1924,10 @@ func (v *validator) validateComposedStructure(
 	definition Definition,
 	inheritedKeys map[string]bool,
 ) {
+	if definition.typeName == "" && definition.reference == "" &&
+		len(definition.oneOf) == 0 && len(definition.anyOf) == 0 && definition.condition == nil {
+		definition.typeName = kind
+	}
 	parts, err := v.compositionParts(definition, map[string]bool{})
 	if err != nil {
 		v.add(path, err.Error())
@@ -1989,6 +2088,7 @@ func (v *validator) validateComposedParts(
 				if component.keyPattern != nil && !matchesPattern(component.keyPattern, key) {
 					v.add(childPath, "key does not match keypattern "+component.keyPattern.String())
 				}
+				v.validateMemberValueConstraints(childPath, entry, component)
 				// A composed collection may take its dynamic-entry constraint
 				// entirely from another contributor.
 				if component.itemReference == "" {
@@ -2201,6 +2301,7 @@ func (v *validator) validateCollection(path string, table map[string]any, defini
 			continue
 		}
 		v.validateValue(childPath, value, referenced)
+		v.validateMemberValueConstraints(childPath, value, definition)
 	}
 	v.validateLength(path, dynamicEntries, definition)
 	for key, child := range definition.children {
@@ -2247,16 +2348,10 @@ func (v *validator) validateArray(path string, array []any, definition Definitio
 		v.add(path, err.Error())
 		return
 	}
-	rangeType, hasRangeType, _ := v.schema.resolveItemKind(definition.itemReference, map[string]bool{})
 	for i, item := range array {
 		itemPath := fmt.Sprintf("%s[%d]", path, i)
 		v.validateValue(itemPath, item, itemDefinition)
-		if len(definition.allowedValues) > 0 {
-			v.validateAllowedValues(itemPath, item, definition)
-		}
-		if hasRangeType && isType(item, rangeType) {
-			v.validateRange(itemPath, item, definition)
-		}
+		v.validateMemberValueConstraints(itemPath, item, definition)
 	}
 }
 
@@ -2328,6 +2423,9 @@ func (v *validator) validateCommonConstraints(path string, value any, definition
 		v.validateLength(path, len(array), definition)
 		return
 	}
+	if _, ok := value.(map[string]any); ok && definition.typeName == TypeCollection {
+		return
+	}
 	v.validateAllowedValues(path, value, definition)
 	if len(definition.allowedValues) > 0 {
 		return
@@ -2335,6 +2433,21 @@ func (v *validator) validateCommonConstraints(path string, value any, definition
 	v.validateRange(path, value, definition)
 	if stringValue, ok := value.(string); ok {
 		v.validateLength(path, utf8.RuneCountInString(stringValue), definition)
+		if definition.pattern != nil && !matchesPattern(definition.pattern, stringValue) {
+			v.add(path, "does not match pattern "+definition.pattern.String())
+		}
+		if definition.format != "" && !validateStringFormat(definition.format, stringValue) {
+			v.add(path, "invalid string for format "+definition.format)
+		}
+	}
+}
+
+func (v *validator) validateMemberValueConstraints(path string, value any, definition Definition) {
+	v.validateAllowedValues(path, value, definition)
+	if len(definition.allowedValues) == 0 {
+		v.validateRange(path, value, definition)
+	}
+	if stringValue, ok := value.(string); ok {
 		if definition.pattern != nil && !matchesPattern(definition.pattern, stringValue) {
 			v.add(path, "does not match pattern "+definition.pattern.String())
 		}

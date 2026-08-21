@@ -250,7 +250,7 @@ function validateRangeConstraints(
   if (typeName === "any") {
     throw new SchemaError(`${name} cannot define min or max when type is any`);
   }
-  if (typeName === "array") return;
+  if (typeName === "array" || typeName === "collection") return;
   if (typeName !== undefined && !isRangeComparable(typeName)) {
     throw new SchemaError(
       `${name} can only define min or max for integer, float, date/time, or compatible array types`,
@@ -293,7 +293,7 @@ function validateAllowedValuesConstraints(
   minLength: number | undefined,
   maxLength: number | undefined,
 ): void {
-  if (allowedValues.length === 0 || typeName === "array") return;
+  if (allowedValues.length === 0 || typeName === "array" || typeName === "collection") return;
   allowedValues.forEach((allowed, index) => {
     const entry = `${name} allowedvalues[${index}]`;
     if (pattern !== undefined) {
@@ -701,9 +701,12 @@ export function parseDefinition(
   }
   if (typeName === undefined && reference === "" && !hasOneOf && !hasAnyOf && condition === undefined) {
     if (Object.keys(children).length === 0) {
-      throw new SchemaError(`${name} must define type, oneof, anyof, or child definitions`);
+      if (allOf.length === 0) {
+        throw new SchemaError(`${name} must define type, oneof, anyof, or child definitions`);
+      }
+    } else {
+      typeName = "table";
     }
-    typeName = "table";
   }
   if (Object.keys(children).length > 0 && typeName !== "table" && typeName !== "collection") {
     throw new SchemaError(`${name} can only define children when type is table or collection`);
@@ -727,6 +730,9 @@ export function parseDefinition(
     if (propertyValue(table, "min") !== undefined || propertyValue(table, "max") !== undefined) {
       throw new SchemaError(`${name} cannot define min or max together with items`);
     }
+    if (patternResult !== undefined || format !== undefined) {
+      throw new SchemaError(`${name} cannot define pattern or format together with items`);
+    }
   }
   const min = propertyValue(table, "min");
   const max = propertyValue(table, "max");
@@ -736,13 +742,18 @@ export function parseDefinition(
   if (keyPatternResult !== undefined && typeName !== "collection") {
     throw new SchemaError(`${name} can only define keypattern when type is collection`);
   }
-  if (patternResult !== undefined && typeName !== "string") {
+  if (
+    patternResult !== undefined &&
+    typeName !== "string" &&
+    typeName !== "array" &&
+    typeName !== "collection"
+  ) {
     throw new SchemaError(`${name} can only define pattern when type is string`);
   }
-  if (format !== undefined && typeName !== "string") {
+  if (format !== undefined && typeName !== "string" && typeName !== "array" && typeName !== "collection") {
     throw new SchemaError(`${name} can only define format when type is string`);
   }
-  if (hasAllowedValues && (typeName === "table" || typeName === "collection")) {
+  if (hasAllowedValues && typeName === "table") {
     throw new SchemaError(`${name} can only define allowedvalues for scalar, unconstrained, or array types`);
   }
   if (

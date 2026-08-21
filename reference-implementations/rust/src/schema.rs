@@ -447,7 +447,7 @@ impl Schema {
         schema.validate_selector_cycles()?;
         schema.validate_allowed_value_types()?;
         schema.validate_definition_semantics()?;
-        schema.validate_array_range_definitions()?;
+        schema.validate_member_constraints()?;
         schema.validate_defaults()?;
         Ok(schema)
     }
@@ -500,13 +500,6 @@ impl Schema {
         Ok(())
     }
 
-    fn validate_array_range_definitions(&self) -> Result<(), String> {
-        for definition in self.types.values().chain(self.elements.values()) {
-            self.validate_array_range_definition(definition)?;
-        }
-        Ok(())
-    }
-
     fn validate_allowed_value_types(&self) -> Result<(), String> {
         for definition in self.types.values().chain(self.elements.values()) {
             self.validate_allowed_value_definition(definition)?;
@@ -517,7 +510,10 @@ impl Schema {
     fn validate_allowed_value_definition(&self, definition: &Definition) -> Result<(), String> {
         let mut permitted_types = HashSet::new();
         if !definition.allowed_values.is_empty() {
-            if definition.type_name == Some(SchemaType::Array) {
+            if matches!(
+                definition.type_name,
+                Some(SchemaType::Array | SchemaType::Collection)
+            ) {
                 if let Some(reference) = definition.item_reference.as_deref() {
                     self.collect_reference_types(
                         reference,
@@ -806,9 +802,9 @@ impl Schema {
         seen: &mut HashSet<String>,
     ) -> Result<SchemaType, String> {
         let base_kind = if let Some(type_name) = definition.type_name {
-            type_name
+            Some(type_name)
         } else if let Some(reference) = definition.reference.as_deref() {
-            self.reference_kind(reference, seen)?
+            Some(self.reference_kind(reference, seen)?)
         } else if let Some(selector) = &definition.conditional {
             let then_kind = self.reference_kind(&selector.then_reference, seen)?;
             let else_kind = self.reference_kind(&selector.else_reference, seen)?;
@@ -824,8 +820,8 @@ impl Schema {
                     definition.name
                 ));
             }
-            then_kind
-        } else {
+            Some(then_kind)
+        } else if !definition.one_of.is_empty() || !definition.any_of.is_empty() {
             let alternatives = if !definition.one_of.is_empty() {
                 &definition.one_of
             } else {
@@ -841,26 +837,39 @@ impl Schema {
                     definition.name
                 ));
             }
-            *kinds.iter().next().expect("one alternative kind")
+            Some(*kinds.iter().next().expect("one alternative kind"))
+        } else {
+            None
         };
         if !definition.all_of.is_empty() {
-            if matches!(base_kind, SchemaType::Any) {
-                return Err(format!(
-                    "{} cannot compose an indeterminate any type with allof",
-                    definition.name
-                ));
-            }
+            let mut effective = base_kind;
             for reference in &definition.all_of {
                 let component_kind = self.reference_kind(reference, seen)?;
-                if component_kind == SchemaType::Any || component_kind != base_kind {
+                if component_kind == SchemaType::Any {
                     return Err(format!(
-                        "{} allof component {reference} has incompatible effective type",
+                        "{} allof component {reference} has indeterminate effective type",
                         definition.name
                     ));
                 }
+                if let Some(base_kind) = effective {
+                    if component_kind != base_kind {
+                        return Err(format!(
+                            "{} allof component {reference} has incompatible effective type",
+                            definition.name
+                        ));
+                    }
+                } else {
+                    effective = Some(component_kind);
+                }
             }
+            return effective.ok_or_else(|| {
+                format!("{} allof has no determinate effective type", definition.name)
+            });
         }
-        Ok(base_kind)
+        if matches!(base_kind, Some(SchemaType::Any)) {
+            return Ok(SchemaType::Any);
+        }
+        base_kind.ok_or_else(|| format!("{} has no effective type", definition.name))
     }
 
     fn reference_kind(
@@ -1008,40 +1017,71 @@ impl Schema {
         Ok(())
     }
 
-    fn validate_array_range_definition(&self, definition: &Definition) -> Result<(), String> {
-        if definition.type_name == Some(SchemaType::Array)
-            && (definition.min.is_some() || definition.max.is_some())
-        {
-            let item_type = self.array_range_item_type(definition)?;
-            validate_boundary_matches_type(
-                &definition.name,
-                "min",
-                definition.min.as_ref(),
-                item_type,
-            )?;
-            validate_boundary_matches_type(
-                &definition.name,
-                "max",
-                definition.max.as_ref(),
-                item_type,
-            )?;
-            validate_ordered_range(
-                &definition.name,
-                definition.min.as_ref(),
-                definition.max.as_ref(),
-                item_type,
-            )?;
-        }
-        for child in definition.children.values() {
-            self.validate_array_range_definition(child)?;
+    fn validate_member_constraints(&self) -> Result<(), String> {
+        for definition in self.types.values().chain(self.elements.values()) {
+            self.validate_member_constraint_definition(definition)?;
         }
         Ok(())
     }
 
-    fn array_range_item_type(&self, definition: &Definition) -> Result<SchemaType, String> {
+    fn validate_member_constraint_definition(
+        &self,
+        definition: &Definition,
+    ) -> Result<(), String> {
+        if matches!(
+            definition.type_name,
+            Some(SchemaType::Array | SchemaType::Collection)
+        ) {
+            let has_range = definition.min.is_some() || definition.max.is_some();
+            let has_string_constraint =
+                definition.pattern.is_some() || definition.string_format.is_some();
+            if has_range || has_string_constraint {
+                let item_type = self.member_item_type(definition)?;
+                if has_string_constraint && item_type != SchemaType::String {
+                    return Err(format!(
+                        "{} can only define pattern or format when itemtype resolves to string",
+                        definition.name
+                    ));
+                }
+                if has_range && !item_type.is_range_comparable() {
+                    return Err(format!(
+                        "{} can only define min or max when itemtype resolves to one comparable built-in type",
+                        definition.name
+                    ));
+                }
+                if has_range {
+                    validate_boundary_matches_type(
+                        &definition.name,
+                        "min",
+                        definition.min.as_ref(),
+                        item_type,
+                    )?;
+                    validate_boundary_matches_type(
+                        &definition.name,
+                        "max",
+                        definition.max.as_ref(),
+                        item_type,
+                    )?;
+                    validate_ordered_range(
+                        &definition.name,
+                        definition.min.as_ref(),
+                        definition.max.as_ref(),
+                        item_type,
+                    )?;
+                }
+            }
+            self.validate_duplicate_member_constraints(definition)?;
+        }
+        for child in definition.children.values() {
+            self.validate_member_constraint_definition(child)?;
+        }
+        Ok(())
+    }
+
+    fn member_item_type(&self, definition: &Definition) -> Result<SchemaType, String> {
         let Some(reference) = definition.item_reference.as_deref() else {
             return Err(format!(
-                "{} can only define min or max when itemtype resolves to one comparable built-in type",
+                "{} per-member constraints require a determinate itemtype",
                 definition.name
             ));
         };
@@ -1054,13 +1094,80 @@ impl Schema {
             ));
         }
         let item_type = *types.iter().next().expect("one item type");
-        if !item_type.is_range_comparable() {
-            return Err(format!(
-                "{} can only define min or max when itemtype resolves to one comparable built-in type",
-                definition.name
-            ));
-        }
         Ok(item_type)
+    }
+
+    fn validate_duplicate_member_constraints(
+        &self,
+        definition: &Definition,
+    ) -> Result<(), String> {
+        let Some(reference) = definition.item_reference.as_deref() else {
+            return Ok(());
+        };
+        for (property, present) in [
+            ("allowedvalues", !definition.allowed_values.is_empty()),
+            ("min", definition.min.is_some()),
+            ("max", definition.max.is_some()),
+            ("pattern", definition.pattern.is_some()),
+            ("format", definition.string_format.is_some()),
+        ] {
+            if present
+                && self.reference_has_constraint(reference, property, &mut HashSet::new())?
+            {
+                return Err(format!(
+                    "{} defines {property} both inline and on its resolved itemtype",
+                    definition.name
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    fn reference_has_constraint(
+        &self,
+        reference: &str,
+        property: &str,
+        seen: &mut HashSet<String>,
+    ) -> Result<bool, String> {
+        let normalized = normalize_reference(reference.to_string());
+        if SchemaType::parse(&normalized).is_some() {
+            return Ok(false);
+        }
+        if !seen.insert(normalized.clone()) {
+            return Err(format!("cyclic type reference: {normalized}"));
+        }
+        let definition = self
+            .types
+            .get(&normalized)
+            .ok_or_else(|| format!("unknown type reference: {reference}"))?;
+        let local = match property {
+            "allowedvalues" => !definition.allowed_values.is_empty(),
+            "min" => definition.min.is_some(),
+            "max" => definition.max.is_some(),
+            "pattern" => definition.pattern.is_some(),
+            "format" => definition.string_format.is_some(),
+            _ => false,
+        };
+        if local {
+            seen.remove(&normalized);
+            return Ok(true);
+        }
+        let mut references = Vec::new();
+        references.extend(definition.reference.iter().cloned());
+        references.extend(definition.one_of.iter().cloned());
+        references.extend(definition.any_of.iter().cloned());
+        if let Some(selector) = &definition.conditional {
+            references.push(selector.then_reference.clone());
+            references.push(selector.else_reference.clone());
+        }
+        for nested in references {
+            if self.reference_has_constraint(&nested, property, seen)? {
+                seen.remove(&normalized);
+                return Ok(true);
+            }
+        }
+        seen.remove(&normalized);
+        Ok(false)
     }
 
     fn collect_reference_types(
@@ -1511,11 +1618,14 @@ fn parse_definition(
         && conditional.is_none()
     {
         if children.is_empty() {
-            return Err(format!(
-                "{name} must define type, oneof, anyof, if/then/else, or child definitions"
-            ));
+            if all_of.is_empty() {
+                return Err(format!(
+                    "{name} must define type, oneof, anyof, if/then/else, or child definitions"
+                ));
+            }
+        } else {
+            type_name = Some(SchemaType::Table);
         }
-        type_name = Some(SchemaType::Table);
     }
     if !children.is_empty()
         && !matches!(type_name, Some(SchemaType::Table | SchemaType::Collection))
@@ -1553,23 +1663,38 @@ fn parse_definition(
                 "{name} cannot define min or max together with items"
             ));
         }
+        if pattern.is_some() || string_format.is_some() {
+            return Err(format!(
+                "{name} cannot define pattern or format together with items"
+            ));
+        }
     }
     if key_pattern.is_some() && type_name != Some(SchemaType::Collection) {
         return Err(format!(
             "{name} can only define keypattern when type is collection"
         ));
     }
-    if pattern.is_some() && type_name != Some(SchemaType::String) {
+    if pattern.is_some()
+        && !matches!(
+            type_name,
+            Some(SchemaType::String | SchemaType::Array | SchemaType::Collection)
+        )
+    {
         return Err(format!(
             "{name} can only define pattern when type is string"
         ));
     }
-    if string_format.is_some() && type_name != Some(SchemaType::String) {
+    if string_format.is_some()
+        && !matches!(
+            type_name,
+            Some(SchemaType::String | SchemaType::Array | SchemaType::Collection)
+        )
+    {
         return Err(format!(
             "{name} can only define format when type is string"
         ));
     }
-    if has_allowed_values && matches!(type_name, Some(SchemaType::Table | SchemaType::Collection)) {
+    if has_allowed_values && type_name == Some(SchemaType::Table) {
         return Err(format!(
             "{name} can only define allowedvalues for scalar, unconstrained, or array types"
         ));
@@ -1863,7 +1988,10 @@ fn validate_range_constraints(
     if type_name == Some(SchemaType::Any) {
         return Err(format!("{name} cannot define min or max when type is any"));
     }
-    if type_name == Some(SchemaType::Array) {
+    if matches!(
+        type_name,
+        Some(SchemaType::Array | SchemaType::Collection)
+    ) {
         return Ok(());
     }
     if let Some(type_name) = type_name {
@@ -1967,7 +2095,12 @@ fn validate_allowed_values_constraints(
     min_length: Option<i64>,
     max_length: Option<i64>,
 ) -> Result<(), String> {
-    if allowed_values.is_empty() || type_name == Some(SchemaType::Array) {
+    if allowed_values.is_empty()
+        || matches!(
+            type_name,
+            Some(SchemaType::Array | SchemaType::Collection)
+        )
+    {
         return Ok(());
     }
     for (index, allowed) in allowed_values.iter().enumerate() {
@@ -2083,6 +2216,15 @@ impl<'schema> Validator<'schema> {
         seen: &mut HashSet<String>,
     ) -> Result<Vec<Definition>, String> {
         let mut resolved = self.resolve(definition, &mut HashSet::new())?;
+        if resolved.type_name.is_none()
+            && resolved.reference.is_none()
+            && resolved.one_of.is_empty()
+            && resolved.any_of.is_empty()
+            && resolved.conditional.is_none()
+            && !resolved.all_of.is_empty()
+        {
+            resolved.type_name = Some(self.schema.effective_kind(definition, &mut HashSet::new())?);
+        }
         let all_of = std::mem::take(&mut resolved.all_of);
         let mut components = vec![resolved];
         for reference in all_of {
@@ -2366,6 +2508,9 @@ impl<'schema> Validator<'schema> {
             if !item_definitions.is_empty() {
                 self.validate_definitions(&child_path, value, &item_definitions);
             }
+            for definition in components {
+                self.validate_member_value_constraints(&child_path, value, definition);
+            }
         }
         for definition in components {
             self.validate_length(path, dynamic_entries, definition);
@@ -2402,26 +2547,12 @@ impl<'schema> Validator<'schema> {
         if item_definition.is_none() && definition.allowed_values.is_empty() {
             return;
         }
-        let range_type = if definition.min.is_some() || definition.max.is_some() {
-            match self.schema.array_range_item_type(definition) {
-                Ok(item_type) => Some(item_type),
-                Err(error) => {
-                    self.add(path, &error);
-                    return;
-                }
-            }
-        } else {
-            None
-        };
         for (index, item) in array.iter().enumerate() {
             let item_path = format!("{path}[{index}]");
             if let Some(item_definition) = &item_definition {
                 self.validate_value(&item_path, item, item_definition);
             }
-            self.validate_allowed_values(&item_path, item, definition);
-            if range_type.is_some_and(|item_type| value_matches_type(item, item_type)) {
-                self.validate_range(&item_path, item, definition);
-            }
+            self.validate_member_value_constraints(&item_path, item, definition);
         }
     }
 
@@ -2469,6 +2600,11 @@ impl<'schema> Validator<'schema> {
             self.validate_length(path, array.len(), definition);
             return;
         }
+        if matches!(value, Value::Table(_))
+            && definition.type_name == Some(SchemaType::Collection)
+        {
+            return;
+        }
         self.validate_allowed_values(path, value, definition);
         if !definition.allowed_values.is_empty() {
             return;
@@ -2482,6 +2618,33 @@ impl<'schema> Validator<'schema> {
                         path,
                         &format!("does not match pattern {}", pattern.as_str()),
                     );
+                }
+            }
+            if let Some(string_format) = definition.string_format {
+                if !string_format.matches(string_value) {
+                    self.add(
+                        path,
+                        &format!("does not satisfy format {}", string_format.name()),
+                    );
+                }
+            }
+        }
+    }
+
+    fn validate_member_value_constraints(
+        &mut self,
+        path: &str,
+        value: &Value,
+        definition: &Definition,
+    ) {
+        self.validate_allowed_values(path, value, definition);
+        if definition.allowed_values.is_empty() {
+            self.validate_range(path, value, definition);
+        }
+        if let Value::String(string_value) = value {
+            if let Some(pattern) = &definition.pattern {
+                if !matches_pattern(pattern, string_value) {
+                    self.add(path, &format!("does not match pattern {}", pattern.as_str()));
                 }
             }
             if let Some(string_format) = definition.string_format {

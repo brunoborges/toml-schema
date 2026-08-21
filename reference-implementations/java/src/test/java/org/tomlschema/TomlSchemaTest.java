@@ -1542,13 +1542,11 @@ class TomlSchemaTest {
 
                 [types.constrainedInteger]
                 type = "integer"
-                min = 0
-                max = 100
 
                 [elements.values]
                 type = "array"
                 itemtype = "types.constrainedInteger"
-                min = -10
+                min = 0
                 max = 10
                 """);
         Path validDocument = write("array-member-boundaries-valid.toml", "values = [ 0, 10 ]");

@@ -124,6 +124,10 @@ public class SchemaLoader
         }
 
         ValidateRangeSemantics(types, elements);
+        ValidateDefinitionKinds(types, types);
+        ValidateDefinitionKinds(types, elements);
+        ValidateMemberConstraintSemantics(types, types);
+        ValidateMemberConstraintSemantics(types, elements);
         ValidateSiblingRuleSemantics(types, elements);
         ValidateConditionalSemantics(types, elements);
         return new TomlSchema(version, types, elements);
@@ -158,7 +162,8 @@ public class SchemaLoader
         var format = GetString(table, "format");
         if (format != null)
         {
-            if (type != SchemaType.String || reference != null)
+            if (type is not (SchemaType.String or SchemaType.Array or SchemaType.Collection)
+                || reference != null)
                 throw new InvalidOperationException($"{location} format is valid only with a locally selected built-in string type");
             if (!StringFormatValidator.IsSupported(format))
                 throw new InvalidOperationException($"{location} contains unknown string format: {format}");
@@ -269,12 +274,12 @@ public class SchemaLoader
                             $"{location}.allowedvalues contains a value that does not satisfy format {format}");
                 }
             }
-            if (table.ContainsKey("default")
+            if (type == SchemaType.String && table.ContainsKey("default")
                 && (defaultValue is not string defaultText
                     || !StringFormatValidator.IsValid(format, defaultText)))
                 throw new InvalidOperationException(
                     $"{location}.default does not satisfy format {format}");
-            if (defaultValue is string formattedDefault
+            if (type == SchemaType.String && defaultValue is string formattedDefault
                 && allowedValues != null
                 && !allowedValues.OfType<string>().Contains(formattedDefault, StringComparer.Ordinal))
                 throw new InvalidOperationException(
@@ -295,6 +300,14 @@ public class SchemaLoader
         if (minLength.HasValue && maxLength.HasValue && minLength > maxLength)
             throw new InvalidOperationException(
                 $"{location} minlength must not be greater than maxlength");
+        if (children.Count == 0 && type == null && reference == null
+            && !hasOneOf && !hasAnyOf && !hasConditional && (allOf?.Count ?? 0) == 0)
+            throw new InvalidOperationException(
+                $"{location} must define type, oneof, anyof, if/then/else, or child definitions");
+        if ((table.TryGetValue("items", out var tupleItems) && tupleItems is TomlArray)
+            && (allowedValues != null || min != null || max != null || pattern != null || format != null))
+            throw new InvalidOperationException(
+                $"{location} cannot combine items with per-member constraints");
 
         return new SchemaDefinition
         {
@@ -575,7 +588,7 @@ public class SchemaLoader
     {
         if (definition.Min != null || definition.Max != null)
         {
-            var comparableKind = definition.Type == SchemaType.Array
+            var comparableKind = definition.Type is SchemaType.Array or SchemaType.Collection
                 ? ResolveItemKind(definition.ItemType, types)
                 : definition.Type;
             if (comparableKind is not (SchemaType.Integer or SchemaType.Float
@@ -734,7 +747,23 @@ public class SchemaLoader
                     ? null
                     : [definition.Condition.ThenType!, definition.Condition.ElseType!];
         if (references == null)
-            return null;
+        {
+            if ((definition.AllOf?.Count ?? 0) == 0)
+                return null;
+            var componentKinds = definition.AllOf!.Select(reference =>
+            {
+                if (SchemaTypeExtensions.AllTypeNames.Contains(reference))
+                    return SchemaTypeExtensions.FromSchemaName(reference);
+                var normalized = NormalizeReference(reference);
+                return types.TryGetValue(normalized, out var target)
+                    ? EffectiveKind(target, types, new HashSet<string>(visiting))
+                    : throw new InvalidOperationException($"unknown type reference: {reference}");
+            }).Distinct().ToList();
+            if (componentKinds.Count != 1 || componentKinds[0] is null or SchemaType.Any)
+                throw new InvalidOperationException(
+                    $"{definition.Name} allof components must resolve to one determinate effective kind");
+            return componentKinds[0];
+        }
         var kinds = references.Select(reference =>
         {
             if (SchemaTypeExtensions.AllTypeNames.Contains(reference))
@@ -745,6 +774,110 @@ public class SchemaLoader
                 : throw new InvalidOperationException($"unknown type reference: {reference}");
         }).Distinct().ToList();
         return kinds.Count == 1 ? kinds[0] : null;
+    }
+
+    private static void ValidateDefinitionKinds(
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        IReadOnlyDictionary<string, SchemaDefinition> definitions)
+    {
+        foreach (var definition in definitions.Values)
+        {
+            if ((definition.AllOf?.Count ?? 0) > 0)
+            {
+                var kind = EffectiveKind(definition, types, new HashSet<string>());
+                foreach (var reference in definition.AllOf!)
+                {
+                    var component = SchemaTypeExtensions.AllTypeNames.Contains(reference)
+                        ? SchemaTypeExtensions.FromSchemaName(reference)
+                        : types.TryGetValue(NormalizeReference(reference), out var target)
+                            ? EffectiveKind(target, types, new HashSet<string>())
+                            : throw new InvalidOperationException($"unknown type reference: {reference}");
+                    if (kind == null || component == null || component == SchemaType.Any || component != kind)
+                        throw new InvalidOperationException(
+                            $"{definition.Name} allof components must resolve to one determinate effective kind");
+                }
+            }
+            ValidateDefinitionKinds(types, definition.Children);
+        }
+    }
+
+    private static void ValidateMemberConstraintSemantics(
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        IReadOnlyDictionary<string, SchemaDefinition> definitions)
+    {
+        foreach (var definition in definitions.Values)
+        {
+            if (definition.Type is SchemaType.Array or SchemaType.Collection)
+            {
+                if (definition.Pattern != null || definition.Format != null)
+                {
+                    if (ResolveItemKind(definition.ItemType, types) != SchemaType.String)
+                        throw new InvalidOperationException(
+                            $"{definition.Name} can only define pattern or format when itemtype resolves to string");
+                }
+                foreach (var (property, present) in new[]
+                {
+                    ("allowedvalues", definition.AllowedValues?.Count > 0),
+                    ("min", definition.Min != null),
+                    ("max", definition.Max != null),
+                    ("pattern", definition.Pattern != null),
+                    ("format", definition.Format != null)
+                })
+                {
+                    if (present && definition.ItemType != null
+                        && ReferenceHasConstraint(
+                            definition.ItemType, property, types, new HashSet<string>()))
+                        throw new InvalidOperationException(
+                            $"{definition.Name} defines {property} both inline and on its resolved itemtype");
+                }
+            }
+            ValidateMemberConstraintSemantics(types, definition.Children);
+        }
+    }
+
+    private static bool ReferenceHasConstraint(
+        string reference,
+        string property,
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        HashSet<string> visiting)
+    {
+        if (SchemaTypeExtensions.AllTypeNames.Contains(reference))
+            return false;
+        var normalized = NormalizeReference(reference);
+        if (!visiting.Add(normalized))
+            throw new InvalidOperationException($"cyclic type reference: {normalized}");
+        try
+        {
+            var definition = types.TryGetValue(normalized, out var target)
+                ? target
+                : throw new InvalidOperationException($"unknown type reference: {reference}");
+            var local = property switch
+            {
+                "allowedvalues" => definition.AllowedValues?.Count > 0,
+                "min" => definition.Min != null,
+                "max" => definition.Max != null,
+                "pattern" => definition.Pattern != null,
+                "format" => definition.Format != null,
+                _ => false
+            };
+            if (local)
+                return true;
+            var references = new List<string>();
+            if (definition.Reference != null) references.Add(definition.Reference);
+            references.AddRange(definition.OneOf ?? []);
+            references.AddRange(definition.AnyOf ?? []);
+            if (definition.Condition != null)
+            {
+                references.Add(definition.Condition.ThenType!);
+                references.Add(definition.Condition.ElseType!);
+            }
+            return references.Any(nested =>
+                ReferenceHasConstraint(nested, property, types, visiting));
+        }
+        finally
+        {
+            visiting.Remove(normalized);
+        }
     }
 
     private static string NormalizeReference(string reference) =>

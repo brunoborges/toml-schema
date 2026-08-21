@@ -11,7 +11,6 @@ import { isValidStringFormat } from "./formats.js";
 import { appendPath } from "./paths.js";
 import {
   effectiveKind,
-  resolveItemKind,
   type SchemaData,
 } from "./semantics.js";
 import {
@@ -298,6 +297,15 @@ export class DocumentValidator {
     definition: RawDefinition,
     inheritedKeys: ReadonlySet<string> | undefined,
   ): void {
+    if (
+      definition.typeName === undefined &&
+      !definition.reference &&
+      (definition.oneOf?.length ?? 0) === 0 &&
+      (definition.anyOf?.length ?? 0) === 0 &&
+      !definition.condition
+    ) {
+      definition = cloneDefinition(definition, { typeName: kind });
+    }
     let parts: CompositionParts;
     try {
       parts = this.compositionParts(definition, new Set());
@@ -432,6 +440,7 @@ export class DocumentValidator {
           if (component.keyPattern && !component.keyPattern.test(key)) {
             this.add(childPath, `key does not match keypattern ${component.keyPatternSource}`);
           }
+          this.validateMemberValueConstraints(childPath, entry, component);
           // A composed collection may take its dynamic-entry constraint
           // entirely from another contributor.
           if (!component.itemReference) continue;
@@ -606,6 +615,7 @@ export class DocumentValidator {
       try {
         const referenced = this.resolveReference(definition.itemReference, new Set());
         this.validateValue(childPath, value, referenced);
+        this.validateMemberValueConstraints(childPath, value, definition);
       } catch (cause) {
         this.add(childPath, errorMessage(cause));
       }
@@ -654,22 +664,10 @@ export class DocumentValidator {
       this.add(path, errorMessage(cause));
       return;
     }
-    let rangeType: SchemaType | undefined;
-    let hasRangeType = false;
-    try {
-      ({ kind: rangeType, resolved: hasRangeType } = resolveItemKind(this.#data, definition.itemReference, new Set()));
-    } catch {
-      hasRangeType = false;
-    }
     array.forEach((item, index) => {
       const itemPath = `${path}[${index}]`;
       this.validateValue(itemPath, item, itemDefinition);
-      if ((definition.allowedValues?.length ?? 0) > 0) {
-        this.validateAllowedValues(itemPath, item, definition);
-      }
-      if (hasRangeType && rangeType !== undefined && isType(item, rangeType)) {
-        this.validateRange(itemPath, item, definition);
-      }
+      this.validateMemberValueConstraints(itemPath, item, definition);
     });
   }
 
@@ -729,6 +727,7 @@ export class DocumentValidator {
       this.validateLength(path, value.length, definition);
       return;
     }
+    if (isTomlTable(value) && definition.typeName === "collection") return;
     this.validateAllowedValues(path, value, definition);
     if ((definition.allowedValues?.length ?? 0) > 0) return;
     this.validateRange(path, value, definition);
@@ -748,6 +747,19 @@ export class DocumentValidator {
     if (allowedValues.length === 0) return;
     if (allowedValues.some((allowed) => valuesEqual(allowed, value))) return;
     this.add(path, "value is not in allowedvalues");
+  }
+
+  private validateMemberValueConstraints(path: string, value: TomlValue, definition: RawDefinition): void {
+    this.validateAllowedValues(path, value, definition);
+    if ((definition.allowedValues?.length ?? 0) === 0) this.validateRange(path, value, definition);
+    if (typeof value === "string") {
+      if (definition.pattern && !definition.pattern.test(value)) {
+        this.add(path, `does not match pattern ${definition.patternSource}`);
+      }
+      if (definition.format && !isValidStringFormat(definition.format, value)) {
+        this.add(path, `is not a valid ${definition.format}`);
+      }
+    }
   }
 
   private validateRange(path: string, value: TomlValue, definition: RawDefinition): void {

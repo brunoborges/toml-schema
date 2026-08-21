@@ -193,6 +193,14 @@ class Validator:
             self.add(path, "allof has no determinate effective kind")
             return
         if kind in (SchemaType.TABLE, SchemaType.COLLECTION):
+            if (
+                definition.type_name is None
+                and not definition.reference
+                and not definition.one_of
+                and not definition.any_of
+                and definition.condition is None
+            ):
+                definition = dataclasses.replace(definition, type_name=kind)
             self.validate_composed_structure(path, value, kind, definition, None)
             return
         local = dataclasses.replace(definition, all_of=())
@@ -352,6 +360,7 @@ class Validator:
                             child_path,
                             f"key does not match keypattern {component.key_pattern.pattern}",
                         )
+                    self.validate_member_value_constraints(child_path, entry, component)
                     if not component.item_reference:
                         continue
                     try:
@@ -501,6 +510,7 @@ class Validator:
                 self.add(child_path, str(exc))
                 continue
             self.validate_value(child_path, value, referenced)
+            self.validate_member_value_constraints(child_path, value, definition)
         self.validate_length(path, dynamic_entries, definition)
         for key, child in definition.children.items():
             try:
@@ -537,17 +547,10 @@ class Validator:
         except SchemaError as exc:
             self.add(path, str(exc))
             return
-        try:
-            range_type, has_range_type = self.schema.resolve_item_kind(definition.item_reference, set())
-        except SchemaError:
-            range_type, has_range_type = None, False
         for i, item in enumerate(array):
             item_path = f"{path}[{i}]"
             self.validate_value(item_path, item, item_definition)
-            if definition.allowed_values:
-                self.validate_allowed_values(item_path, item, definition)
-            if has_range_type and is_type(item, range_type):
-                self.validate_range(item_path, item, definition)
+            self.validate_member_value_constraints(item_path, item, definition)
 
     def validate_sibling_rules(self, path: str, table: dict, definition: Definition) -> None:
         # dependentrequired is evaluated on direct presence only: a mapping
@@ -601,6 +604,8 @@ class Validator:
         if isinstance(value, list):
             self.validate_length(path, len(value), definition)
             return
+        if isinstance(value, dict) and definition.type_name == SchemaType.COLLECTION:
+            return
         self.validate_allowed_values(path, value, definition)
         if definition.allowed_values:
             return
@@ -619,6 +624,18 @@ class Validator:
             if values_equal(allowed, value):
                 return
         self.add(path, "value is not in allowedvalues")
+
+    def validate_member_value_constraints(
+        self, path: str, value: Any, definition: Definition
+    ) -> None:
+        self.validate_allowed_values(path, value, definition)
+        if not definition.allowed_values:
+            self.validate_range(path, value, definition)
+        if isinstance(value, str):
+            if definition.pattern is not None and not definition.pattern.search(value):
+                self.add(path, f"does not match pattern {definition.pattern.pattern}")
+            if definition.format and not matches_format(value, definition.format):
+                self.add(path, f"does not match format {definition.format}")
 
     def validate_range(self, path: str, value: Any, definition: Definition) -> None:
         if definition.min is not None:

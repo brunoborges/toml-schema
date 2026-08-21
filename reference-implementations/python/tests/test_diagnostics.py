@@ -143,16 +143,14 @@ version = "1.0.0"
 
 [types.boundedInteger]
 type = "integer"
-min = 10
-max = 20
 
 [types.smallInteger]
 type = "integer"
-max = 5
+allowedvalues = [1, 2, 3, 4, 5]
 
 [types.largeInteger]
 type = "integer"
-min = 6
+allowedvalues = [6, 7, 8, 9, 10]
 
 [types.integerAlternative]
 oneof = [ "types.smallInteger", "types.largeInteger" ]
@@ -166,8 +164,8 @@ max = 4
 [elements.named]
 type = "array"
 itemtype = "types.boundedInteger"
-min = 5
-max = 25
+min = 10
+max = 20
 
 [elements.alternatives]
 type = "array"

@@ -1078,12 +1078,11 @@ version = "1.0.0"
 
 [types.boundedInteger]
 type = "integer"
-min = 3
-max = 8
+allowedvalues = [3, 4, 5, 6, 7, 8]
 
 [types.lowInteger]
 type = "integer"
-max = 6
+allowedvalues = [1, 2, 3, 4, 5, 6]
 
 [types.integerAlternative]
 anyof = [ "types.boundedInteger", "types.lowInteger" ]
@@ -1097,8 +1096,8 @@ max = 4
 [elements.named]
 type = "array"
 itemtype = "types.boundedInteger"
-min = 0
-max = 20
+min = 3
+max = 8
 
 [elements.alternative]
 type = "array"
@@ -4117,6 +4116,162 @@ fn rejects_non_table_conditional_defaults_at_schema_load_time() {
          then = \"types.selected\"\nelse = \"types.fallback\"\ndefault = \"sqlite\"\n",
     );
     Schema::load(schema_path).expect_err("conditional default must be a table");
+}
+
+#[test]
+fn loads_pure_allof_mixin_and_uses_determinate_children() {
+    let directory = tempfile_dir("pure-allof");
+    let schema_path = write_file(&directory, "schema.tosd", r#"
+[toml-schema]
+version = "1.0.0"
+[types.named]
+type = "table"
+[types.named.name]
+type = "string"
+[types.packageBase]
+type = "table"
+[types.packageBase.version]
+type = "string"
+[types.package]
+allof = ["types.packageBase", "types.named"]
+dependentrequired = { name = ["version"] }
+[types.positive]
+type = "integer"
+min = 1
+[types.small]
+type = "integer"
+max = 10
+[types.count]
+allof = ["types.positive", "types.small"]
+[elements.pkg]
+type = "types.package"
+[elements.count]
+type = "types.count"
+"#);
+    let valid = write_file(&directory, "valid.toml", "pkg = { name = \"x\", version = \"1\" }\ncount = 5\n");
+    let invalid = write_file(&directory, "invalid.toml", "pkg = { name = \"x\", version = \"1\" }\ncount = 0\n");
+    let schema = Schema::load(schema_path).expect("pure allof mixin must load");
+    assert!(schema.validate_file(valid).valid());
+    assert!(!schema.validate_file(invalid).valid());
+}
+
+#[test]
+fn rejects_mixed_kind_pure_allof_at_load() {
+    let directory = tempfile_dir("mixed-pure-allof");
+    let schema_path = write_file(&directory, "schema.tosd", r#"
+[toml-schema]
+version = "1.0.0"
+[types.aTable]
+type = "table"
+[types.aTable.x]
+type = "string"
+[types.anArray]
+type = "array"
+itemtype = "string"
+[types.bad]
+allof = ["types.aTable", "types.anArray"]
+[elements.value]
+type = "types.bad"
+"#);
+    Schema::load(schema_path).expect_err("mixed-kind pure allof must fail at load");
+}
+
+#[test]
+fn validates_inline_array_pattern() {
+    let directory = tempfile_dir("array-pattern");
+    let schema_path = write_file(&directory, "schema.tosd", r#"
+[toml-schema]
+version = "1.0.0"
+[elements.tags]
+type = "array"
+itemtype = "string"
+pattern = '^[a-z]+$'
+"#);
+    let valid = write_file(&directory, "valid.toml", "tags = [\"alpha\", \"beta\"]\n");
+    let invalid = write_file(&directory, "invalid.toml", "tags = [\"alpha\", \"Beta\"]\n");
+    let schema = Schema::load(schema_path).expect("array pattern must load");
+    assert!(schema.validate_file(valid).valid());
+    assert!(has_path(&schema.validate_file(invalid), "$.tags[1]"));
+}
+
+#[test]
+fn validates_inline_collection_member_constraints() {
+    let directory = tempfile_dir("collection-constraints");
+    let schema_path = write_file(&directory, "schema.tosd", r#"
+[toml-schema]
+version = "1.0.0"
+[elements.ports]
+type = "collection"
+itemtype = "integer"
+min = 1
+max = 65535
+[elements.roles]
+type = "collection"
+itemtype = "string"
+allowedvalues = ["admin", "reader"]
+[elements.tags]
+type = "collection"
+itemtype = "string"
+pattern = '^[a-z]+@example\.com$'
+[elements.emails]
+type = "collection"
+itemtype = "string"
+format = "email"
+"#);
+    let valid = write_file(&directory, "valid.toml", "[ports]\nhttp = 80\n[roles]\nowner = \"admin\"\n[tags]\nrelease = \"stable@example.com\"\n[emails]\nowner = \"admin@example.com\"\n");
+    let invalid = write_file(&directory, "invalid.toml", "[ports]\nlow = 0\nhigh = 70000\n[roles]\nowner = \"root\"\n[tags]\nrelease = \"Stable\"\n[emails]\nowner = \"not-an-email\"\n");
+    let schema = Schema::load(schema_path).expect("collection constraints must load");
+    assert!(schema.validate_file(valid).valid());
+    let result = schema.validate_file(invalid);
+    assert!(has_path(&result, "$.ports.low"));
+    assert!(has_path(&result, "$.ports.high"));
+    assert!(has_path(&result, "$.roles.owner"));
+    assert!(has_path(&result, "$.tags.release"));
+    assert!(has_path(&result, "$.emails.owner"));
+}
+
+#[test]
+fn rejects_duplicate_inline_and_itemtype_constraint_at_load() {
+    let directory = tempfile_dir("duplicate-member-constraint");
+    let schema_path = write_file(&directory, "schema.tosd", r#"
+[toml-schema]
+version = "1.0.0"
+[types.item]
+type = "integer"
+min = 0
+[elements.values]
+type = "array"
+itemtype = "types.item"
+min = -10
+"#);
+    Schema::load(schema_path).expect_err("duplicate member constraint must fail at load");
+}
+
+#[test]
+fn allows_inline_constraint_matching_itemtype_allof_constraint() {
+    let directory = tempfile_dir("inherited-member-constraint");
+    let schema_path = write_file(&directory, "schema.tosd", r#"
+[toml-schema]
+version = "1.0.0"
+[types.mixin]
+type = "string"
+allowedvalues = ["a", "b"]
+[types.item]
+type = "string"
+allof = ["types.mixin"]
+[elements.values]
+type = "array"
+itemtype = "types.item"
+allowedvalues = ["b", "c"]
+"#);
+    let schema = Schema::load(schema_path).expect("allof-acquired constraint must not conflict");
+    let valid = write_file(&directory, "valid.toml", "values = [\"b\"]\n");
+    let inline_invalid = write_file(&directory, "inline-invalid.toml", "values = [\"a\"]\n");
+    let inherited_invalid =
+        write_file(&directory, "inherited-invalid.toml", "values = [\"c\"]\n");
+    assert!(schema.validate_file(valid).valid());
+    assert!(!schema.validate_file(inline_invalid).valid());
+    assert!(!schema.validate_file(inherited_invalid).valid());
 }
 
 fn tempfile_dir(name: &str) -> PathBuf {

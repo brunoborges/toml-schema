@@ -220,6 +220,16 @@ itemtype = "types.never"
     type = "string"
     optional = true
 
+# `allowedvalues`, `min`, `max`, `pattern`, and `format` are the per-member
+# value-constraint subset: on an array they constrain each item, not the array.
+    [types.arrayDefinition.format]
+    type = "types.stringFormat"
+    optional = true
+
+    [types.arrayDefinition.pattern]
+    type = "string"
+    optional = true
+
     [types.arrayDefinition.allowedvalues]
     type = "types.nonEmptyValues"
     optional = true
@@ -357,6 +367,29 @@ itemtype = "types.schemaDef"
 
     [types.collectionDefinition.children.keypattern]
     oneof = [ "string", "types.schemaDef" ]
+    optional = true
+
+# `allowedvalues`, `min`, `max`, `pattern`, and `format` are the per-member
+# value-constraint subset: on a collection they constrain each dynamic entry's
+# value, not the collection. `keypattern` above constrains the entry key.
+    [types.collectionDefinition.children.format]
+    oneof = [ "types.stringFormat", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.pattern]
+    oneof = [ "string", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.allowedvalues]
+    oneof = [ "types.nonEmptyValues", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.min]
+    oneof = [ "integer", "float", "offset-date-time", "local-date-time", "local-date", "local-time", "types.schemaDef" ]
+    optional = true
+
+    [types.collectionDefinition.children.max]
+    oneof = [ "integer", "float", "offset-date-time", "local-date-time", "local-date", "local-time", "types.schemaDef" ]
     optional = true
 
     [types.collectionDefinition.children.minlength]
@@ -548,6 +581,32 @@ itemtype = "types.schemaDef"
     anyof = [ "types.escapedChildren", "types.literalChildren" ]
     optional = true
 
+# A pure mixin: a non-empty `allof` is the only applicator, so the composition
+# supplies the effective type. It declares no selector and no nested child
+# definitions, which is why dynamic entries validate against `never`.
+[types.mixinDefinition]
+type = "collection"
+itemtype = "types.never"
+
+    [types.mixinDefinition.allof]
+    type = "types.uniqueTypeReferences"
+
+    [types.mixinDefinition.description]
+    type = "string"
+    optional = true
+
+    [types.mixinDefinition.optional]
+    type = "boolean"
+    optional = true
+
+    [types.mixinDefinition.default]
+    type = "any"
+    optional = true
+
+    [types.mixinDefinition.deprecated]
+    type = "boolean"
+    optional = true
+
 [types.schemaDef]
 anyof = [
     "types.stringDefinition",
@@ -561,6 +620,7 @@ anyof = [
     "types.unionDefinition",
     "types.conditionalDefinition",
     "types.implicitTableDefinition",
+    "types.mixinDefinition",
 ]
 
 [types.escapedChildren]

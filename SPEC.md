@@ -46,7 +46,7 @@ the other.
 - **Schema definition** (also **definition**). One coherent set of rules that
   governs a single position. A definition is written as a TOML table or
   key/value entry inside `[types]` or `[elements]`, or nested below one. Every
-  definition selects one type and MAY carry
+  definition has exactly one effective type and MAY carry
   [schema definition properties](#schema-definition-properties). "Definition" is
   the preferred short form; "schema definition" is the same thing spelled in
   full.
@@ -67,10 +67,13 @@ the other.
   also uses the property. Do not use "property" for a document key.
 
 - **Selector**. The property by which a definition chooses the type it governs:
-  `type`, `oneof`, `anyof`, or the `if`/`then`/`else` triple. Exactly one
-  selector applies to a definition, except that a definition with nested child
-  definitions and no explicit selector is an **implicit table**
-  (`type = "table"`). See [Types table](#types-table---types).
+  `type`, `oneof`, `anyof`, or the `if`/`then`/`else` triple. At most one
+  selector applies to a definition, and two constructs supply an omitted one: a
+  definition with nested child definitions and no explicit selector is an
+  **implicit table** (`type = "table"`), and a definition whose only applicator
+  is `allof` is a **pure mixin** whose effective type comes from its components.
+  See [Types table](#types-table---types) and
+  [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton).
 
 - **Schema type**. The type a definition *selects* through `type`: a built-in
   type name (`"string"`, `"integer"`, `"array"`, `"table"`, `"collection"`,
@@ -113,6 +116,27 @@ the other.
   local definition or any one of its `allof` components, as defined in place
   under [Merging by TOML Kind](#merging-by-toml-kind). An *`allof` component* is
   one referenced definition contributed to the composition.
+
+- **Pure mixin**. A definition whose only applicator is a non-empty `allof`,
+  with no selector and no nested child definition. It is valid when its
+  components resolve to exactly one TOML kind, which becomes its effective type.
+  [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton)
+  is authoritative.
+
+- **Per-member value-constraint subset**. The five properties `allowedvalues`,
+  `min`, `max`, `pattern`, and `format`, which MAY be written directly on an
+  `array` or a `collection` and then constrain each item or each dynamic entry
+  rather than the container. `minlength` and `maxlength` are not in the subset;
+  on a container they bound its member count.
+  [Per-Member Value Constraints](#per-member-value-constraints) is
+  authoritative.
+
+- **Local check** and **effective check**. An applicability or exclusivity check
+  that reads one definition only, versus one that reads the composed view
+  contributed by `allof` components, alternatives, or branches. Checks are local
+  unless a rule explicitly says *effective*, and
+  [Local and Effective Checks](#local-and-effective-checks) enumerates every
+  effective one.
 
 - **Assertion**, **annotation**, and **applicator**. An *assertion* is a schema
   property a document value must satisfy for the node to be valid. An
@@ -256,6 +280,7 @@ and the preferred term is the one to use in new text.
 - [Elements table - `[elements]`](#elements-table---elements)
 - [Types table - `[types]`](#types-table---types)
   - [Schema Definition Properties](#schema-definition-properties)
+    - [Local and Effective Checks](#local-and-effective-checks)
   - [Quoted and Special Keys](#quoted-and-special-keys)
   - [Scalar and Unconstrained Built-in Types](#scalar-and-unconstrained-built-in-types)
     - [Allowed Values - `allowedvalues`](#allowed-values---allowedvalues)
@@ -270,8 +295,10 @@ and the preferred term is the one to use in new text.
       - [Tuple / Positional Array Validation - `items`](#tuple--positional-array-validation---items)
       - [Array Uniqueness - `uniqueitems`](#array-uniqueness---uniqueitems)
     - [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
+    - [Per-Member Value Constraints](#per-member-value-constraints)
   - [Type Reference](#type-reference)
   - [Conjunctive Composition - `allof`](#conjunctive-composition---allof)
+    - [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton)
     - [The Effective Definition](#the-effective-definition)
     - [Merging by TOML Kind](#merging-by-toml-kind)
     - [Determinate Fixed-Child Set](#determinate-fixed-child-set)
@@ -630,13 +657,21 @@ definitions. A named definition that declares a complete collection or selects
 `type = "any"` remains a valid reference.
 
 `type`, `oneof`, `anyof`, and the `if`/`then`/`else` triple are alternative
-ways to select the type of the current schema node. Every definition MUST
-declare exactly one selector, except that a definition with nested child
-definitions MAY omit all selectors and is then treated as `type = "table"`.
+ways to select the type of the current schema node. A definition MUST declare
+at most one selector, and two constructs supply the selection in place of one:
+
+- a definition with nested child definitions MAY omit all selectors and is then
+  treated as `type = "table"`; and
+- a definition whose only applicator is a non-empty `allof` MAY omit all
+  selectors and all nested child definitions, and then takes its effective type
+  from that composition. [Composition Supplying the Local
+  Skeleton](#composition-supplying-the-local-skeleton) is authoritative for when
+  such a definition is valid and for the code a loader reports when it is not.
+
 Schema loaders MUST reject a definition that combines selectors, contains only
-part of a conditional triple, or declares no selector and has no nested child
-definitions. `type` accepts either a built-in type name or a named reusable
-definition from `[types]`. Container member types are selected separately with
+part of a conditional triple, or declares no selector, no nested child
+definitions, and no `allof`. `type` accepts either a built-in type name or a
+named reusable definition from `[types]`. Container member types are selected separately with
 `itemtype`: it validates each member of an `array` or each dynamically keyed
 value of a `collection`. `itemtype` requires the same definition to declare the
 built-in `type = "array"` or `type = "collection"`; it cannot be attached to
@@ -708,18 +743,22 @@ detailed sections below remain authoritative.
 | `type` | Selects one built-in or named type; mutually exclusive with other selectors |
 | `oneof`, `anyof` | Select the current node from one or more alternatives; mutually exclusive with other selectors |
 | `if`, `then`, `else` | Exhaustively select one of two named table-like definitions from a direct child's parsed value |
-| `allof` | Conjunctively applies one or more compatible type references in addition to the local definition |
+| `allof` | Conjunctively applies one or more compatible type references in addition to the local definition; alone, it also supplies an omitted selector, per [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton) |
 | `description`, `optional`, `default`, `deprecated` | Any definition, including a named reference or alternative selector |
-| `format` | A definition with built-in `type = "string"` |
+| `format` | A definition with built-in `type = "string"`; or, as a [per-member constraint](#per-member-value-constraints), a non-tuple `array` or `collection` whose member type is `string` |
 | `itemtype` | A definition with built-in `type = "array"` or `type = "collection"` |
-| `items` | A definition with built-in `type = "array"`; mutually exclusive with `itemtype`, `allowedvalues`, `min`, `max`, `minlength`, and `maxlength` |
-| `allowedvalues` | A scalar or unconstrained built-in type, or the items of a non-tuple `array` |
-| `pattern` | A definition with built-in `type = "string"` |
-| `keypattern` | A definition with built-in `type = "collection"` |
-| `min`, `max` | A numeric or temporal built-in type, or an `array` whose `itemtype` resolves to one comparable kind |
-| `minlength`, `maxlength` | A definition with built-in `type = "string"`, `type = "array"`, or `type = "collection"` |
+| `items` | A definition with built-in `type = "array"`; mutually exclusive with `itemtype`, `minlength`, `maxlength`, and the whole [per-member value-constraint subset](#per-member-value-constraints) (`allowedvalues`, `min`, `max`, `pattern`, `format`) |
+| `allowedvalues` | A scalar or unconstrained built-in type; or, as a [per-member constraint](#per-member-value-constraints), a non-tuple `array` or `collection` |
+| `pattern` | A definition with built-in `type = "string"`; or, as a [per-member constraint](#per-member-value-constraints), a non-tuple `array` or `collection` whose member type is `string` |
+| `keypattern` | A definition with built-in `type = "collection"`; constrains dynamic entry keys, never their values |
+| `min`, `max` | A numeric or temporal built-in type; or, as a [per-member constraint](#per-member-value-constraints), a non-tuple `array` or `collection` whose member type resolves to one comparable kind |
+| `minlength`, `maxlength` | A definition with built-in `type = "string"`, `type = "array"`, or `type = "collection"`; on a container these always bound the container's own member count and are never per-member |
 | `uniqueitems` | A definition with built-in `type = "array"` |
 | `dependentrequired`, `mutuallyexclusive`, `exactlyone` | A definition with effective type `table` or `collection` and a non-empty [determinate fixed-child set](#determinate-fixed-child-set) |
+
+Every applicability and exclusivity statement in this matrix is **local** unless
+it names the effective type or an effective set, as
+[Local and Effective Checks](#local-and-effective-checks) requires.
 
 A named type reference, alternative selector, and conditional selector may
 additionally declare only `allof`, `description`, `optional`, `default`, and
@@ -763,6 +802,68 @@ name, written through the reserved `children` namespace when the same definition
 also uses the property and TOML cannot represent both spellings. Rejecting an
 unrecognized property name therefore never restricts the application data a
 schema can describe.
+
+#### Local and Effective Checks
+
+Applicability and exclusivity checks are **local** unless a rule in this
+specification explicitly says *effective*. This statement is authoritative for
+both readings, and the sections that depend on either one point here rather than
+restating it.
+
+A **local** check reads one definition only: its own selector, its own key/value
+properties, its own nested child definitions, and the definitions its own
+references resolve to. It MUST NOT read the properties, fixed children,
+`itemtype`, or `keypattern` contributed by an `allof` component, by a `oneof` or
+`anyof` alternative, or by a conditional branch.
+
+Locality is what makes these checks decidable one definition at a time, and it
+is why an exclusion such as `items` against the
+[per-member value-constraint subset](#per-member-value-constraints) binds only
+the definition that writes both. An `allof` component MAY contribute a
+constraint the local definition could not have written beside `items`. The two
+then apply conjunctively, as [Merging by TOML Kind](#merging-by-toml-kind)
+requires, and the result is an effective definition that no document value
+satisfies rather than a schema-load error. This is not a loophole in the
+exclusion: an exclusion states what one definition may write, while composition
+states what a value must satisfy, and the two questions have different answers
+by design.
+
+The checks that read the effective, composed view instead are exactly the
+following, and each says so where it is defined:
+
+1. **Composition compatibility.** Whether the participants of an `allof` agree
+   on one effective type, including the rejection of a multi-kind local union
+   combined with `allof`. See
+   [The Effective Definition](#the-effective-definition).
+2. **The effective type of a pure mixin.** A definition whose only applicator is
+   `allof` takes its effective type from its components. See
+   [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton).
+3. **The collection `itemtype` requirement.** A `collection` obtains its
+   mandatory dynamic-entry rule locally or from a compatible `allof` component.
+   See
+   [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+4. **Sibling-rule operands and applicability.** `dependentrequired`,
+   `mutuallyexclusive`, and `exactlyone` resolve their operands against the
+   [determinate fixed-child set](#determinate-fixed-child-set), which includes
+   the children contributed by `allof`, and their `table`-or-`collection`
+   applicability is decided from the effective type. See
+   [Sibling Presence Rules](#sibling-presence-rules).
+5. **`default` validity.** A declared `default` is checked against the full
+   effective definition. See [Default](#default---default).
+6. **Openness, closure, requiredness, and unknown keys.** Whether a table is
+   open or closed, which document keys are unknown, which fixed children are
+   required, and which definitions validate a present child are all decided from
+   the node's [effective closure set](#effective-closure-set). See
+   [Tables](#tables).
+7. **Conjunctive application of contributed assertions.** Every assertion any
+   participant contributes applies to the document value, including an
+   `itemtype` or `keypattern` contributed to a collection. See
+   [Merging by TOML Kind](#merging-by-toml-kind).
+
+Items 1 through 5 are schema-load checks and read only what is determinate at
+schema-load time. Items 6 and 7 are document-validation checks. No other rule in
+this specification reads the composed view, and an implementation MUST NOT
+extend the effective reading to a check that is not listed here.
 
 ### Quoted and Special Keys
 
@@ -898,19 +999,22 @@ The scalar built-in types are:
 #### Allowed Values - `allowedvalues`
 
 `allowedvalues` provides an enumeration for a scalar or unconstrained built-in
-type. On an
-`array`, it instead enumerates the values permitted for each item, as described
+type. On an `array` or a `collection` it is instead a
+[per-member constraint](#per-member-value-constraints) and enumerates the values
+permitted for each item or each dynamic entry, as also described
 under [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
-It is invalid on a `table` or `collection`.
+It is invalid on a `table`.
 
 The `allowedvalues` array MUST contain at least one entry. Every entry on a
-non-array definition MUST have the TOML kind selected by that definition;
+definition that is neither an `array` nor a `collection` MUST have the TOML kind
+selected by that definition;
 `type = "any"` is the exception and permits entries of any TOML kind. Numeric
 equality between integers and floats does not make their TOML kinds
 interchangeable for this schema-load check. A malformed enumeration MUST be
 rejected at schema-load time.
 
-For a non-array definition, when `allowedvalues` is combined with `pattern`, `format`,
+For a definition that is neither an `array` nor a `collection`, when
+`allowedvalues` is combined with `pattern`, `format`,
 `min`, `max`, `minlength`, or `maxlength` on the same definition, every entry in
 `allowedvalues` MUST satisfy every applicable constraint. A schema containing an
 entry that violates one of those constraints is malformed, and schema loaders
@@ -922,11 +1026,13 @@ equality; equivalent instants with different retained local fields or offsets
 therefore compare equal for a boundary but remain distinct enumeration values.
 
 After a schema with `allowedvalues` has been loaded successfully, each document
-value governed by that definition — each item value, for an `array` definition —
+value governed by that definition — each item or dynamic-entry value, for an
+`array` or `collection` definition —
 is evaluated in the following order:
 
 1. The value's parsed TOML kind MUST be the kind the definition selects for it,
-   through `type` or, for array items, through `itemtype`. A kind mismatch is a
+   through `type` or, for container members, through `itemtype`. A kind mismatch
+   is a
    validation error regardless of `allowedvalues`, and membership in the
    enumeration never satisfies the type check. For example, a definition with
    `type = "integer"` and `allowedvalues = [ 80, 443 ]` rejects the document
@@ -991,7 +1097,9 @@ The formats use the following portable rules:
   It does not accept a URI host's brackets or a zone identifier. An embedded
   IPv4 suffix follows the `ipv4` rules above.
 
-`format` is valid only on a definition whose selected type is the built-in
+`format` is valid on a definition whose selected type is the built-in
+`string`, and, as a [per-member constraint](#per-member-value-constraints), on a
+non-tuple `array` or `collection` whose effective member type is the built-in
 `string`. It cannot be attached to another built-in type, an alternative
 selector, or a named type reference. A schema loader MUST reject an unsupported
 format name or incompatible use at schema-load time rather than ignoring it.
@@ -1022,14 +1130,16 @@ These properties define inclusive value ranges. They may only be used for:
  - `float`
  - `integer`
  - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
- - `array`, when `itemtype` resolves to `integer`, `float`, or one of the temporal types above
+ - `array` or `collection`, when `itemtype` resolves to `integer`, `float`, or one of the temporal types above
 
-For arrays, `min` and `max` apply to each item. `itemtype` MUST resolve to one
+For an `array` or a `collection`, `min` and `max` are
+[per-member constraints](#per-member-value-constraints) and apply to each item
+or each dynamic entry. `itemtype` MUST resolve to one
 comparable built-in kind: `integer`, `float`, `offset-date-time`,
 `local-date-time`, `local-date`, or `local-time`. Named references and aliases
 are resolved before this rule is checked, and all alternatives of a referenced
 `oneof` or `anyof` definition MUST resolve to that same kind.
-Schema loaders MUST reject array range constraints when the item schema can resolve to
+Schema loaders MUST reject container range constraints when the member schema can resolve to
 different kinds or to a non-comparable kind. The interaction between array range
 boundaries and `allowedvalues` is defined under
 [Observations on Conditions to Arrays](#observations-on-conditions-to-arrays).
@@ -1082,6 +1192,12 @@ another built-in type, an alternative selector, or a named type reference.
 Schema loaders MUST reject an incompatible length constraint at schema-load time rather
 than silently ignoring it.
 
+On an `array` or a `collection` these two properties always bound the
+container's own member count. They are deliberately excluded from the
+[per-member value-constraint subset](#per-member-value-constraints), which
+explains why, and a per-member length bound is written on the definition the
+container's `itemtype` reaches.
+
 ### Container Types
 
 - Array: `array`
@@ -1127,7 +1243,9 @@ table value without validating its contents, including its keys. This is useful
 for representing custom data payloads. Openness is a property of the effective
 closure set, so a table is open only when neither the local definition, nor any
 `allof` component, nor the selected alternative or branch contributes a fixed
-child.
+child. Openness and unknown-key rejection are two of the checks that read the
+effective rather than the local view; the complete list is under
+[Local and Effective Checks](#local-and-effective-checks).
 
 An open table is not the same as an empty root `[elements]` table. An open table
 accepts any keys; an empty `[elements]` table accepts no application data at
@@ -1143,8 +1261,15 @@ Arrays can be defined using the following properties:
  - `maxlength`: the maximum length of the array (e.g. no more than 2 elements).
  - `min`: the minimum value allowed for each comparable array item (e.g. 80).
  - `max`: the maximum value allowed for each comparable array item (e.g. 8080).
- - `allowedvalues`: enumeration of possible values.
+ - `allowedvalues`: enumeration of the values permitted for each item.
+ - `pattern`: a regular expression each string item must match.
+ - `format`: a standardized semantic format each string item must satisfy.
  - `uniqueitems`: whether every parsed array item must be unique.
+
+`min`, `max`, `allowedvalues`, `pattern`, and `format` are the
+[per-member value-constraint subset](#per-member-value-constraints); they
+constrain each item rather than the array, and a `collection` accepts the same
+five with the same meaning. `minlength` and `maxlength` bound the array itself.
 
 Example for schema definition:
 
@@ -1167,6 +1292,10 @@ Their applicability rule, including how a named `itemtype` and its alternatives
 are resolved, and the ordering rules used for numeric and temporal items, are
 defined under
 [Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max).
+`min`, `max`, `allowedvalues`, `pattern`, and `format` all apply per item here,
+and [Per-Member Value Constraints](#per-member-value-constraints) is
+authoritative for that shared subset and for its equivalence to the same
+constraint written on the `itemtype` definition.
 
 When `allowedvalues` is present on an array, every array item MUST be a member
 of that enumeration. The enumeration does not have to be sorted. If `min` or
@@ -1182,7 +1311,8 @@ schema-load check verifies the permitted TOML kind; constraints inside a named
 item definition still apply normally when a document array is validated.
 
 `minlength` and `maxlength` constrain the document array's item count, not the
-number of entries in `allowedvalues`.
+number of entries in `allowedvalues`, and never the length of an individual
+item; see [Per-Member Value Constraints](#per-member-value-constraints).
 
 If neither `itemtype` nor `items` is defined, array items default to `any`, so
 items of different TOML types may be mixed.
@@ -1282,10 +1412,15 @@ Semantics:
    `maxlength = 0` instead.
  - When `items` is present, the array MUST have exactly the same number of items.
  - `items` is mutually exclusive with `itemtype`.
- - `items` is also mutually exclusive with `min` and `max`.
  - `items` is also mutually exclusive with `minlength` and `maxlength`.
- - `items` is mutually exclusive with `allowedvalues`; constraints for a tuple
-   position belong in the reusable definition referenced at that position.
+ - `items` is mutually exclusive with the whole
+   [per-member value-constraint subset](#per-member-value-constraints):
+   `allowedvalues`, `min`, `max`, `pattern`, and `format`. Constraints for a
+   tuple position belong in the reusable definition referenced at that position.
+   The exclusion is local, as
+   [Local and Effective Checks](#local-and-effective-checks) states, so an
+   `allof` component MAY still contribute one of those constraints
+   conjunctively.
  - `items` MAY name the same type reference more than once. Each entry denotes a
    position rather than an alternative, so a tuple whose positions share a type,
    such as `items = [ "types.coordinate", "types.coordinate" ]`, is valid and
@@ -1320,14 +1455,19 @@ definition, including nested tables, arrays, and named types.
 
 A `collection` requires at least one effective `itemtype` constraint to define
 the type of its dynamic child values. The constraint may be declared locally or
-contributed by a compatible `allof` component. Each dynamic child must be given
+contributed by a compatible `allof` component; this is the collection instance
+of the general principle stated under
+[Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton),
+not a rule peculiar to collections. Each dynamic child must be given
 a unique key in the TOML document. `itemtype` may reference a built-in type or a
 named reusable definition. A schema loader MUST reject an effective collection
 when neither its local definition nor any referenced or composed definition
 contributes an `itemtype`. This is a schema-load check, so it reads only the
 contributions that are determinate at schema-load time; which components make
 one is defined under
-[Determinate Fixed-Child Set](#determinate-fixed-child-set).
+[Determinate Fixed-Child Set](#determinate-fixed-child-set). It is one of the
+checks that read the effective rather than the local view, as
+[Local and Effective Checks](#local-and-effective-checks) enumerates.
 
 The built-in `collection` cannot itself be used as `itemtype` or as an entry in
 `items`, `oneof`, `anyof`, or `allof`: those bare references provide no place to declare
@@ -1353,6 +1493,12 @@ This difference in unknown-key semantics is why `table` and `collection` are not
 interchangeable for `allof` composition.
 
 A `collection` may additionally constrain the **keys** (entry names) of its dynamic children with `keypattern`. See [Key Pattern - `keypattern`](#key-pattern---keypattern).
+
+A `collection` may also constrain the **values** of its dynamic entries inline,
+with `allowedvalues`, `min`, `max`, `pattern`, or `format`, instead of pushing
+each such constraint into a named `itemtype` definition. Those five properties
+behave identically on an `array` and on a `collection`; see
+[Per-Member Value Constraints](#per-member-value-constraints).
 
 This precedence is what lets a collection validate known keys precisely while
 applying `itemtype` only to all other keys. For example, `itemtype = "any"`
@@ -1434,6 +1580,107 @@ TOML Schema:
 
 A `collection` may be represented as subtables of a common table in a TOML document.
 
+#### Per-Member Value Constraints
+
+Five value constraints form the **per-member value-constraint subset**:
+`allowedvalues`, `min`, `max`, `pattern`, and `format`. Any of them MAY be
+declared directly on a definition that selects the built-in `type = "array"` or
+the built-in `type = "collection"`. Declared there, a constraint does not
+describe the container. It applies to **each item** of the array and to **each
+dynamically keyed entry** of the collection. The subset is identical for the two
+containers, because an array item and a collection entry are the same thing: one
+member value that the container's `itemtype` governs.
+
+Declaring a per-member constraint inline is exactly equivalent to declaring that
+same constraint on the member definition the container's `itemtype` reaches. The
+two spellings MUST validate identically, and authors MAY choose either. Inline
+is the shorter spelling for a container whose members need one or two
+constraints; a named `itemtype` definition is the reusable one.
+
+```toml
+[elements.ports]
+type = "array"
+itemtype = "integer"
+min = 1
+max = 65535
+
+[elements.hosts]
+type = "collection"
+itemtype = "string"
+format = "hostname"
+keypattern = "^[a-z][a-z0-9-]*$"
+```
+
+On a `collection`, `pattern` constrains each dynamic entry's **value** while
+`keypattern` constrains each dynamic entry's **key**. The two are independent,
+apply to different subjects, and MAY be combined on the same definition.
+
+Because the two spellings are equivalent, declaring the **same** constraint both
+inline and on the resolved `itemtype` definition is a schema-load error, and
+schema loaders MUST reject it with `exclusive-properties`. This specification
+defines no precedence between them and needs none: a schema that would say the
+same thing twice says it once instead. Different constraints MAY be split across
+the two spellings and then apply conjunctively. The check compares the inline
+constraint against the constraint the resolved `itemtype` definition declares
+itself; a constraint that definition acquires from its own `allof` is not part
+of the check and merges conjunctively as
+[Merging by TOML Kind](#merging-by-toml-kind) requires.
+
+A per-member constraint obeys the same applicability rule its own section
+states, applied to the **member** type rather than to the container:
+
+- `pattern` and `format` require the effective member type to be the built-in
+  `string`, as [Pattern](#pattern---pattern) and
+  [String Format](#string-format---format) require of a string constraint.
+- `min` and `max` require the effective member type to resolve to exactly one
+  comparable kind, as
+  [Minimum Value / Maximum Value](#minimum-value--maximum-value---min-and-max)
+  requires.
+- every `allowedvalues` entry MUST have a TOML kind the effective member type
+  permits, as [Allowed Values](#allowed-values---allowedvalues) requires.
+
+The member type is the one the container's `itemtype` selects, resolved through
+named references and through the alternatives of a referenced `oneof` or
+`anyof`, which MUST all resolve to the same kind. When a container declares no
+`itemtype`, its members are unconstrained `any`: `allowedvalues` still applies
+and enumerates values of any TOML kind, while `min`, `max`, `pattern`, and
+`format` have no determinate member kind to apply to. Schema loaders MUST reject
+a per-member constraint whose member type is indeterminate or of the wrong kind
+at schema-load time.
+
+`items` is mutually exclusive with the whole subset. A tuple position is
+described by the reusable definition named at that position, so a constraint
+that would apply uniformly to every member has no meaning beside a positional
+definition.
+
+**`minlength` and `maxlength` are deliberately not in the subset.** On an
+`array` or a `collection` those two spellings are already taken: they constrain
+the **container**, bounding an array's item count and a collection's
+dynamic-entry count, as [Length](#length---minlength-and-maxlength) defines.
+That meaning is unchanged. One spelling cannot mean both "this container holds
+at least two members" and "each member is a string of at least two characters",
+and reinterpreting it per member on a container whose members happen to be
+strings would make the same keyword mean different things in two schemas that
+differ only in their `itemtype`. Per-member string length is therefore expressed
+through `itemtype`:
+
+```toml
+[types.shortName]
+type = "string"
+minlength = 1
+maxlength = 32
+
+[elements.tags]
+type = "array"
+itemtype = "types.shortName"
+minlength = 1
+```
+
+Here `minlength = 1` on `elements.tags` requires at least one tag, while the
+bounds inside `types.shortName` govern each tag's length in characters. This is
+the one exception to the symmetry above, and it exists because the spelling is
+occupied, not because container members are otherwise privileged.
+
 ### Type Reference
 
 A type reference applies a built-in type or inherits the rules of a named reusable type. Both `[types]` definitions and `[elements]` definitions may use type references. The `type` property selects the current node's type; built-in and named references use the same syntax.
@@ -1511,9 +1758,12 @@ pattern = "^[A-Z]+$" # invalid
 ### Conjunctive Composition - `allof`
 
 `allof` applies a non-empty array of type references to the current node in
-addition to its local definition. It is an applicator, not a type selector:
-the local definition must still declare one `type`, `oneof`, `anyof`, or
-conditional selector, or have fixed children that make it an implicit table.
+addition to its local definition. It is an applicator, not a type selector: it
+never chooses between alternatives and never defers a decision to a document
+value. The local definition normally declares its own `type`, `oneof`, `anyof`,
+or conditional selector, or has fixed children that make it an implicit table;
+[Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton)
+defines the one case in which the composition supplies that skeleton instead.
 
 ```toml
 [types.packageBase]
@@ -1529,6 +1779,68 @@ allof = [ "types.packageBase" ]
     [types.package.name]
     type = "string"
 ```
+
+#### Composition Supplying the Local Skeleton
+
+One principle governs how much of a definition `allof` may supply:
+**composition MAY supply the local skeleton when it determines that skeleton
+unambiguously.** A definition need not restate a structural fact its components
+already fix beyond doubt, and it MUST state anything they leave open.
+
+A definition whose only applicator is a non-empty `allof` — one that declares no
+`type`, no `oneof`, no `anyof`, no part of the conditional triple, and no nested
+child definitions — is a **pure mixin**. A pure mixin is valid when the
+effective types of its `allof` components resolve to exactly one TOML kind. That
+kind becomes the definition's effective type, exactly as if `type` had named it:
+
+```toml
+[types.packageBase]
+type = "table"
+
+    [types.packageBase.version]
+    type = "string"
+
+[types.named]
+type = "table"
+
+    [types.named.name]
+    type = "string"
+
+[types.package]
+allof = [ "types.packageBase", "types.named" ]
+```
+
+`types.package` has the effective type `table` and the fixed children `version`
+and `name`. Writing `type = "table"` beside that `allof` remains valid and adds
+nothing.
+
+When the components resolve to more than one TOML kind, or when the kind cannot
+be determined at schema-load time, the composition determines no skeleton and
+there is nothing for the definition to inherit. Schema loaders MUST reject such
+a definition at schema-load time with `incompatible-composition`. Authors
+resolve the ambiguity by declaring the intended type with `type`, which turns an
+indeterminate composition into an ordinary compatibility failure against a
+stated kind. Determining a pure mixin's effective type is one of the checks that
+read the effective rather than the local view; see
+[Local and Effective Checks](#local-and-effective-checks).
+
+A pure mixin is still an application and never a selection. Because `allof` is
+not a selector, its components contribute their fixed children to the
+definition's [determinate fixed-child set](#determinate-fixed-child-set), and
+any `itemtype` and `keypattern` they declare are likewise determinate, exactly
+as they are for a definition that also declares `type`. Nothing about a pure
+mixin is deferred to validation time.
+
+The same principle governs the one other place a composition supplies a
+required local element: a `collection` may obtain its mandatory `itemtype` from
+a compatible `allof` component, as
+[Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys)
+describes. That allowance is a consequence of this principle rather than a
+special case for collections.
+
+A definition that declares no selector, no nested child definition, and no
+`allof` determines nothing at all, and it remains a schema-load error under
+[Types table](#types-table---types).
 
 #### The Effective Definition
 
@@ -1563,9 +1875,15 @@ table separately against `A` and against `B` would instead make `y` unknown to
 `A` and `x` unknown to `B`, rejecting every document and making mixin
 composition useless. Only the effective-definition reading is conforming.
 
+Composition compatibility is judged from the effective view, which is one of
+the checks [Local and Effective Checks](#local-and-effective-checks) lists as
+effective; every other applicability and exclusivity check remains local.
+
 A composition is well formed only when its participants agree on kind.
 Every component MUST resolve to an effective TOML kind compatible with the
-local definition. When the local selector is `oneof` or `anyof`, all of its
+local definition, or, when the local definition is a pure mixin and states no
+kind of its own, with one another. When the local selector is `oneof` or
+`anyof`, all of its
 alternatives MUST resolve to the same effective kind before `allof` can be
 applied; a multi-kind local union combined with `allof` is indeterminate and
 MUST be rejected at schema-load time. Scalar and array components must have the
@@ -2327,7 +2645,10 @@ the group still requires one choice.
 
 Every name in these three properties MUST identify a direct fixed child in the
 [determinate fixed-child set](#determinate-fixed-child-set) of the definition
-after `allof` composition. Operands are resolved when the schema is loaded, so
+after `allof` composition. Operand resolution and the `table`-or-`collection`
+applicability of these rules are therefore effective rather than local checks,
+as [Local and Effective Checks](#local-and-effective-checks) records. Operands
+are resolved when the schema is loaded, so
 they MUST NOT be resolved against the validation-time
 [effective closure set](#effective-closure-set); only the presence check itself
 happens while a document is validated. A quoted string containing a
@@ -2491,7 +2812,9 @@ Despite being an annotation, a declared default MUST validate as a present
 value against the full effective definition at schema-load time. Default
 validation applies all references, composition, alternatives, fixed children,
 sibling rules, and ordinary constraints, but does not emit a deprecation
-warning. A loader MUST reject an incompatible default.
+warning. A loader MUST reject an incompatible default. This is one of the
+schema-load checks that read the effective rather than the local view, as
+[Local and Effective Checks](#local-and-effective-checks) records.
 
 A default declared directly at a use site takes precedence over one inherited
 through its `type` reference. Without a use-site default, the referenced
@@ -2574,10 +2897,14 @@ no alternative is selected when the slot is absent.
 
 ### Pattern - `pattern`
 
-This property is only valid on a definition whose selected type is the built-in
+This property is valid on a definition whose selected type is the built-in
+`string`, and, as a [per-member constraint](#per-member-value-constraints), on a
+non-tuple `array` or `collection` whose effective member type is the built-in
 `string`. It cannot be attached to another built-in type, an alternative
 selector, or a named type reference. Schema loaders MUST reject an incompatible
-`pattern` at schema-load time rather than silently ignoring it.
+`pattern` at schema-load time rather than silently ignoring it. On a
+`collection`, `pattern` constrains dynamic entry values while
+[`keypattern`](#key-pattern---keypattern) constrains their keys.
 
 The portable TOML Schema regular-expression profile consists of literals,
 escaped metacharacters, the character escapes `\t`, `\n`, `\r`, `\f`, `\v`, and
@@ -2900,9 +3227,16 @@ the steps that depend on it begin:
    recognized property applied to a definition that does not permit it, and reject
    combinations excluded by
    [Schema Definition Properties](#schema-definition-properties). This includes
-   selector exclusivity: exactly one of `type`, `oneof`, `anyof`, and the
-   conditional triple, except for the implicit-table case described under
-   [Types table](#types-table---types).
+   selector exclusivity: at most one of `type`, `oneof`, `anyof`, and the
+   conditional triple, and at least one unless the definition is an implicit
+   table or a [pure mixin](#composition-supplying-the-local-skeleton), both
+   described under [Types table](#types-table---types). It also includes the
+   exclusion between `items` and the
+   [per-member value-constraint subset](#per-member-value-constraints) and the
+   rejection of a per-member constraint that is also declared on the definition
+   its `itemtype` resolves to. Every check in this step is local unless
+   [Local and Effective Checks](#local-and-effective-checks) lists it as
+   effective.
 5. **Reference resolution.** Resolve every type reference in the document, as
    defined under [Reference Resolution](#reference-resolution). Every reference
    MUST resolve, including references inside definitions that are optional or that
@@ -2919,9 +3253,11 @@ the steps that depend on it begin:
    `itemtype` requirement under
    [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
 8. **Composition determinacy.** Verify that every `allof` composition agrees on
-   effective type, that no component is named twice, and that no local union or
-   conditional selector combined with `allof` is indeterminate, as required under
-   [Conjunctive Composition](#conjunctive-composition---allof).
+   effective type, that no component is named twice, that no local union or
+   conditional selector combined with `allof` is indeterminate, and that every
+   pure mixin resolves to exactly one TOML kind, as required under
+   [Conjunctive Composition](#conjunctive-composition---allof) and
+   [Composition Supplying the Local Skeleton](#composition-supplying-the-local-skeleton).
 9. **Single-definition consistency.** Apply the remaining schema-load consistency
    checks: `allowedvalues` entry kinds and their agreement with sibling
    constraints, `min` not greater than `max`, `minlength` not greater than
@@ -3211,8 +3547,11 @@ groups before it or governs which diagnostics the groups after it may produce.
 4. **Value assertions.** Evaluate every assertion that applies to `N`'s own value:
    `format`, `pattern`, `minlength`, `maxlength`, `uniqueitems`, and, for a scalar
    or temporal node, `min` and `max`. Every such assertion is evaluated; none gates
-   another, and a failure of one does not suppress another. On an `array`, `min`
-   and `max` are item-level assertions and belong to group 6.
+   another, and a failure of one does not suppress another. On an `array` or a
+   `collection`, `format`, `pattern`, `min`, and `max` are
+   [per-member assertions](#per-member-value-constraints) and belong to group 6,
+   while `minlength` and `maxlength` remain assertions on the container itself
+   and are evaluated here.
 5. **Allowed values.** Evaluate `allowedvalues` membership. Groups 2, 4, and 5 of
    this list are the general-case statement of the ordering that
    [Allowed Values](#allowed-values---allowedvalues) fixes for enumerations, and
@@ -3229,10 +3568,13 @@ groups before it or governs which diagnostics the groups after it may produce.
      `keypattern` and whose value MUST validate against every applicable
      `itemtype`, as required under
      [Collection of Elements for Dynamic Keys](#collection-of-elements-for-dynamic-keys).
+     Every per-member `allowedvalues`, `min`, `max`, `pattern`, and `format`
+     declared on the collection applies to each dynamic entry's value.
      A collection never produces an `unknown-key` error;
    - **array** — with `items`, check arity first and then validate each position;
      with `itemtype`, validate every item; with neither, items are unconstrained.
-     Item-level `min`, `max`, and `allowedvalues` apply to each item.
+     Per-member `allowedvalues`, `min`, `max`, `pattern`, and `format` apply to
+     each item.
 
    Each descent is itself a `validate` call and MUST apply groups 1 through 8 to
    the nested node. Results from descent combine into `N`'s result.
@@ -3730,7 +4072,7 @@ failures against the effective definition use the ordinary validation codes.
 | --- | --- | --- |
 | `unrecognized-property` | error | A key/value pair written directly inside a schema definition is not one of the closed property set for this language version, for example `patttern`. |
 | `inapplicable-property` | error | A recognized property appears on a definition to which this specification does not permit it, for example `pattern` on `integer`, `keypattern` on `table`, `minlength` on `boolean`, or a kind-specific constraint beside a named `type` reference. |
-| `exclusive-properties` | error | Two properties that this specification makes mutually exclusive appear together: the selectors `type`, `oneof`, `anyof`, and `if`; `items` with `itemtype`, `allowedvalues`, `min`, `max`, `minlength`, or `maxlength`; `if.equals` with `if.in`; or an incomplete `if`/`then`/`else` triple. |
+| `exclusive-properties` | error | Two properties that this specification makes mutually exclusive appear together: the selectors `type`, `oneof`, `anyof`, and `if`; `items` with `itemtype`, `minlength`, `maxlength`, or a member of the [per-member value-constraint subset](#per-member-value-constraints); the same per-member value constraint declared both inline on an `array` or `collection` and on the definition its `itemtype` resolves to; `if.equals` with `if.in`; or an incomplete `if`/`then`/`else` triple. |
 | `unresolved-reference` | error | A type reference in `type`, `itemtype`, `items`, `oneof`, `anyof`, `allof`, `then`, or `else` does not name a built-in type or a definition in `[types]`, as defined under [Reference Resolution](#reference-resolution). |
 | `duplicate-reference` | error | Two entries of `oneof`, `anyof`, or `allof` have the same resolved identity after the optional `types.` prefix is stripped, for example `"types.foo"` and `"foo"`. |
 | `inverted-range` | error | `min` is greater than `max`, or `minlength` is greater than `maxlength`, under the ordering this specification defines for that pair. |
@@ -3739,7 +4081,7 @@ failures against the effective definition use the ordinary validation codes.
 | `invalid-pattern` | error | A `pattern` or `keypattern` cannot be compiled under the active profile, as required under [Pattern](#pattern---pattern). |
 | `unsupported-pattern` | error | A `pattern` or `keypattern` uses syntax outside the portable profile without an explicitly enabled extension profile, as required under [Pattern](#pattern---pattern). |
 | `cyclic-reference` | error | The reference graph contains a cycle classified as illegal under [Cycle Legality](#cycle-legality). Structural recursion through a consuming edge is not this code. |
-| `incompatible-composition` | error | `allof` participants do not agree on effective type, a multi-kind local union is combined with `allof`, or a `table` is composed with a `collection`. |
+| `incompatible-composition` | error | `allof` participants do not agree on effective type, a multi-kind local union is combined with `allof`, a `table` is composed with a `collection`, or a [pure mixin](#composition-supplying-the-local-skeleton) has no single determinate effective type. |
 | `invalid-default` | error | A declared `default` does not validate against the full effective definition at schema-load time, or `allof` participants contribute unequal defaults with no local default. |
 | `unsupported-version` | error | `[toml-schema].version` is missing, is not a SemVer string, is not a TOML Schema language version, or is not supported by the implementation. |
 | `schema-malformed` | error | Any other schema-load failure required by this specification: missing `[toml-schema]` or `[elements]`, an empty `oneof`, `anyof`, `allof`, `allowedvalues`, or `items` array, a reserved type name, an invalid `children` escape entry, a non-boolean `deprecated`, and similar. Implementations SHOULD prefer a more specific code from this table when one applies. |
@@ -3752,11 +4094,11 @@ failures against the effective definition use the ordinary validation codes.
 | `unknown-key` | error | A document key of a closed table, including the document root, is not in the node's [effective closure set](#effective-closure-set). Never produced for a `collection` dynamic entry. |
 | `missing-required` | error | A fixed child that is not optional is absent. The instance path is the missing child's path even though no node is there. |
 | `type-mismatch` | error | The node's TOML kind does not match the coarse category of the effective type, including an array or collection entry whose value is not the item definition's kind. |
-| `allowedvalues` | error | The node's parsed value is not a member of `allowedvalues` under [Parsed Value Equality](#parsed-value-equality). |
-| `pattern` | error | A string does not match `pattern`. |
-| `format` | error | A string does not match the required `format`. |
-| `min` | error | A comparable value, or a comparable array item, is less than `min`, or is NaN. The instance path is the value that failed, so an array item is `$.arr[i]`. |
-| `max` | error | A comparable value, or a comparable array item, is greater than `max`, or is NaN. |
+| `allowedvalues` | error | The node's parsed value is not a member of `allowedvalues` under [Parsed Value Equality](#parsed-value-equality). For a [per-member](#per-member-value-constraints) enumeration the instance path is the member that failed, `$.arr[i]` or `$.coll.key`. |
+| `pattern` | error | A string does not match `pattern`. For a [per-member](#per-member-value-constraints) `pattern` the instance path is the member that failed, `$.arr[i]` or `$.coll.key`. |
+| `format` | error | A string does not match the required `format`. For a [per-member](#per-member-value-constraints) `format` the instance path is the member that failed, `$.arr[i]` or `$.coll.key`. |
+| `min` | error | A comparable value, or a comparable array item or collection entry, is less than `min`, or is NaN. The instance path is the value that failed, so an array item is `$.arr[i]` and a collection entry is `$.coll.key`. |
+| `max` | error | A comparable value, or a comparable array item or collection entry, is greater than `max`, or is NaN. |
 | `minlength` | error | A string, array, or collection is shorter than `minlength`. For a collection, length counts dynamic entries only. |
 | `maxlength` | error | A string, array, or collection is longer than `maxlength`. |
 | `uniqueitems` | error | An array with `uniqueitems = true` contains two items equal under [Parsed Value Equality](#parsed-value-equality). The instance path is the later duplicate, `$.arr[i]`. |
