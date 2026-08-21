@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { TomlDate } from "smol-toml";
 import { DocumentError, SchemaError } from "./errors.js";
+import { DiagnosticCodes } from "./diagnostics.js";
 import { loadSchema, Schema } from "./schema.js";
 import { parseSemVer } from "./semver.js";
 import { parseToml } from "./document.js";
@@ -95,17 +96,25 @@ export function resolveSchemaLocation(documentPath: string, location: string): s
 
 /** Compares a document's expected schema version against the resolved schema's actual version. */
 export function compareDocumentSchemaVersion(expected: unknown, actual: string): string | undefined {
+  const discovery = { phase: "discovery" as const, schemaPath: "$.toml-schema.version" };
   if (typeof expected !== "string") {
-    throw new SchemaError("document [toml-schema].version must be a SemVer string");
+    throw new SchemaError("document [toml-schema].version must be a SemVer string", {
+      ...discovery,
+      code: DiagnosticCodes.UNSUPPORTED_VERSION,
+    });
   }
   const expectedParts = parseSemVer(expected);
   if (!expectedParts) {
-    throw new SchemaError("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax");
+    throw new SchemaError("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax", {
+      ...discovery,
+      code: DiagnosticCodes.UNSUPPORTED_VERSION,
+    });
   }
   const actualParts = parseSemVer(actual);
   if (!actualParts || expectedParts.major !== actualParts.major) {
     throw new SchemaError(
       `document expects TOML Schema major version ${expected}, but resolved schema uses ${actual}`,
+      { ...discovery, code: DiagnosticCodes.UNSUPPORTED_VERSION },
     );
   }
   if (expected !== actual) {

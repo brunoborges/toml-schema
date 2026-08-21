@@ -4,9 +4,10 @@ import { parseDefinitions } from "./schemaParser.js";
 import { Definition, type RawDefinition } from "./definition.js";
 import { SchemaSource } from "./tomlSource.js";
 import { parseToml } from "./document.js";
-import { SchemaError, DocumentError } from "./errors.js";
+import { SchemaError, DocumentError, DocumentParseError } from "./errors.js";
+import { DiagnosticCodes } from "./diagnostics.js";
 import { validateSchemaVersion } from "./semver.js";
-import { DocumentValidator, ValidationResult, type ValidationError } from "./validator.js";
+import { DocumentValidator, ValidationResult } from "./validator.js";
 import { isTomlTable, type TomlTable, type TomlValue } from "./values.js";
 import { appendPath } from "./paths.js";
 
@@ -79,26 +80,25 @@ export class Schema {
     validator.validateTable("$", document, this.#data.elements);
     for (const key of Object.keys(document)) {
       if (!Object.hasOwn(this.#data.elements, key) && key !== "toml-schema") {
-        validator.add(appendPath("$", key), "unexpected key");
+        validator.add(DiagnosticCodes.UNKNOWN_KEY, appendPath("$", key), "$.elements", "unexpected key");
       }
     }
     return validator.toResult();
   }
 
-  /** Reads, parses, and validates a TOML document file against this schema. */
+  /**
+   * Reads, parses, and validates a TOML document file against this schema.
+   *
+   * @throws {DocumentParseError} if the file is not well-formed TOML. Per SPEC.md
+   * such a parse failure is not a validation diagnostic: it never reaches the
+   * validator and MUST NOT be reported as a diagnostic or as an invalid document.
+   */
   async validateFile(path: string): Promise<ValidationResult> {
     let document: TomlTable;
     try {
       document = parseToml(await readFile(path, "utf-8"));
     } catch (cause) {
-      const message = cause instanceof Error ? cause.message : String(cause);
-      const diagnostic: ValidationError = {
-        severity: "error",
-        code: "document-parse-error",
-        path: "$",
-        message,
-      };
-      return new ValidationResult([diagnostic], []);
+      throw new DocumentParseError(cause instanceof Error ? cause.message : String(cause));
     }
     return this.validate(document);
   }

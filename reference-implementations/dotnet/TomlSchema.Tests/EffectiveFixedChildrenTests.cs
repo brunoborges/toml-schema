@@ -31,7 +31,7 @@ public class EffectiveFixedChildrenTests : IDisposable
             allof = ["types.choice"]
             exactlyone = [["first", "second"]]
             """);
-        var error = Assert.Throws<InvalidOperationException>(() => global::TomlSchema.TomlSchema.Load(rejected));
+        var error = Assert.Throws<SchemaException>(() => global::TomlSchema.TomlSchema.Load(rejected));
         Assert.Contains("unknown fixed child", error.Message);
 
         var accepted = Write("type-selected-operands.tosd", """

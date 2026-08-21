@@ -20,10 +20,12 @@ final class TomlSchemaVersion {
     static Version validate(Object value) {
         Version version = parse(value, "[toml-schema].version");
         if (!SUPPORTED_MAJOR.equals(version.major())) {
-            throw new SchemaException("Unsupported TOML Schema major version: " + version.value());
+            throw new SchemaException(DiagnosticCodes.UNSUPPORTED_VERSION, "$.toml-schema.version",
+                    "Unsupported TOML Schema major version: " + version.value());
         }
         if (!SUPPORTED_MINOR.equals(version.minor())) {
-            throw new SchemaException("Unsupported TOML Schema minor version: " + version.value());
+            throw new SchemaException(DiagnosticCodes.UNSUPPORTED_VERSION, "$.toml-schema.version",
+                    "Unsupported TOML Schema minor version: " + version.value());
         }
         return version;
     }
@@ -34,11 +36,13 @@ final class TomlSchemaVersion {
 
     private static Version parse(Object value, String property) {
         if (!(value instanceof String version)) {
-            throw new SchemaException(property + " must be a SemVer string");
+            throw new SchemaException(DiagnosticCodes.UNSUPPORTED_VERSION, "$.toml-schema.version",
+                    property + " must be a SemVer string");
         }
         Matcher matcher = SEMVER.matcher(version);
         if (!matcher.matches()) {
-            throw new SchemaException(property + " must use SemVer MAJOR.MINOR.PATCH syntax");
+            throw new SchemaException(DiagnosticCodes.UNSUPPORTED_VERSION, "$.toml-schema.version",
+                    property + " must use SemVer MAJOR.MINOR.PATCH syntax");
         }
         return new Version(version, matcher.group(1), matcher.group(2));
     }

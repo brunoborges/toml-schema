@@ -44,13 +44,14 @@ public final class TomlSchema {
      * Validates a TOML document read from a path.
      *
      * @param tomlPath the TOML document to validate
-     * @return its validation result, including TOML parse errors when present
+     * @return its validation result
      * @throws IOException if the document cannot be read
+     * @throws DocumentParseException if the document is not well-formed TOML
      */
     public ValidationResult validate(Path tomlPath) throws IOException {
         TomlParseResult document = Toml.parse(tomlPath);
         if (document.hasErrors()) {
-            return parseErrors(document.errors());
+            throw documentParseFailure(document.errors());
         }
         return new TomlSchemaValidator(this).validate(document);
     }
@@ -59,11 +60,12 @@ public final class TomlSchema {
      * Validates an already parsed TOML document.
      *
      * @param document the parsed document
-     * @return its validation result, including parser errors when present
+     * @return its validation result
+     * @throws DocumentParseException if the document is not well-formed TOML
      */
     public ValidationResult validate(TomlParseResult document) {
         if (document.hasErrors()) {
-            return parseErrors(document.errors());
+            throw documentParseFailure(document.errors());
         }
         return new TomlSchemaValidator(this).validate(document);
     }
@@ -198,9 +200,8 @@ public final class TomlSchema {
         return elements;
     }
 
-    private static ValidationResult parseErrors(List<TomlParseError> errors) {
-        return new ValidationResult(errors.stream()
-                .map(error -> new ValidationError("$", error.toString()))
-                .collect(Collectors.toList()));
+    private static DocumentParseException documentParseFailure(List<TomlParseError> errors) {
+        return new DocumentParseException(
+                errors.stream().map(TomlParseError::toString).collect(Collectors.toList()));
     }
 }

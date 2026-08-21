@@ -4,18 +4,20 @@ import java.util.List;
 import java.util.stream.Stream;
 
 /**
- * The errors and warnings produced by a validation attempt.
+ * The errors and warnings produced by a validation attempt. SPEC.md requires that
+ * implementations "provide separate access to errors and warnings"; both are the same
+ * {@link ValidationDiagnostic} record, partitioned here by severity.
  *
- * @param errors the validation errors
- * @param warnings the non-fatal validation warnings
+ * @param errors the error-severity diagnostics
+ * @param warnings the warning-severity diagnostics
  */
-public record ValidationResult(List<ValidationError> errors, List<ValidationWarning> warnings) {
+public record ValidationResult(List<ValidationDiagnostic> errors, List<ValidationDiagnostic> warnings) {
     /**
      * Creates a result with errors and no warnings.
      *
      * @param errors the validation errors
      */
-    public ValidationResult(List<ValidationError> errors) {
+    public ValidationResult(List<ValidationDiagnostic> errors) {
         this(errors, List.of());
     }
 
@@ -39,8 +41,6 @@ public record ValidationResult(List<ValidationError> errors, List<ValidationWarn
      * @return the combined diagnostics
      */
     public List<ValidationDiagnostic> diagnostics() {
-        return Stream.concat(errors.stream(), warnings.stream())
-                .map(ValidationDiagnostic.class::cast)
-                .toList();
+        return Stream.concat(errors.stream(), warnings.stream()).toList();
     }
 }

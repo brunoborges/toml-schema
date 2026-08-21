@@ -42,7 +42,7 @@ internal static class SchemaDiscovery
         var schemaPath = ResolveSchemaLocation(documentPath, location.Trim());
         var schema = TomlSchema.Load(schemaPath);
 
-        var warnings = new List<ValidationWarning>();
+        var warnings = new List<ValidationDiagnostic>();
         if (metadata.TryGetValue("version", out var versionObj))
         {
             if (versionObj is not string expectedVersion)
@@ -66,10 +66,13 @@ internal static class SchemaDiscovery
 
             if (expectedVersion != schema.Version)
             {
-                warnings.Add(new ValidationWarning(
-                    "$",
-                    $"document expects TOML Schema version {expectedVersion}, but resolved schema uses {schema.Version}",
-                    "schema-version"));
+                warnings.Add(new ValidationDiagnostic(
+                    DiagnosticPhase.Discovery,
+                    DiagnosticSeverity.Warning,
+                    DiagnosticCodes.VersionMismatch,
+                    null,
+                    null,
+                    $"document expects TOML Schema version {expectedVersion}, but resolved schema uses {schema.Version}"));
             }
         }
 

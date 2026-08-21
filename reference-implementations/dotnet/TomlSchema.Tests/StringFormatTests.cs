@@ -93,7 +93,7 @@ public class StringFormatTests : TestBase
             format = "{{format}}"
             """);
 
-        var error = Assert.Throws<InvalidOperationException>(() => TomlSchema.Load(schemaPath));
+        var error = Assert.Throws<SchemaException>(() => TomlSchema.Load(schemaPath));
         Assert.Contains(expectedMessage, error.Message, StringComparison.Ordinal);
     }
 
@@ -109,7 +109,7 @@ public class StringFormatTests : TestBase
             format = 42
             """);
 
-        var error = Assert.Throws<InvalidOperationException>(() => TomlSchema.Load(schemaPath));
+        var error = Assert.Throws<SchemaException>(() => TomlSchema.Load(schemaPath));
         Assert.Contains("format must be a string", error.Message, StringComparison.Ordinal);
     }
 
@@ -128,7 +128,7 @@ public class StringFormatTests : TestBase
             {{annotation}}
             """);
 
-        var error = Assert.Throws<InvalidOperationException>(() => TomlSchema.Load(schemaPath));
+        var error = Assert.Throws<SchemaException>(() => TomlSchema.Load(schemaPath));
         Assert.Contains("does not satisfy format ipv4", error.Message, StringComparison.Ordinal);
     }
 
@@ -146,7 +146,7 @@ public class StringFormatTests : TestBase
             default = "198.51.100.1"
             """);
 
-        var error = Assert.Throws<InvalidOperationException>(() => TomlSchema.Load(schemaPath));
+        var error = Assert.Throws<SchemaException>(() => TomlSchema.Load(schemaPath));
         Assert.Contains("default is not included in allowedvalues", error.Message, StringComparison.Ordinal);
     }
 

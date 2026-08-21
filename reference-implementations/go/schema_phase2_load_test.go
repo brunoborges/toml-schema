@@ -1,7 +1,7 @@
 package tomlschema
 
 import (
-	"strings"
+	"errors"
 	"testing"
 )
 
@@ -44,7 +44,8 @@ func TestRejectsInvalidAndNonPortablePatternsAtSchemaLoad(t *testing.T) {
 			path := write(t, dir, test.name+".tosd",
 				"[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\n"+test.definition+"\n")
 			_, err := LoadSchema(path)
-			if err == nil || !strings.Contains(err.Error(), test.expected) {
+			var schemaErr *SchemaError
+			if err == nil || !errors.As(err, &schemaErr) || schemaErr.Code != test.expected {
 				t.Fatalf("expected %s schema-load error, got %v", test.expected, err)
 			}
 		})

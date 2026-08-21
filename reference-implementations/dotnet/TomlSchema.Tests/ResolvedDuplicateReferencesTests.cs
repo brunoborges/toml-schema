@@ -22,10 +22,9 @@ public class ResolvedDuplicateReferencesTests : TestBase
             {{localType}}{{property}} = ["types.foo", "foo"]
             """);
 
-        var error = Assert.Throws<InvalidOperationException>(() => TomlSchema.Load(schemaPath));
-        Assert.Equal(
-            $"[elements].value {property} contains duplicate type references \"types.foo\" and \"foo\"; both resolve to foo",
-            error.Message);
+        var error = Assert.Throws<SchemaException>(() => TomlSchema.Load(schemaPath));
+        Assert.Equal("duplicate-reference", error.Code);
+        Assert.Equal($"$.elements.value.{property}", error.SchemaPath);
     }
 
     [Fact]

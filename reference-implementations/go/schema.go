@@ -132,7 +132,25 @@ type Definition struct {
 	hasDefault        bool
 	deprecated        bool
 	hasDeprecated     bool
+	schemaPath        []string
+	deprecatedAt      []string
 	children          map[string]Definition
+}
+
+// schemaPathFor builds this definition's schema path (SPEC.md `### Schema
+// Path`), optionally ending at a declared property such as `min` or `type`.
+func (d Definition) schemaPathFor(property string) string {
+	return schemaPathString(d.schemaPath, property)
+}
+
+// deprecatedSchemaPath is the schema path of this definition's `deprecated`
+// annotation, pointing at the table where `deprecated = true` was declared (use
+// site or referenced definition).
+func (d Definition) deprecatedSchemaPath() string {
+	if d.deprecatedAt == nil {
+		return ""
+	}
+	return schemaPathString(d.deprecatedAt, "deprecated")
 }
 
 type condition struct {
@@ -149,12 +167,31 @@ const (
 	SeverityWarning Severity = "warning"
 )
 
+// Phase is the phase in which a diagnostic was produced (SPEC.md `### Phases`).
+type Phase string
+
+const (
+	PhaseDiscovery  Phase = "discovery"
+	PhaseSchemaLoad Phase = "schema-load"
+	PhaseValidation Phase = "validation"
+)
+
+// ValidationError is one diagnostic record (SPEC.md `### Diagnostic Record`).
+// The same shape carries errors and warnings across every phase. Path is the
+// instance path for validation diagnostics ("" when absent); SchemaPath is set
+// when the failing rule is attributable to a location in a schema document.
 type ValidationError struct {
-	Severity Severity
-	Code     string
-	Path     string
-	Message  string
+	Phase      Phase
+	Severity   Severity
+	Code       string
+	Path       string
+	SchemaPath string
+	Message    string
 }
+
+// InstancePath returns the instance path, or "" when the diagnostic does not
+// identify a document node (discovery and schema-load diagnostics).
+func (d ValidationError) InstancePath() string { return d.Path }
 
 type Diagnostic = ValidationError
 
@@ -166,6 +203,81 @@ type ValidationResult struct {
 
 func (r ValidationResult) Valid() bool {
 	return len(r.Errors) == 0
+}
+
+// SchemaError is a structured schema-load (or discovery) error. Its Error()
+// surfaces the human message so existing callers can keep substring-matching it,
+// while Code and SchemaPath expose the normative diagnostic fields.
+type SchemaError struct {
+	Phase      Phase
+	Code       string
+	SchemaPath string
+	Message    string
+}
+
+func (e *SchemaError) Error() string { return e.Message }
+
+// Diagnostic builds the normative diagnostic for this error.
+func (e *SchemaError) Diagnostic() Diagnostic {
+	return Diagnostic{
+		Phase:      e.Phase,
+		Severity:   SeverityError,
+		Code:       e.Code,
+		SchemaPath: e.SchemaPath,
+		Message:    e.Message,
+	}
+}
+
+// DocumentParseError marks a document that is not well-formed TOML. Per SPEC.md
+// such a document never reaches the validator: its failure is a parser error,
+// not a validation diagnostic, and MUST NOT be assigned a registry code.
+type DocumentParseError struct {
+	Path    string
+	Message string
+}
+
+func (e *DocumentParseError) Error() string { return e.Message }
+
+// loadErr builds a schema-load SchemaError with an explicit registry code and
+// optional schema path.
+func loadErr(code, schemaPath, message string) error {
+	return &SchemaError{Phase: PhaseSchemaLoad, Code: code, SchemaPath: schemaPath, Message: message}
+}
+
+// schemaPathString builds a schema-path string from schema-tree segments and an
+// optional final property name (SPEC.md `### Schema Path`).
+func schemaPathString(segments []string, property string) string {
+	path := "$"
+	for _, segment := range segments {
+		path += "." + encodePathKey(segment)
+	}
+	if property != "" {
+		path += "." + encodePathKey(property)
+	}
+	return path
+}
+
+// schemaPathFromName builds a schema path from a dotted definition name such as
+// `elements.x`.
+func schemaPathFromName(name, property string) string {
+	return schemaPathString(strings.Split(name, "."), property)
+}
+
+// EmittableDiagnosticCodes lists every diagnostic code the implementation can
+// emit. The conformance registry guard asserts each appears in
+// conformance/codes.toml (or matches the extension pattern).
+var EmittableDiagnosticCodes = []string{
+	// Validation codes.
+	"type-mismatch", "missing-required", "unknown-key", "allowedvalues",
+	"pattern", "format", "keypattern", "min", "max", "minlength", "maxlength",
+	"uniqueitems", "tuple-length", "oneof", "anyof", "dependentrequired",
+	"mutuallyexclusive", "exactlyone", "deprecated",
+	// Schema-load codes.
+	"unrecognized-property", "inapplicable-property", "exclusive-properties",
+	"unresolved-reference", "duplicate-reference", "inverted-range",
+	"invalid-boundary", "invalid-pattern", "unsupported-pattern",
+	"cyclic-reference", "incompatible-composition", "invalid-default",
+	"unsupported-version", "schema-malformed",
 }
 
 func LoadSchema(path string) (*Schema, error) {
@@ -245,19 +357,20 @@ func LoadDocument(path string) (map[string]any, error) {
 }
 
 func validateSchemaVersion(value any) error {
+	const versionPath = "$.toml-schema.version"
 	version, ok := value.(string)
 	if !ok {
-		return fmt.Errorf("[toml-schema].version must be a SemVer string")
+		return loadErr("unsupported-version", versionPath, "[toml-schema].version must be a SemVer string")
 	}
 	matches := semverPattern.FindStringSubmatch(version)
 	if matches == nil {
-		return fmt.Errorf("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
+		return loadErr("unsupported-version", versionPath, "[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
 	}
 	if matches[1] != "1" {
-		return fmt.Errorf("unsupported TOML Schema major version: %s", version)
+		return loadErr("unsupported-version", versionPath, fmt.Sprintf("unsupported TOML Schema major version: %s", version))
 	}
 	if matches[2] != "0" {
-		return fmt.Errorf("unsupported TOML Schema minor version: %s", version)
+		return loadErr("unsupported-version", versionPath, fmt.Sprintf("unsupported TOML Schema minor version: %s", version))
 	}
 	return nil
 }
@@ -276,6 +389,9 @@ func (s *Schema) validateSemantics() error {
 func (s *Schema) validateDefinitionSemantics(definition Definition) error {
 	kind, resolved, err := s.effectiveKind(definition, map[string]bool{})
 	if err != nil {
+		if len(definition.allOf) > 0 {
+			return loadErr("incompatible-composition", schemaPathFromName(definition.name, "allof"), fmt.Sprintf("%s: %s", definition.name, err.Error()))
+		}
 		return fmt.Errorf("%s: %w", definition.name, err)
 	}
 	hasSiblingRules := len(definition.dependentRequired) > 0 ||
@@ -739,7 +855,7 @@ func (s *Schema) validateDefaults() error {
 			candidate := &validator{schema: s, suppressWarnings: true}
 			candidate.validateValue(definition.name, value, definition)
 			if len(candidate.errors) > 0 {
-				return fmt.Errorf("%s default is invalid: %s", definition.name, candidate.errors[0].Message)
+				return loadErr("invalid-default", schemaPathFromName(definition.name, "default"), fmt.Sprintf("%s default is invalid: %s", definition.name, candidate.errors[0].Message))
 			}
 		}
 		for _, child := range definition.children {
@@ -759,13 +875,12 @@ func (s *Schema) validateDefaults() error {
 	return nil
 }
 
-func (s *Schema) ValidateFile(path string) ValidationResult {
+func (s *Schema) ValidateFile(path string) (ValidationResult, error) {
 	document, err := parseTOMLFile(path)
 	if err != nil {
-		diagnostic := ValidationError{Severity: SeverityError, Code: "document-parse-error", Path: "$", Message: err.Error()}
-		return ValidationResult{Errors: []ValidationError{diagnostic}, Diagnostics: []Diagnostic{diagnostic}}
+		return ValidationResult{}, &DocumentParseError{Path: path, Message: err.Error()}
 	}
-	return s.Validate(document)
+	return s.Validate(document), nil
 }
 
 func (s *Schema) Validate(document map[string]any) ValidationResult {
@@ -773,7 +888,7 @@ func (s *Schema) Validate(document map[string]any) ValidationResult {
 	v.validateTable("$", document, s.elements)
 	for key := range document {
 		if _, ok := s.elements[key]; !ok && key != "toml-schema" {
-			v.add("$."+encodePathKey(key), "unexpected key")
+			v.errAt("$."+encodePathKey(key), "unknown-key", "$.elements", "unexpected key")
 		}
 	}
 	diagnostics := make([]Diagnostic, 0, len(v.errors)+len(v.warnings))
@@ -805,7 +920,7 @@ func parseDefinitions(prefix string, table map[string]any, required bool, source
 	for key, value := range table {
 		if prefix == "types" {
 			if _, ok := parseSchemaType(key); ok {
-				return nil, fmt.Errorf("[types.%s] uses a reserved built-in type name", key)
+				return nil, loadErr("schema-malformed", schemaPathString([]string{"types", key}, ""), fmt.Sprintf("[types.%s] uses a reserved built-in type name", key))
 			}
 			if strings.HasPrefix(key, "types.") {
 				return nil, fmt.Errorf("[types.%s] uses the reserved type-reference prefix", key)
@@ -813,7 +928,7 @@ func parseDefinitions(prefix string, table map[string]any, required bool, source
 		}
 		valueMap, ok := asMap(value)
 		if !ok {
-			return nil, fmt.Errorf("[%s] entry must be a table: %s", prefix, key)
+			return nil, loadErr("schema-malformed", schemaPathFromName(prefix, ""), fmt.Sprintf("[%s] entry must be a table: %s", prefix, key))
 		}
 		definition, err := parseDefinition(prefix+"."+key, []string{prefix, key}, valueMap, source)
 		if err != nil {
@@ -865,7 +980,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		return Definition{}, err
 	}
 	if propertyValue(table, "items") != nil && len(items) == 0 {
-		return Definition{}, fmt.Errorf("%s items must contain at least one type reference", name)
+		return Definition{}, loadErr("schema-malformed", schemaPathFromName(name, "items"), fmt.Sprintf("%s items must contain at least one type reference", name))
 	}
 	optional, err := getBool(table, "optional")
 	if err != nil {
@@ -970,7 +1085,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		typeSelectors++
 	}
 	if typeSelectors > 1 {
-		return Definition{}, fmt.Errorf("%s cannot define more than one of type, oneof, anyof, and if", name)
+		return Definition{}, loadErr("exclusive-properties", schemaPathFromName(name, ""), fmt.Sprintf("%s cannot define more than one of type, oneof, anyof, and if", name))
 	}
 	children := map[string]Definition{}
 	escapedChildren, childrenIsTable := asMap(table["children"])
@@ -1016,7 +1131,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 			}
 			children[key] = child
 		} else if !definitionKeys[key] {
-			return Definition{}, fmt.Errorf("%s contains unsupported property: %s", name, key)
+			return Definition{}, loadErr("unrecognized-property", schemaPathFromName(name, key), fmt.Sprintf("%s contains unsupported property: %s", name, key))
 		}
 	}
 	if hasOneOf || hasAnyOf {
@@ -1049,26 +1164,26 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		return Definition{}, fmt.Errorf("%s can only define children when type is table or collection", name)
 	}
 	if typeName != TypeArray && typeName != TypeCollection && itemReference != "" {
-		return Definition{}, fmt.Errorf("%s can only define itemtype when type is array or collection", name)
+		return Definition{}, loadErr("inapplicable-property", schemaPathFromName(name, "itemtype"), fmt.Sprintf("%s can only define itemtype when type is array or collection", name))
 	}
 	if typeName != TypeArray && len(items) > 0 {
-		return Definition{}, fmt.Errorf("%s can only define items when type is array", name)
+		return Definition{}, loadErr("inapplicable-property", schemaPathFromName(name, "items"), fmt.Sprintf("%s can only define items when type is array", name))
 	}
 	if len(items) > 0 {
 		if itemReference != "" {
-			return Definition{}, fmt.Errorf("%s cannot define both items and itemtype", name)
+			return Definition{}, loadErr("exclusive-properties", schemaPathFromName(name, ""), fmt.Sprintf("%s cannot define both items and itemtype", name))
 		}
 		if minLength != nil || maxLength != nil {
-			return Definition{}, fmt.Errorf("%s cannot define minlength or maxlength together with items", name)
+			return Definition{}, loadErr("exclusive-properties", schemaPathFromName(name, ""), fmt.Sprintf("%s cannot define minlength or maxlength together with items", name))
 		}
 		if hasAllowedValues {
-			return Definition{}, fmt.Errorf("%s cannot define allowedvalues together with items", name)
+			return Definition{}, loadErr("exclusive-properties", schemaPathFromName(name, ""), fmt.Sprintf("%s cannot define allowedvalues together with items", name))
 		}
 		if propertyValue(table, "min") != nil || propertyValue(table, "max") != nil {
-			return Definition{}, fmt.Errorf("%s cannot define min or max together with items", name)
+			return Definition{}, loadErr("exclusive-properties", schemaPathFromName(name, ""), fmt.Sprintf("%s cannot define min or max together with items", name))
 		}
 		if pattern != nil || format != "" {
-			return Definition{}, fmt.Errorf("%s cannot define pattern or format together with items", name)
+			return Definition{}, loadErr("exclusive-properties", schemaPathFromName(name, ""), fmt.Sprintf("%s cannot define pattern or format together with items", name))
 		}
 	}
 	min := propertyValue(table, "min")
@@ -1077,32 +1192,36 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		return Definition{}, fmt.Errorf("%s minlength must not be greater than maxlength", name)
 	}
 	if keyPattern != nil && typeName != TypeCollection {
-		return Definition{}, fmt.Errorf("%s can only define keypattern when type is collection", name)
+		return Definition{}, loadErr("inapplicable-property", schemaPathFromName(name, "keypattern"), fmt.Sprintf("%s can only define keypattern when type is collection", name))
 	}
 	if pattern != nil && typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {
-		return Definition{}, fmt.Errorf("%s can only define pattern when type is string", name)
+		return Definition{}, loadErr("inapplicable-property", schemaPathFromName(name, "pattern"), fmt.Sprintf("%s can only define pattern when type is string", name))
 	}
 	if format != "" && typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {
-		return Definition{}, fmt.Errorf("%s can only define format when type is string", name)
+		return Definition{}, loadErr("inapplicable-property", schemaPathFromName(name, "format"), fmt.Sprintf("%s can only define format when type is string", name))
 	}
 	if hasAllowedValues && typeName == TypeTable {
-		return Definition{}, fmt.Errorf("%s can only define allowedvalues for scalar, unconstrained, or array types", name)
+		return Definition{}, loadErr("inapplicable-property", schemaPathFromName(name, "allowedvalues"), fmt.Sprintf("%s can only define allowedvalues for scalar, unconstrained, or array types", name))
 	}
 	if (minLength != nil || maxLength != nil) &&
 		typeName != TypeString && typeName != TypeArray && typeName != TypeCollection {
-		return Definition{}, fmt.Errorf(
+		property := "minlength"
+		if minLength == nil {
+			property = "maxlength"
+		}
+		return Definition{}, loadErr("inapplicable-property", schemaPathFromName(name, property), fmt.Sprintf(
 			"%s can only define minlength or maxlength when type is string, array, or collection",
 			name,
-		)
+		))
 	}
 	if typeName == TypeCollection && itemReference == "" && len(allOf) == 0 {
-		return Definition{}, fmt.Errorf("%s must define itemtype when type is collection", name)
+		return Definition{}, loadErr("schema-malformed", schemaPathFromName(name, ""), fmt.Sprintf("%s must define itemtype when type is collection", name))
 	}
 	if err := validateRangeConstraints(name, typeName, min, max); err != nil {
 		return Definition{}, err
 	}
 	if err := validateAllowedValuesConstraints(name, typeName, allowedValues, pattern, format, min, max, minLength, maxLength); err != nil {
-		return Definition{}, err
+		return Definition{}, loadErr("schema-malformed", schemaPathFromName(name, "allowedvalues"), err.Error())
 	}
 	dependentRequired, err := getDependentRequired(name, path, table, source)
 	if err != nil {
@@ -1131,7 +1250,7 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	}
 	if condition != nil && hasDefault {
 		if _, ok := asMap(defaultValue); !ok {
-			return Definition{}, fmt.Errorf("%s conditional default must be a table", name)
+			return Definition{}, loadErr("invalid-default", schemaPathFromName(name, "default"), fmt.Sprintf("%s conditional default must be a table", name))
 		}
 	}
 	return Definition{
@@ -1145,29 +1264,51 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 		mutuallyExclusive: mutuallyExclusive, exactlyOne: exactlyOne, uniqueItems: uniqueItems,
 		defaultValue: defaultValue, hasDefault: hasDefault,
 		deprecated: deprecated != nil && *deprecated, hasDeprecated: deprecated != nil,
+		schemaPath: append([]string(nil), path...),
+		deprecatedAt: func() []string {
+			if deprecated != nil && *deprecated {
+				return append([]string(nil), path...)
+			}
+			return nil
+		}(),
 		children: children,
 	}, nil
 }
 
 func (s *Schema) validateReferences(definitions map[string]Definition) error {
 	for _, definition := range definitions {
-		references := []string{definition.reference, definition.itemReference}
-		references = append(references, definition.items...)
-		references = append(references, definition.oneOf...)
-		references = append(references, definition.anyOf...)
-		if definition.condition != nil {
-			references = append(references, definition.thenReference, definition.elseReference)
+		categories := []struct {
+			property   string
+			references []string
+		}{
+			{"type", []string{definition.reference}},
+			{"itemtype", []string{definition.itemReference}},
+			{"items", definition.items},
+			{"oneof", definition.oneOf},
+			{"anyof", definition.anyOf},
+			{"allof", definition.allOf},
 		}
-		references = append(references, definition.allOf...)
-		for _, reference := range references {
-			if reference == "" {
-				continue
-			}
-			if _, builtIn := parseSchemaType(reference); builtIn {
-				continue
-			}
-			if _, exists := s.types[reference]; !exists {
-				return fmt.Errorf("%s contains unknown type reference: %s", definition.name, reference)
+		if definition.condition != nil {
+			categories = append(categories, struct {
+				property   string
+				references []string
+			}{"then", []string{definition.thenReference}},
+				struct {
+					property   string
+					references []string
+				}{"else", []string{definition.elseReference}})
+		}
+		for _, category := range categories {
+			for _, reference := range category.references {
+				if reference == "" {
+					continue
+				}
+				if _, builtIn := parseSchemaType(reference); builtIn {
+					continue
+				}
+				if _, exists := s.types[reference]; !exists {
+					return loadErr("unresolved-reference", schemaPathFromName(definition.name, category.property), fmt.Sprintf("%s contains unknown type reference: %s", definition.name, reference))
+				}
 			}
 		}
 		if err := s.validateReferences(definition.children); err != nil {
@@ -1192,7 +1333,7 @@ func (s *Schema) validateSelectorCycle(typeName string, visiting, visited map[st
 		return nil
 	}
 	if visiting[typeName] {
-		return fmt.Errorf("cyclic type selector reference involving types.%s", typeName)
+		return loadErr("cyclic-reference", schemaPathString([]string{"types", typeName}, ""), fmt.Sprintf("cyclic type selector reference involving types.%s", typeName))
 	}
 	definition, exists := s.types[typeName]
 	if !exists {
@@ -1245,9 +1386,9 @@ func validateAlternativeReferences(name, property string, references []string) e
 			return fmt.Errorf("%s cannot use any directly in %s", name, property)
 		}
 		if first, exists := seen[normalized]; exists {
-			return fmt.Errorf(
+			return loadErr("duplicate-reference", schemaPathFromName(name, property), fmt.Sprintf(
 				"%s %s contains duplicate type references %q and %q; both resolve to %s",
-				name, property, first, reference, normalized)
+				name, property, first, reference, normalized))
 		}
 		seen[normalized] = reference
 	}
@@ -1265,10 +1406,10 @@ func validateRangeConstraints(name string, typeName SchemaType, min, max any) er
 		return err
 	}
 	if isNaN(min) {
-		return fmt.Errorf("%s cannot use NaN as min", name)
+		return loadErr("invalid-boundary", schemaPathFromName(name, "min"), fmt.Sprintf("%s cannot use NaN as min", name))
 	}
 	if isNaN(max) {
-		return fmt.Errorf("%s cannot use NaN as max", name)
+		return loadErr("invalid-boundary", schemaPathFromName(name, "max"), fmt.Sprintf("%s cannot use NaN as max", name))
 	}
 	if typeName == TypeAny {
 		return fmt.Errorf("%s cannot define min or max when type is any", name)
@@ -1297,7 +1438,7 @@ func validateOrderedRange(name string, min, max any, comparableKind SchemaType) 
 	if comparableKind == TypeInteger {
 		for key, boundary := range map[string]any{"min": min, "max": max} {
 			if value, ok := boundary.(float64); ok && math.IsInf(value, 0) {
-				return fmt.Errorf("%s cannot use infinity as %s when comparable kind is integer", name, key)
+				return loadErr("invalid-boundary", schemaPathFromName(name, key), fmt.Sprintf("%s cannot use infinity as %s when comparable kind is integer", name, key))
 			}
 		}
 	}
@@ -1307,7 +1448,7 @@ func validateOrderedRange(name string, min, max any, comparableKind SchemaType) 
 			return err
 		}
 		if ordering > 0 {
-			return fmt.Errorf("%s min must not be greater than max", name)
+			return loadErr("inverted-range", schemaPathFromName(name, ""), fmt.Sprintf("%s min must not be greater than max", name))
 		}
 	}
 	return nil
@@ -1326,15 +1467,23 @@ func (s *Schema) validateMemberConstraints() error {
 				}
 				if !ok {
 					if hasRange {
-						return fmt.Errorf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name)
+						return loadErr("inapplicable-property", schemaPathFromName(definition.name, "min"), fmt.Sprintf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name))
 					}
-					return fmt.Errorf("%s per-member constraints require a determinate itemtype", definition.name)
+					stringProperty := "pattern"
+					if definition.pattern == nil {
+						stringProperty = "format"
+					}
+					return loadErr("inapplicable-property", schemaPathFromName(definition.name, stringProperty), fmt.Sprintf("%s per-member constraints require a determinate itemtype", definition.name))
 				}
 				if hasStringConstraint && itemType != TypeString {
-					return fmt.Errorf("%s can only define pattern or format when itemtype resolves to string", definition.name)
+					stringProperty := "pattern"
+					if definition.pattern == nil {
+						stringProperty = "format"
+					}
+					return loadErr("inapplicable-property", schemaPathFromName(definition.name, stringProperty), fmt.Sprintf("%s can only define pattern or format when itemtype resolves to string", definition.name))
 				}
 				if hasRange && !isRangeComparable(itemType) {
-					return fmt.Errorf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name)
+					return loadErr("inapplicable-property", schemaPathFromName(definition.name, "min"), fmt.Sprintf("%s can only define min or max when itemtype resolves to one comparable built-in type", definition.name))
 				}
 				if hasRange {
 					if err := validateBoundaryMatchesType(definition.name, "min", definition.min, itemType); err != nil {
@@ -1386,7 +1535,7 @@ func (s *Schema) validateDuplicateMemberConstraints(definition Definition) error
 				return err
 			}
 			if found {
-				return fmt.Errorf("%s defines %s both inline and on its resolved itemtype", definition.name, property)
+				return loadErr("exclusive-properties", schemaPathFromName(definition.name, ""), fmt.Sprintf("%s defines %s both inline and on its resolved itemtype", definition.name, property))
 			}
 		}
 	}
@@ -1717,7 +1866,7 @@ func (v *validator) validateTable(path string, table map[string]any, definitions
 		childPath := appendPath(path, key)
 		if !ok || value == nil {
 			if !resolved.optional {
-				v.add(childPath, "required value is missing")
+				v.errAt(childPath, "missing-required", resolved.schemaPathFor(""), "required value is missing")
 			}
 			continue
 		}
@@ -1750,7 +1899,7 @@ func (v *validator) validateValueInternal(path string, value any, definition Def
 		v.validatePlainValue(path, value, resolved)
 	}
 	if len(v.errors) == 0 && resolved.deprecated {
-		v.warn(path, "deprecated", "value is deprecated")
+		v.warn(path, "deprecated", resolved.deprecatedSchemaPath(), "value is deprecated")
 	}
 }
 
@@ -1789,7 +1938,7 @@ func (v *validator) validatePlainValue(path string, value any, definition Defini
 	if typeName == "" {
 		typeName = TypeAny
 	}
-	v.validateType(path, value, typeName)
+	v.validateType(path, value, typeName, definition.schemaPathFor("type"))
 	if !isType(value, typeName) {
 		return
 	}
@@ -1832,12 +1981,12 @@ func (v *validator) validateUnion(path string, value any, definition Definition)
 		}
 	}
 	if len(definition.oneOf) > 0 && matches != 1 {
-		v.add(path, fmt.Sprintf("expected exactly one matching type from oneof but found %d", matches))
+		v.errAt(path, "oneof", definition.schemaPathFor("oneof"), fmt.Sprintf("expected exactly one matching type from oneof but found %d", matches))
 	} else if len(definition.oneOf) > 0 {
 		v.appendWarnings(successes[0].warnings)
 	}
 	if len(definition.anyOf) > 0 && matches == 0 {
-		v.add(path, "expected at least one matching type from anyof")
+		v.errAt(path, "anyof", definition.schemaPathFor("anyof"), "expected at least one matching type from anyof")
 	} else if len(definition.anyOf) > 0 {
 		for _, candidate := range successes {
 			v.appendWarnings(candidate.warnings)
@@ -1946,14 +2095,14 @@ func (v *validator) validateComposedParts(
 ) {
 	table, ok := value.(map[string]any)
 	if !ok {
-		v.validateType(path, value, kind)
+		v.validateType(path, value, kind, "")
 		return
 	}
 	children := map[string][]Definition{}
 	hasFixedStructure := len(inheritedKeys) > 0
 	for _, component := range parts.structural {
 		if component.typeName != kind {
-			v.add(path, fmt.Sprintf("expected %s component but found %s", kind, component.typeName))
+			v.errAt(path, "type-mismatch", component.schemaPathFor("type"), fmt.Sprintf("expected %s component but found %s", kind, component.typeName))
 			continue
 		}
 		if len(component.children) > 0 {
@@ -2016,7 +2165,7 @@ func (v *validator) validateComposedParts(
 			}
 			if !present {
 				if !resolved.optional {
-					v.add(childPath, "required value is missing")
+					v.errAt(childPath, "missing-required", resolved.schemaPathFor(""), "required value is missing")
 				}
 				continue
 			}
@@ -2073,7 +2222,7 @@ func (v *validator) validateComposedParts(
 		if hasFixedStructure {
 			for key := range table {
 				if !knownKeys[key] {
-					v.add(appendPath(path, key), "unexpected key")
+					v.errAt(appendPath(path, key), "unknown-key", "", "unexpected key")
 				}
 			}
 		}
@@ -2087,7 +2236,7 @@ func (v *validator) validateComposedParts(
 				dynamicEntries++
 				childPath := appendPath(path, key)
 				if component.keyPattern != nil && !matchesPattern(component.keyPattern, key) {
-					v.add(childPath, "key does not match keypattern "+component.keyPattern.String())
+					v.errAt(childPath, "keypattern", component.schemaPathFor("keypattern"), "key does not match keypattern "+component.keyPattern.String())
 				}
 				v.validateMemberValueConstraints(childPath, entry, component)
 				// A composed collection may take its dynamic-entry constraint
@@ -2107,17 +2256,17 @@ func (v *validator) validateComposedParts(
 	}
 	for _, component := range parts.structural {
 		if component.deprecated {
-			v.warn(path, "deprecated", "value is deprecated")
+			v.warn(path, "deprecated", component.deprecatedSchemaPath(), "value is deprecated")
 		}
 	}
 	for _, union := range unions {
 		if union.deprecated {
-			v.warn(path, "deprecated", "value is deprecated")
+			v.warn(path, "deprecated", union.deprecatedSchemaPath(), "value is deprecated")
 		}
 	}
 	for _, conditional := range conditionals {
 		if conditional.deprecated {
-			v.warn(path, "deprecated", "value is deprecated")
+			v.warn(path, "deprecated", conditional.deprecatedSchemaPath(), "value is deprecated")
 		}
 	}
 }
@@ -2225,14 +2374,14 @@ func (v *validator) validateComposedUnion(
 	}
 	if len(definition.oneOf) > 0 {
 		if matches != 1 {
-			v.add(path, fmt.Sprintf("expected exactly one matching type from oneof but found %d", matches))
+			v.errAt(path, "oneof", definition.schemaPathFor("oneof"), fmt.Sprintf("expected exactly one matching type from oneof but found %d", matches))
 			return
 		}
 		v.appendWarnings(successes[0].warnings)
 		return
 	}
 	if matches == 0 {
-		v.add(path, "expected at least one matching type from anyof")
+		v.errAt(path, "anyof", definition.schemaPathFor("anyof"), "expected at least one matching type from anyof")
 		return
 	}
 	for _, candidate := range successes {
@@ -2261,7 +2410,7 @@ func (v *validator) validateComposedConditional(
 	case err != nil:
 		v.add(path, err.Error())
 	case !resolved || branchKind != kind:
-		v.add(path, fmt.Sprintf("expected %s conditional branch but found %s", kind, branchKind))
+		v.errAt(path, "type-mismatch", "", fmt.Sprintf("expected %s conditional branch but found %s", kind, branchKind))
 	default:
 		v.validateComposedStructure(path, value, kind, branch, knownKeys)
 	}
@@ -2274,7 +2423,7 @@ func (v *validator) validateTableValue(path string, table map[string]any, defini
 	v.validateTable(path, table, definition.children)
 	for key := range table {
 		if _, ok := definition.children[key]; !ok {
-			v.add(appendPath(path, key), "unexpected key")
+			v.errAt(appendPath(path, key), "unknown-key", definition.schemaPathFor(""), "unexpected key")
 		}
 	}
 	v.validateSiblingRules(path, table, definition)
@@ -2290,7 +2439,7 @@ func (v *validator) validateCollection(path string, table map[string]any, defini
 		}
 		dynamicEntries++
 		if definition.keyPattern != nil && !matchesPattern(definition.keyPattern, key) {
-			v.add(childPath, "key does not match keypattern "+definition.keyPattern.String())
+			v.errAt(childPath, "keypattern", definition.schemaPathFor("keypattern"), "key does not match keypattern "+definition.keyPattern.String())
 		}
 		if definition.itemReference == "" {
 			v.add(childPath, "collection entry has no itemtype reference")
@@ -2312,7 +2461,7 @@ func (v *validator) validateCollection(path string, table map[string]any, defini
 			continue
 		}
 		if _, ok := table[key]; !ok && !resolved.optional {
-			v.add(appendPath(path, key), "required value is missing")
+			v.errAt(appendPath(path, key), "missing-required", resolved.schemaPathFor(""), "required value is missing")
 		}
 	}
 	v.validateSiblingRules(path, table, definition)
@@ -2324,7 +2473,7 @@ func (v *validator) validateArray(path string, array []any, definition Definitio
 		for index := range array {
 			for previous := range index {
 				if valuesEqual(array[previous], array[index]) {
-					v.add(fmt.Sprintf("%s[%d]", path, index),
+					v.errAt(fmt.Sprintf("%s[%d]", path, index), "uniqueitems", definition.schemaPathFor("uniqueitems"),
 						fmt.Sprintf("duplicate item equals item at index %d", previous))
 					break
 				}
@@ -2366,7 +2515,7 @@ func (v *validator) validateSiblingRules(path string, table map[string]any, defi
 		}
 		for _, dependency := range dependencies {
 			if _, present := table[dependency]; !present {
-				v.add(appendPath(path, dependency),
+				v.errAt(appendPath(path, dependency), "dependentrequired", definition.schemaPathFor("dependentrequired"),
 					fmt.Sprintf("required by dependentrequired triggered by sibling %q", trigger))
 			}
 		}
@@ -2374,14 +2523,14 @@ func (v *validator) validateSiblingRules(path string, table map[string]any, defi
 	for _, group := range definition.mutuallyExclusive {
 		present := presentGroupMembers(table, group)
 		if len(present) > 1 {
-			v.add(path, fmt.Sprintf("mutuallyexclusive group has multiple present members: %s",
+			v.errAt(path, "mutuallyexclusive", definition.schemaPathFor("mutuallyexclusive"), fmt.Sprintf("mutuallyexclusive group has multiple present members: %s",
 				strings.Join(present, ", ")))
 		}
 	}
 	for _, group := range definition.exactlyOne {
 		present := presentGroupMembers(table, group)
 		if len(present) != 1 {
-			v.add(path, fmt.Sprintf("exactlyone group requires exactly one present member from: %s",
+			v.errAt(path, "exactlyone", definition.schemaPathFor("exactlyone"), fmt.Sprintf("exactlyone group requires exactly one present member from: %s",
 				strings.Join(group, ", ")))
 		}
 	}
@@ -2399,7 +2548,7 @@ func presentGroupMembers(table map[string]any, group []string) []string {
 
 func (v *validator) validateTupleArray(path string, array []any, definition Definition) {
 	if len(array) != len(definition.items) {
-		v.add(path, fmt.Sprintf("expected array length %d but found %d", len(definition.items), len(array)))
+		v.errAt(path, "tuple-length", definition.schemaPathFor("items"), fmt.Sprintf("expected array length %d but found %d", len(definition.items), len(array)))
 	}
 	upperBound := min(len(definition.items), len(array))
 	for i := range upperBound {
@@ -2413,9 +2562,9 @@ func (v *validator) validateTupleArray(path string, array []any, definition Defi
 	}
 }
 
-func (v *validator) validateType(path string, value any, typeName SchemaType) {
+func (v *validator) validateType(path string, value any, typeName SchemaType, schemaPath string) {
 	if !isType(value, typeName) {
-		v.add(path, fmt.Sprintf("expected %s but found %s", typeName, typeNameOf(value)))
+		v.errAt(path, "type-mismatch", schemaPath, fmt.Sprintf("expected %s but found %s", typeName, typeNameOf(value)))
 	}
 }
 
@@ -2435,10 +2584,10 @@ func (v *validator) validateCommonConstraints(path string, value any, definition
 	if stringValue, ok := value.(string); ok {
 		v.validateLength(path, utf8.RuneCountInString(stringValue), definition)
 		if definition.pattern != nil && !matchesPattern(definition.pattern, stringValue) {
-			v.add(path, "does not match pattern "+definition.pattern.String())
+			v.errAt(path, "pattern", definition.schemaPathFor("pattern"), "does not match pattern "+definition.pattern.String())
 		}
 		if definition.format != "" && !validateStringFormat(definition.format, stringValue) {
-			v.add(path, "invalid string for format "+definition.format)
+			v.errAt(path, "format", definition.schemaPathFor("format"), "invalid string for format "+definition.format)
 		}
 	}
 }
@@ -2450,10 +2599,10 @@ func (v *validator) validateMemberValueConstraints(path string, value any, defin
 	}
 	if stringValue, ok := value.(string); ok {
 		if definition.pattern != nil && !matchesPattern(definition.pattern, stringValue) {
-			v.add(path, "does not match pattern "+definition.pattern.String())
+			v.errAt(path, "pattern", definition.schemaPathFor("pattern"), "does not match pattern "+definition.pattern.String())
 		}
 		if definition.format != "" && !validateStringFormat(definition.format, stringValue) {
-			v.add(path, "invalid string for format "+definition.format)
+			v.errAt(path, "format", definition.schemaPathFor("format"), "invalid string for format "+definition.format)
 		}
 	}
 }
@@ -2467,34 +2616,34 @@ func (v *validator) validateAllowedValues(path string, value any, definition Def
 			return
 		}
 	}
-	v.add(path, "value is not in allowedvalues")
+	v.errAt(path, "allowedvalues", definition.schemaPathFor("allowedvalues"), "value is not in allowedvalues")
 }
 
 func (v *validator) validateRange(path string, value any, definition Definition) {
 	if definition.min != nil {
 		comparison, err := compare(value, definition.min)
 		if err != nil {
-			v.add(path, err.Error())
+			v.errAt(path, "min", definition.schemaPathFor("min"), err.Error())
 		} else if comparison < 0 {
-			v.add(path, "value is less than min")
+			v.errAt(path, "min", definition.schemaPathFor("min"), "value is less than min")
 		}
 	}
 	if definition.max != nil {
 		comparison, err := compare(value, definition.max)
 		if err != nil {
-			v.add(path, err.Error())
+			v.errAt(path, "max", definition.schemaPathFor("max"), err.Error())
 		} else if comparison > 0 {
-			v.add(path, "value is greater than max")
+			v.errAt(path, "max", definition.schemaPathFor("max"), "value is greater than max")
 		}
 	}
 }
 
 func (v *validator) validateLength(path string, length int, definition Definition) {
 	if definition.minLength != nil && length < *definition.minLength {
-		v.add(path, "length is less than minlength")
+		v.errAt(path, "minlength", definition.schemaPathFor("minlength"), "length is less than minlength")
 	}
 	if definition.maxLength != nil && length > *definition.maxLength {
-		v.add(path, "length is greater than maxlength")
+		v.errAt(path, "maxlength", definition.schemaPathFor("maxlength"), "length is greater than maxlength")
 	}
 }
 
@@ -2522,6 +2671,9 @@ func (v *validator) resolve(definition Definition, seenReferences map[string]boo
 		referenced.defaultValue, referenced.hasDefault = definition.defaultValue, true
 	}
 	referenced.deprecated = definition.deprecated || referenced.deprecated
+	if definition.deprecated {
+		referenced.deprecatedAt = definition.deprecatedAt
+	}
 	return referenced, nil
 }
 
@@ -2557,17 +2709,31 @@ func (v *validator) resolveReference(reference string, seenReferences map[string
 }
 
 func (v *validator) add(path, message string) {
-	v.errors = append(v.errors, ValidationError{
-		Severity: SeverityError, Code: "validation-error", Path: path, Message: message,
-	})
+	v.errAt(path, "schema-malformed", "", message)
 }
 
-func (v *validator) warn(path, code, message string) {
+// errAt records a validation error with an explicit registry code and optional
+// schema path, deduplicating on (code, instance_path, schema_path).
+func (v *validator) errAt(path, code, schemaPath, message string) {
+	diagnostic := ValidationError{
+		Phase: PhaseValidation, Severity: SeverityError,
+		Code: code, Path: path, SchemaPath: schemaPath, Message: message,
+	}
+	for _, existing := range v.errors {
+		if existing.Code == code && existing.Path == path && existing.SchemaPath == schemaPath {
+			return
+		}
+	}
+	v.errors = append(v.errors, diagnostic)
+}
+
+func (v *validator) warn(path, code, schemaPath, message string) {
 	if v.suppressWarnings {
 		return
 	}
 	v.appendWarnings([]Diagnostic{{
-		Severity: SeverityWarning, Code: code, Path: path, Message: message,
+		Phase: PhaseValidation, Severity: SeverityWarning,
+		Code: code, Path: path, SchemaPath: schemaPath, Message: message,
 	}})
 }
 
@@ -2576,7 +2742,7 @@ func (v *validator) appendWarnings(warnings []Diagnostic) {
 		duplicate := false
 		for _, existing := range v.warnings {
 			if existing.Code == warning.Code && existing.Path == warning.Path &&
-				existing.Message == warning.Message {
+				existing.SchemaPath == warning.SchemaPath {
 				duplicate = true
 				break
 			}
@@ -2711,11 +2877,15 @@ func compareDocumentSchemaVersion(value any, actual string) (string, error) {
 	}
 	actualParts := semverPattern.FindStringSubmatch(actual)
 	if expectedParts[1] != actualParts[1] {
-		return "", fmt.Errorf(
-			"document expects TOML Schema major version %s, but resolved schema uses %s",
-			expected,
-			actual,
-		)
+		return "", &SchemaError{
+			Phase: PhaseDiscovery,
+			Code:  "unsupported-version",
+			Message: fmt.Sprintf(
+				"document expects TOML Schema major version %s, but resolved schema uses %s",
+				expected,
+				actual,
+			),
+		}
 	}
 	if expected != actual {
 		return fmt.Sprintf(
@@ -2935,11 +3105,11 @@ func getPatternKey(name string, table map[string]any, key string) (*regexp.Regex
 		return nil, fmt.Errorf("expected %s to be a string", key)
 	}
 	if err := validatePortablePattern(name, key, pattern); err != nil {
-		return nil, err
+		return nil, loadErr("unsupported-pattern", schemaPathFromName(name, key), err.Error())
 	}
 	compiled, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("invalid-pattern: %s has invalid %s: %w", name, key, err)
+		return nil, loadErr("invalid-pattern", schemaPathFromName(name, key), fmt.Sprintf("%s has invalid %s: %s", name, key, err.Error()))
 	}
 	return compiled, nil
 }
@@ -3228,11 +3398,45 @@ func appendPath(path, key string) string {
 	return path + "." + encodePathKey(key)
 }
 
+var bareKeyPattern = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
+
+// encodePathKey renders one path segment per SPEC.md `### Instance Path`. A segment
+// that is non-empty and entirely ASCII letters, digits, `_`, or `-` is written
+// literally; anything else is written as an RFC 8259 JSON string. Go's %q is NOT a
+// substitute: it escapes other control characters as \x00 where RFC 8259 requires
+// \u0000.
 func encodePathKey(key string) string {
-	if key != "" && regexp.MustCompile(`^[A-Za-z0-9_-]+$`).MatchString(key) {
+	if key != "" && bareKeyPattern.MatchString(key) {
 		return key
 	}
-	return fmt.Sprintf("%q", key)
+	var builder strings.Builder
+	builder.WriteByte('"')
+	for _, r := range key {
+		switch r {
+		case '"':
+			builder.WriteString(`\"`)
+		case '\\':
+			builder.WriteString(`\\`)
+		case '\b':
+			builder.WriteString(`\b`)
+		case '\t':
+			builder.WriteString(`\t`)
+		case '\n':
+			builder.WriteString(`\n`)
+		case '\f':
+			builder.WriteString(`\f`)
+		case '\r':
+			builder.WriteString(`\r`)
+		default:
+			if r < 0x20 {
+				builder.WriteString(fmt.Sprintf(`\u%04x`, r))
+			} else {
+				builder.WriteRune(r)
+			}
+		}
+	}
+	builder.WriteByte('"')
+	return builder.String()
 }
 
 func matchesPattern(pattern *regexp.Regexp, value string) bool {

@@ -60,6 +60,7 @@ class Definition:
     deprecated: bool = False
     has_deprecated: bool = False
     children: Dict[str, "Definition"] = field(default_factory=dict)
+    schema_path: str = ""
 
     def default(self) -> Tuple[Any, bool]:
         """Returns the effective, non-materializing default annotation as

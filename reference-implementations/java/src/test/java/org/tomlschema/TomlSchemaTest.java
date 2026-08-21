@@ -2047,7 +2047,7 @@ class TomlSchemaTest {
                 """));
         assertFalse(missing.isValid());
         assertTrue(missing.errors().stream().anyMatch(error ->
-                error.code().equals("required") && error.path().equals("$.element.name")));
+                error.code().equals("missing-required") && error.path().equals("$.element.name")));
     }
 
     @Test
@@ -2400,10 +2400,10 @@ class TomlSchemaTest {
 
         assertFalse(result.isValid());
         assertEquals(1, result.errors().size());
-        assertEquals("required", result.errors().getFirst().code());
+        assertEquals("missing-required", result.errors().getFirst().code());
         assertEquals("$.section.count", result.errors().getFirst().path());
         assertEquals(List.of("$.section.name"),
-                result.warnings().stream().map(ValidationWarning::path).toList());
+                result.warnings().stream().map(ValidationDiagnostic::path).toList());
 
         ValidationResult accepted = loaded.validate(write("union-descendant-warning-valid.toml", """
                 [section]
@@ -2413,7 +2413,7 @@ class TomlSchemaTest {
 
         assertTrue(accepted.isValid());
         assertEquals(List.of("$.section.name", "$.section"),
-                accepted.warnings().stream().map(ValidationWarning::path).toList());
+                accepted.warnings().stream().map(ValidationDiagnostic::path).toList());
     }
 
     @Test

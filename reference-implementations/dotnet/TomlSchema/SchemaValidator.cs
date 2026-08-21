@@ -11,8 +11,8 @@ using System.Globalization;
 internal class SchemaValidator
 {
     private readonly TomlSchema _schema;
-    private readonly List<ValidationError> _errors = new();
-    private readonly List<ValidationWarning> _warnings = new();
+    private readonly List<ValidationDiagnostic> _errors = new();
+    private readonly List<ValidationDiagnostic> _warnings = new();
 
     public SchemaValidator(TomlSchema schema)
     {
@@ -20,7 +20,8 @@ internal class SchemaValidator
     }
 
     public ValidationResult Validate(TomlTable document)
-    {        var workDoc = new TomlTable();
+    {
+        var workDoc = new TomlTable();
         foreach (var kvp in document.Where(x => x.Key != "toml-schema" || _schema.Elements.ContainsKey("toml-schema")))
             workDoc[kvp.Key] = kvp.Value;
 
@@ -33,7 +34,9 @@ internal class SchemaValidator
             }
             else if (!schemaElem.Optional)
             {
-                _errors.Add(new ValidationError(AppendPath("$", key), $"required value is missing", "required"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.MissingRequired, PathEncoding.AppendKey("$", key),
+                    schemaElem.SchemaPath, "required value is missing"));
             }
         }
 
@@ -42,39 +45,51 @@ internal class SchemaValidator
         {
             if (!_schema.Elements.ContainsKey(key))
             {
-                _errors.Add(new ValidationError(AppendPath("$", key), "unexpected key", "unexpected-key"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.UnknownKey, PathEncoding.AppendKey("$", key),
+                    "$.elements", "unexpected key"));
             }
         }
 
-        return new ValidationResult(_errors.AsReadOnly(), _warnings.AsReadOnly());
+        return new ValidationResult(Dedup(_errors), Dedup(_warnings));
+    }
+
+    private static IReadOnlyList<ValidationDiagnostic> Dedup(IEnumerable<ValidationDiagnostic> diagnostics)
+    {
+        var seen = new HashSet<(string, string?, string?)>();
+        var result = new List<ValidationDiagnostic>();
+        foreach (var diagnostic in diagnostics)
+        {
+            if (seen.Add((diagnostic.Code, diagnostic.InstancePath, diagnostic.SchemaPath)))
+                result.Add(diagnostic);
+        }
+        return result;
     }
 
     /// <summary>
     /// Validates a declared <c>default</c> annotation as a present value against
     /// its definition. Used at schema-load time; deprecation is not emitted here.
     /// </summary>
-    internal IReadOnlyList<ValidationError> ValidateDefaultAnnotation(
+    internal IReadOnlyList<ValidationDiagnostic> ValidateDefaultAnnotation(
         object value, SchemaDefinition definition)
     {
-        ValidateType(value, definition, "$default");
+        ValidateType(value, definition, "$default", suppressDeprecation: true);
         return _errors;
     }
 
     private void ValidateElement(string name, object? value, SchemaDefinition schema, string path)
     {
-        string elemPath = AppendPath(path, name);
+        string elemPath = PathEncoding.AppendKey(path, name);
 
         // Handle null values
         if (value == null)
         {
             if (!schema.Optional)
-                _errors.Add(new ValidationError(elemPath, "required value is missing", "required"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.MissingRequired, elemPath, schema.SchemaPath,
+                    "required value is missing"));
             return;
         }
-
-        // Emit deprecation warning
-        if (schema.Deprecated)
-            _warnings.Add(new ValidationWarning(elemPath, "Element is deprecated", "deprecated"));
 
         ValidateType(value, schema, elemPath);
     }
@@ -84,13 +99,16 @@ internal class SchemaValidator
         SchemaDefinition schema,
         string path,
         IReadOnlySet<string>? externalClosure = null,
-        bool enforceClosure = true)
+        bool enforceClosure = true,
+        bool suppressDeprecation = false)
     {
         // Handle null
         if (value == null)
         {
             if (!schema.Optional)
-                _errors.Add(new ValidationError(path, "required value is missing", "required"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.MissingRequired, path, schema.SchemaPath,
+                    "required value is missing"));
             return;
         }
 
@@ -104,6 +122,18 @@ internal class SchemaValidator
             effectiveSchema = refSchema;
         }
 
+        // Node-level deprecation. A use-site `deprecated` paths to the use site; a
+        // deprecation declared on a referenced definition paths to that definition.
+        if (!suppressDeprecation)
+        {
+            var deprecatedSchema = schema.Deprecated ? schema
+                : effectiveSchema.Deprecated ? effectiveSchema : null;
+            if (deprecatedSchema != null)
+                _warnings.Add(ValidationDiagnostic.Warning(
+                    DiagnosticCodes.Deprecated, path, Sp(deprecatedSchema, "deprecated"),
+                    "value is deprecated"));
+        }
+
         var determinateClosure = new HashSet<string>(externalClosure ?? new HashSet<string>());
         determinateClosure.UnionWith(CollectDeterminateFixedChildKeys(
             effectiveSchema, new HashSet<string>()));
@@ -114,7 +144,8 @@ internal class SchemaValidator
             {
                 var allOfSchema = _schema.ResolveType(typeRef)
                     ?? throw new InvalidOperationException($"Undefined type in allof: {typeRef}");
-                ValidateType(value, allOfSchema, path, determinateClosure, enforceClosure: false);
+                ValidateType(value, allOfSchema, path, determinateClosure, enforceClosure: false,
+                    suppressDeprecation: suppressDeprecation);
             }
         }
 
@@ -135,7 +166,8 @@ internal class SchemaValidator
             string? selectedType = matches ? effectiveSchema.Condition.ThenType : effectiveSchema.Condition.ElseType;
             var condSchema = _schema.ResolveType(selectedType)
                 ?? throw new InvalidOperationException($"Undefined type in conditional: {selectedType}");
-            ValidateType(value, condSchema, path, determinateClosure, enforceClosure);
+            ValidateType(value, condSchema, path, determinateClosure, enforceClosure,
+                suppressDeprecation: suppressDeprecation);
             return;
         }
 
@@ -155,10 +187,9 @@ internal class SchemaValidator
                 }
             }
             if (matchCount != 1)
-                _errors.Add(new ValidationError(
-                    path,
-                    $"expected exactly one matching type from oneof but found {matchCount}",
-                    "oneof"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.OneOf, path, Sp(effectiveSchema, "oneof"),
+                    $"expected exactly one matching type from oneof but found {matchCount}"));
             return;
         }
 
@@ -178,7 +209,9 @@ internal class SchemaValidator
                 }
             }
             if (matchCount == 0)
-                _errors.Add(new ValidationError(path, "expected at least one matching type from anyof", "anyof"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.AnyOf, path, Sp(effectiveSchema, "anyof"),
+                    "expected at least one matching type from anyof"));
             return;
         }
 
@@ -186,7 +219,8 @@ internal class SchemaValidator
         var actualType = GetValueType(value);
         if (effectiveSchema.Type.HasValue && !TypeMatches(actualType, effectiveSchema.Type.Value))
         {
-            _errors.Add(new ValidationError(path, $"type mismatch", "type-mismatch"));
+            _errors.Add(ValidationDiagnostic.Error(
+                DiagnosticCodes.TypeMismatch, path, Sp(effectiveSchema, "type"), "type mismatch"));
             return;
         }
 
@@ -195,7 +229,9 @@ internal class SchemaValidator
             && effectiveSchema.AllowedValues != null && effectiveSchema.AllowedValues.Count > 0)
         {
             if (!effectiveSchema.AllowedValues.Any(av => ValueEquals(av, value)))
-                _errors.Add(new ValidationError(path, "value not in allowed values", "invalid-value"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.AllowedValues, path, Sp(effectiveSchema, "allowedvalues"),
+                    "value not in allowed values"));
         }
 
         // String constraints
@@ -204,27 +240,25 @@ internal class SchemaValidator
             var length = CountUnicodeScalars(strVal);
 
             if (effectiveSchema.MinLength.HasValue && length < effectiveSchema.MinLength)
-                _errors.Add(new ValidationError(path, $"string too short", "minlength"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.MinLength, path, Sp(effectiveSchema, "minlength"), "string too short"));
 
             if (effectiveSchema.MaxLength.HasValue && length > effectiveSchema.MaxLength)
-                _errors.Add(new ValidationError(path, $"string too long", "maxlength"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.MaxLength, path, Sp(effectiveSchema, "maxlength"), "string too long"));
 
             if (!string.IsNullOrEmpty(effectiveSchema.Pattern))
             {
-                try
-                {
-                    if (!Regex.IsMatch(strVal, effectiveSchema.Pattern))
-                        _errors.Add(new ValidationError(path, "string does not match pattern", "pattern-mismatch"));
-                }
-                catch (RegexParseException)
-                {
-                    _errors.Add(new ValidationError(path, $"invalid regex pattern", "pattern"));
-                }
+                if (!Regex.IsMatch(strVal, effectiveSchema.Pattern))
+                    _errors.Add(ValidationDiagnostic.Error(
+                        DiagnosticCodes.Pattern, path, Sp(effectiveSchema, "pattern"),
+                        "string does not match pattern"));
             }
 
             if (effectiveSchema.Format != null && !StringFormatValidator.IsValid(effectiveSchema.Format, strVal))
-                _errors.Add(new ValidationError(path,
-                    $"string is not a valid {effectiveSchema.Format}", "format"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.Format, path, Sp(effectiveSchema, "format"),
+                    $"string is not a valid {effectiveSchema.Format}"));
         }
 
         // Range constraints
@@ -232,13 +266,15 @@ internal class SchemaValidator
             && ValueSemantics.MatchesComparableKind(value, effectiveSchema.Type))
         {
             if (ValueSemantics.Compare(value, effectiveSchema.Min) < 0)
-                _errors.Add(new ValidationError(path, $"value below minimum", "min"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.Min, path, Sp(effectiveSchema, "min"), "value below minimum"));
         }
         if (effectiveSchema.Max != null
             && ValueSemantics.MatchesComparableKind(value, effectiveSchema.Type))
         {
             if (ValueSemantics.Compare(value, effectiveSchema.Max) > 0)
-                _errors.Add(new ValidationError(path, $"value above maximum", "max"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.Max, path, Sp(effectiveSchema, "max"), "value above maximum"));
         }
 
         // Table validation
@@ -270,7 +306,9 @@ internal class SchemaValidator
             }
             else if (!childSchema.Optional)
             {
-                _errors.Add(new ValidationError(AppendPath(path, key), "required value is missing", "required"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.MissingRequired, PathEncoding.AppendKey(path, key),
+                    childSchema.SchemaPath, "required value is missing"));
             }
         }
 
@@ -287,7 +325,9 @@ internal class SchemaValidator
                 foreach (var key in table.Keys)
                 {
                     if (!knownKeys.Contains(key))
-                        _errors.Add(new ValidationError(AppendPath(path, key), "unexpected key", "unexpected-key"));
+                        _errors.Add(ValidationDiagnostic.Error(
+                            DiagnosticCodes.UnknownKey, PathEncoding.AppendKey(path, key),
+                            schema.SchemaPath, "unexpected key"));
                 }
             }
         }
@@ -388,8 +428,10 @@ internal class SchemaValidator
                 foreach (var required in dependents)
                 {
                     if (!table.ContainsKey(required))
-                        _errors.Add(new ValidationError(AppendPath(path, required),
-                            $"required because sibling {trigger} is present", "dependentrequired"));
+                        _errors.Add(ValidationDiagnostic.Error(
+                            DiagnosticCodes.DependentRequired, PathEncoding.AppendKey(path, required),
+                            Sp(schema, "dependentrequired"),
+                            $"required because sibling {trigger} is present"));
                 }
             }
         }
@@ -401,7 +443,9 @@ internal class SchemaValidator
             {
                 var present = table.Keys.Where(k => group.Contains(k)).ToList();
                 if (present.Count > 1)
-                    _errors.Add(new ValidationError(path, "mutually exclusive keys present", "mutuallyexclusive"));
+                    _errors.Add(ValidationDiagnostic.Error(
+                        DiagnosticCodes.MutuallyExclusive, path, Sp(schema, "mutuallyexclusive"),
+                        "mutually exclusive keys present"));
             }
         }
 
@@ -412,7 +456,9 @@ internal class SchemaValidator
             {
                 var present = table.Keys.Where(k => group.Contains(k)).ToList();
                 if (present.Count != 1)
-                    _errors.Add(new ValidationError(path, "exactly one key must be present", "exactlyone"));
+                    _errors.Add(ValidationDiagnostic.Error(
+                        DiagnosticCodes.ExactlyOne, path, Sp(schema, "exactlyone"),
+                        "exactly one key must be present"));
             }
         }
     }
@@ -423,34 +469,29 @@ internal class SchemaValidator
         if (schema.Items is { Count: > 0 })
         {
             if (array.Count != schema.Items.Count)
-                _errors.Add(new ValidationError(path,
-                    $"expected array length {schema.Items.Count} but found {array.Count}", "items-arity"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.TupleLength, path, Sp(schema, "items"),
+                    $"expected array length {schema.Items.Count} but found {array.Count}"));
             var bound = Math.Min(array.Count, schema.Items.Count);
             for (int i = 0; i < bound; i++)
             {
                 var itemSchema = ResolveItemType(schema.Items[i])
                     ?? throw new InvalidOperationException($"Undefined item type: {schema.Items[i]}");
-                ValidateType(array[i], itemSchema, $"{path}[{i}]");
+                ValidateType(array[i], itemSchema, PathEncoding.AppendIndex(path, i));
             }
             return;
         }
 
         // Unique items
         if (schema.UniqueItems == true)
-        {
-            var seen = new HashSet<string>();
-            foreach (var item in array)
-            {
-                var itemStr = NormalizeValue(item);
-                if (!seen.Add(itemStr))
-                    _errors.Add(new ValidationError(path, "array contains duplicate items", "duplicate-items"));
-            }
-        }
+            ValidateUniqueItems(array, path, Sp(schema, "uniqueitems"));
 
         if (schema.MinLength.HasValue && array.Count < schema.MinLength)
-            _errors.Add(new ValidationError(path, "array too short", "minlength"));
+            _errors.Add(ValidationDiagnostic.Error(
+                DiagnosticCodes.MinLength, path, Sp(schema, "minlength"), "array too short"));
         if (schema.MaxLength.HasValue && array.Count > schema.MaxLength)
-            _errors.Add(new ValidationError(path, "array too long", "maxlength"));
+            _errors.Add(ValidationDiagnostic.Error(
+                DiagnosticCodes.MaxLength, path, Sp(schema, "maxlength"), "array too long"));
 
         // Item type validation
         if (!string.IsNullOrEmpty(schema.ItemType))
@@ -459,14 +500,35 @@ internal class SchemaValidator
                 ?? throw new InvalidOperationException($"Undefined item type: {schema.ItemType}");
             for (int i = 0; i < array.Count; i++)
             {
-                ValidateType(array[i], itemSchema, $"{path}[{i}]");
-                ValidateMemberValueConstraints(array[i], schema, $"{path}[{i}]");
+                ValidateType(array[i], itemSchema, PathEncoding.AppendIndex(path, i));
+                ValidateMemberValueConstraints(array[i], schema, PathEncoding.AppendIndex(path, i));
             }
         }
         else
         {
             for (int i = 0; i < array.Count; i++)
-                ValidateMemberValueConstraints(array[i], schema, $"{path}[{i}]");
+                ValidateMemberValueConstraints(array[i], schema, PathEncoding.AppendIndex(path, i));
+        }
+    }
+
+    /// <summary>
+    /// Emits a <c>uniqueitems</c> error at each duplicate element, pathed to the later
+    /// occurrence, so the reported instance path identifies the offending element.
+    /// </summary>
+    private void ValidateUniqueItems(TomlArray array, string path, string? schemaPath)
+    {
+        for (int i = 0; i < array.Count; i++)
+        {
+            for (int j = 0; j < i; j++)
+            {
+                if (ValueSemantics.ValuesEqual(array[j], array[i]))
+                {
+                    _errors.Add(ValidationDiagnostic.Error(
+                        DiagnosticCodes.UniqueItems, PathEncoding.AppendIndex(path, i), schemaPath,
+                        "array contains duplicate items"));
+                    break;
+                }
+            }
         }
     }
 
@@ -483,7 +545,9 @@ internal class SchemaValidator
             if (table.TryGetValue(key, out var childValue))
                 ValidateElement(key, childValue, childSchema, path);
             else if (!childSchema.Optional)
-                _errors.Add(new ValidationError(AppendPath(path, key), "required value is missing", "required"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.MissingRequired, PathEncoding.AppendKey(path, key),
+                    childSchema.SchemaPath, "required value is missing"));
         }
 
         ValidatePresenceRules(table, schema, path);
@@ -493,20 +557,15 @@ internal class SchemaValidator
             if (schema.Children.ContainsKey(key))
                 continue;
 
-            var keyPath = AppendPath(path, key);
+            var keyPath = PathEncoding.AppendKey(path, key);
 
             // Validate key pattern
             if (!string.IsNullOrEmpty(keyPattern))
             {
-                try
-                {
-                    if (!Regex.IsMatch(key, keyPattern))
-                        _errors.Add(new ValidationError(keyPath, "key does not match keypattern", "keypattern"));
-                }
-                catch (RegexParseException)
-                {
-                    _errors.Add(new ValidationError(keyPath, "invalid keypattern regex", "keypattern"));
-                }
+                if (!Regex.IsMatch(key, keyPattern))
+                    _errors.Add(ValidationDiagnostic.Error(
+                        DiagnosticCodes.KeyPattern, keyPath, Sp(schema, "keypattern"),
+                        "key does not match keypattern"));
             }
 
             // Validate value type
@@ -520,26 +579,37 @@ internal class SchemaValidator
     {
         if (schema.AllowedValues?.Count > 0
             && !schema.AllowedValues.Any(allowed => ValueEquals(allowed, value)))
-            _errors.Add(new ValidationError(path, "value not in allowed values", "invalid-value"));
+            _errors.Add(ValidationDiagnostic.Error(
+                DiagnosticCodes.AllowedValues, path, Sp(schema, "allowedvalues"),
+                "value not in allowed values"));
         if ((schema.AllowedValues?.Count ?? 0) == 0 && value != null)
         {
             if (schema.Min != null && ValueSemantics.AreComparable(value, schema.Min)
                 && ValueSemantics.Compare(value, schema.Min) < 0)
-                _errors.Add(new ValidationError(path, "value below minimum", "min"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.Min, path, Sp(schema, "min"), "value below minimum"));
             if (schema.Max != null && ValueSemantics.AreComparable(value, schema.Max)
                 && ValueSemantics.Compare(value, schema.Max) > 0)
-                _errors.Add(new ValidationError(path, "value above maximum", "max"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.Max, path, Sp(schema, "max"), "value above maximum"));
         }
         if (value is string text)
         {
             if (schema.Pattern != null && !Regex.IsMatch(text, schema.Pattern))
-                _errors.Add(new ValidationError(path, "string does not match pattern", "pattern-mismatch"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.Pattern, path, Sp(schema, "pattern"),
+                    "string does not match pattern"));
             if (schema.Format != null && !StringFormatValidator.IsValid(schema.Format, text))
-                _errors.Add(new ValidationError(path, $"string is not a valid {schema.Format}", "format"));
+                _errors.Add(ValidationDiagnostic.Error(
+                    DiagnosticCodes.Format, path, Sp(schema, "format"),
+                    $"string is not a valid {schema.Format}"));
         }
     }
 
     private SchemaDefinition? ResolveItemType(string itemType) => _schema.ResolveType(itemType);
+
+    private static string? Sp(SchemaDefinition definition, string property) =>
+        definition.SchemaPath == null ? null : definition.SchemaPath + "." + property;
 
     private SchemaType GetValueType(object value) => value switch
     {
@@ -574,19 +644,6 @@ internal class SchemaValidator
         return a.Equals(b);
     }
 
-    private string NormalizeValue(object? value) => value switch
-    {
-        null => "null",
-        string s => $"\"{s}\"",
-        bool b => b ? "true" : "false",
-        long l => l.ToString(),
-        double d => d.ToString(CultureInfo.InvariantCulture),
-        DateTime dt => dt.ToString("O"),
-        DateOnly d => d.ToString("O"),
-        TimeOnly t => t.ToString("O"),
-        _ => value.ToString() ?? "null"
-    };
-
     private long CountUnicodeScalars(string str)
     {
         // Count Unicode scalar values (handling surrogate pairs correctly)
@@ -602,23 +659,4 @@ internal class SchemaValidator
         }
         return count;
     }
-
-    private string AppendPath(string path, string key)
-    {
-        // Quote key if it contains special characters
-        string formattedKey;
-        if (Regex.IsMatch(key, "^[A-Za-z0-9_-]+$"))
-        {
-            formattedKey = key;
-        }
-        else
-        {
-            formattedKey = $"\"{EscapeString(key)}\"";
-        }
-
-        return $"{path}.{formattedKey}";
-    }
-
-    private string EscapeString(string s) =>
-        s.Replace("\\", "\\\\").Replace("\"", "\\\"");
 }

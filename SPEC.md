@@ -466,7 +466,11 @@ rule in this document is written against.
 - A TOML document being validated MUST be parsed as TOML 1.0.0 before validation
   begins. Parsing precedes validation: a document that is not well-formed TOML
   never reaches a validator, and its parse failure is a parse error rather than
-  a validation diagnostic.
+  a validation diagnostic. Because no validation occurred, an implementation
+  MUST NOT report that failure as a diagnostic under either a registry code or
+  an extension code, and MUST NOT report the document as invalid; a
+  command-line validator reports it as an unusable invocation and exits `2`
+  (see [Command-Line Exit Status](#command-line-exit-status)).
 
 This baseline is a property of the language, not of an individual schema. No
 schema property selects a TOML version, and a schema document cannot request a
@@ -3951,7 +3955,9 @@ slices, wildcards, or descendant segments.
 - Otherwise *K* is written as a JSON string per RFC 8259: surrounded by `"`, with
   `"` and `\` escaped, with `U+0008`, `U+0009`, `U+000A`, `U+000C`, and `U+000D`
   escaped as `\b`, `\t`, `\n`, `\f`, and `\r`, and with every other
-  `U+0000`-`U+001F` scalar escaped as `\u00XX`.
+  `U+0000`-`U+001F` scalar escaped as `\u00XX`, where `XX` is the scalar value in
+  two **lowercase** hexadecimal digits. Paths are compared as strings, so the
+  digit case is normative: `\u001f`, never `\u001F`.
 
 Examples:
 
@@ -3990,6 +3996,12 @@ after that property. A child definition's path is that child's table. When a chi
 is written through the reserved `children` namespace, the schema path includes the
 `children` segment and the instance path does not.
 
+When a single schema property declares the rule that failed, the schema path ends
+at that property. When no single property does — because the rule spans several
+properties, as a reversed `min`/`max` pair does, or because it is structural, as a
+closed table's `unknown-key` rule is — the schema path is the definition table
+itself.
+
 Examples:
 
 | Schema location | Schema path |
@@ -3999,6 +4011,8 @@ Examples:
 | `min` on reusable `types.boundedInteger` | `$.types.boundedInteger.min` |
 | escaped child `type` under `elements.plugin` | `$.elements.plugin.children.type` |
 | `oneof` array on `elements.id` | `$.elements.id.oneof` |
+| a value of the wrong kind for `type` on `elements.port` | `$.elements.port.type` |
+| an unknown key of closed table `elements.item` | `$.elements.item` |
 
 When a named type reference is applied, the schema path of a failed assertion is
 the location at which that assertion is declared, which is the referenced
@@ -4114,7 +4128,8 @@ that callers need to tell apart:
 - **0** — a schema was loaded and the document is valid (warnings permitted);
 - **1** — a schema was loaded and the document is invalid;
 - **2** — discovery or schema-load failed, or the invocation itself was unusable
-  (usage, missing files, TOML parse failure of the schema).
+  (usage, missing files, TOML parse failure of the schema or of the document
+  under validation).
 
 The canonical `tosd` CLI uses this mapping. Other command-line validators SHOULD
 match it. Library APIs have no exit status; they MUST still distinguish the
@@ -4158,6 +4173,7 @@ failures against the effective definition use the ordinary validation codes.
 | `schema-retrieval-failed` | error | An authorized retrieval does not yield a usable schema, including transport failure, redirect exhaustion, or an unusable response. Defined under [Schema Discovery and Retrieval](#schema-discovery-and-retrieval). |
 | `version-mismatch` | warning | The document's `[toml-schema].version` and the loaded schema's language version differ without a major-version incompatibility. |
 | `unsupported-version` | error | The document requests, or the schema declares, a language version the implementation must reject (unsupported major, greater minor, or `0.y.z`). Also a schema-load code when no discovery is involved. |
+| `resource-limit-exceeded` | error | A configured limit was reached during discovery, for example a retrieval size or redirect budget. Also a schema-load and validation code. |
 
 #### Schema-Load Codes
 

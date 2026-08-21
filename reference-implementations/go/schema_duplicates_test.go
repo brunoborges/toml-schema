@@ -59,7 +59,7 @@ point = [1.0, 2.0]
 	if err != nil {
 		t.Fatalf("repeated tuple items must load: %v", err)
 	}
-	if result := schema.ValidateFile(documentPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(documentPath); !result.Valid() {
 		t.Fatalf("repeated tuple items must validate: %#v", result.Errors)
 	}
 }

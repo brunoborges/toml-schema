@@ -14,6 +14,32 @@ internal static class ValueSemantics
         || left is DateOnly && right is DateOnly
         || left is TimeOnly && right is TimeOnly;
 
+    /// <summary>
+    /// Determines whether two TOML values are equal for <c>uniqueitems</c> purposes.
+    /// Numbers compare by mathematical value across integer/float kinds, two NaNs are
+    /// considered equal, and other values fall back to structural equality.
+    /// </summary>
+    internal static bool ValuesEqual(object? left, object? right)
+    {
+        if (left == null || right == null)
+            return ReferenceEquals(left, right);
+        if (left is double leftNan && double.IsNaN(leftNan)
+            && right is double rightNan && double.IsNaN(rightNan))
+            return true;
+        if (AreComparable(left, right))
+        {
+            try
+            {
+                return Compare(left, right) == 0;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+        return left.Equals(right);
+    }
+
     internal static bool MatchesComparableKind(object value, SchemaType? kind) => kind switch
     {
         SchemaType.Integer or SchemaType.Float => value is long or double,

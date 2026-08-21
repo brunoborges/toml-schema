@@ -31,19 +31,20 @@ public class TomlSchema
     /// </summary>
     public ValidationResult Validate(string tomlPath)
     {
+        TomlTable doc;
         try
         {
             var content = File.ReadAllText(tomlPath);
-            var doc = SchemaLoader.ParseToml(content);
-            return Validate(doc);
+            doc = SchemaLoader.ParseToml(content);
         }
         catch (Exception ex)
         {
-            return new ValidationResult(new[]
-            {
-                new ValidationError("$", $"TOML parse error: {ex.Message}", "parse-error")
-            }.ToList());
+            // A document that is not well-formed TOML never reaches the validator: its
+            // parse failure is a parse error, not a validation diagnostic.
+            throw new DocumentParseException($"TOML parse error: {ex.Message}", ex);
         }
+
+        return Validate(doc);
     }
 
     /// <summary>

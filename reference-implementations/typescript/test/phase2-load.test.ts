@@ -20,16 +20,19 @@ max = 65535`),
 
 test("invalid and non-portable patterns fail during schema loading", () => {
   const cases = [
-    ['type = "string"\npattern = "["', /invalid-pattern/],
+    ['type = "string"\npattern = "["', "invalid-pattern"],
     [String.raw`type = "string"
-pattern = "\\d+"`, /unsupported-pattern/],
+pattern = "\\d+"`, "unsupported-pattern"],
     [
       'type = "collection"\nitemtype = "string"\nkeypattern = "(?=x)"',
-      /unsupported-pattern/,
+      "unsupported-pattern",
     ],
   ] as const;
   for (const [definition, expected] of cases) {
-    assert.throws(() => schema(`[elements.value]\n${definition}`), expected);
+    assert.throws(
+      () => schema(`[elements.value]\n${definition}`),
+      (err: unknown) => (err as { code?: string }).code === expected,
+    );
   }
 });
 

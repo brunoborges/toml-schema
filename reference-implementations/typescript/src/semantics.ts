@@ -1,6 +1,8 @@
 import { isRangeComparable, normalizeReference, parseSchemaType, type SchemaType } from "./builtins.js";
 import { cloneDefinition, emptyRecord, type RawDefinition } from "./definition.js";
+import { DiagnosticCodes } from "./diagnostics.js";
 import { SchemaError } from "./errors.js";
+import { schemaPathOf } from "./paths.js";
 import { validateOrderedRange } from "./schemaParser.js";
 import {
   boundaryMatchesType,
@@ -104,10 +106,16 @@ export function effectiveKind(
     const component = definitionForReference(data, reference);
     const componentResult = effectiveKind(data, component, visiting);
     if (!componentResult.resolved || componentResult.kind === "any") {
-      throw new SchemaError(`allof component ${reference} has indeterminate effective kind`);
+      throw new SchemaError(`allof component ${reference} has indeterminate effective kind`, {
+        code: DiagnosticCodes.INCOMPATIBLE_COMPOSITION,
+        ...(definition.schemaPath !== undefined ? { schemaPath: `${definition.schemaPath}.allof` } : {}),
+      });
     }
     if (result.resolved && componentResult.kind !== result.kind) {
-      throw new SchemaError(`allof component ${reference} has incompatible effective kind`);
+      throw new SchemaError(`allof component ${reference} has incompatible effective kind`, {
+        code: DiagnosticCodes.INCOMPATIBLE_COMPOSITION,
+        ...(definition.schemaPath !== undefined ? { schemaPath: `${definition.schemaPath}.allof` } : {}),
+      });
     }
     if (!result.resolved) result = componentResult;
   }
@@ -294,7 +302,7 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
   try {
     ({ kind, resolved } = effectiveKind(data, definition, new Set()));
   } catch (cause) {
-    throw new SchemaError(`${definition.name}: ${errorMessage(cause)}`);
+    annotate(definition, cause);
   }
   const hasSiblingRules =
     Object.keys(definition.dependentRequired ?? {}).length > 0 ||
@@ -308,11 +316,16 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
     try {
       fixed = determinateFixedChildren(data, definition, new Set());
     } catch (cause) {
-      throw new SchemaError(`${definition.name}: ${errorMessage(cause)}`);
+      annotate(definition, cause);
     }
     const checkName = (property: string, operand: string): void => {
       if (!fixed.has(operand)) {
-        throw new SchemaError(`${definition.name} ${property} contains unknown fixed child "${operand}"`);
+        throw new SchemaError(`${definition.name} ${property} contains unknown fixed child "${operand}"`, {
+          code: DiagnosticCodes.INDETERMINATE_OPERAND,
+          ...(definition.schemaPath !== undefined
+            ? { schemaPath: `${definition.schemaPath}.${property}` }
+            : {}),
+        });
       }
     };
     for (const [trigger, dependencies] of Object.entries(definition.dependentRequired ?? {})) {
@@ -336,10 +349,12 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
     try {
       hasItemConstraint = hasCollectionItemConstraint(data, definition, new Set());
     } catch (cause) {
-      throw new SchemaError(`${definition.name}: ${errorMessage(cause)}`);
+      annotate(definition, cause);
     }
     if (!hasItemConstraint) {
-      throw new SchemaError(`${definition.name} effective collection must define at least one itemtype`);
+      throw new SchemaError(`${definition.name} effective collection must define at least one itemtype`, {
+        ...(definition.schemaPath !== undefined ? { schemaPath: definition.schemaPath } : {}),
+      });
     }
   }
   if (definition.typeName === "array" || definition.typeName === "collection") {
@@ -378,6 +393,22 @@ function validateDefinitionSemantics(data: SchemaData, definition: RawDefinition
 function validateMemberConstraints(data: SchemaData, definition: RawDefinition): void {
   const hasRange = definition.min !== undefined || definition.max !== undefined;
   const hasStringConstraint = definition.pattern !== undefined || definition.format !== undefined;
+  const rangePath =
+    definition.schemaPath !== undefined
+      ? `${definition.schemaPath}.${definition.min !== undefined ? "min" : "max"}`
+      : undefined;
+  const stringPath =
+    definition.schemaPath !== undefined
+      ? `${definition.schemaPath}.${definition.pattern !== undefined ? "pattern" : "format"}`
+      : undefined;
+  const inapplicableRange = {
+    code: DiagnosticCodes.INAPPLICABLE_PROPERTY,
+    ...(rangePath !== undefined ? { schemaPath: rangePath } : {}),
+  };
+  const inapplicableString = {
+    code: DiagnosticCodes.INAPPLICABLE_PROPERTY,
+    ...(stringPath !== undefined ? { schemaPath: stringPath } : {}),
+  };
   if (hasRange || hasStringConstraint) {
     const itemResult = resolveItemKind(data, definition.itemReference, new Set());
     if (!itemResult.resolved) {
@@ -385,15 +416,20 @@ function validateMemberConstraints(data: SchemaData, definition: RawDefinition):
         hasRange
           ? `${definition.name} can only define min or max when itemtype resolves to one comparable built-in type`
           : `${definition.name} per-member constraints require a determinate itemtype`,
+        hasRange ? inapplicableRange : inapplicableString,
       );
     }
     if (hasRange && !isRangeComparable(itemResult.kind)) {
       throw new SchemaError(
         `${definition.name} can only define min or max when itemtype resolves to one comparable built-in type`,
+        inapplicableRange,
       );
     }
     if (hasStringConstraint && itemResult.kind !== "string") {
-      throw new SchemaError(`${definition.name} can only define pattern or format when itemtype resolves to string`);
+      throw new SchemaError(
+        `${definition.name} can only define pattern or format when itemtype resolves to string`,
+        inapplicableString,
+      );
     }
   }
   for (const [property, present] of [
@@ -410,6 +446,10 @@ function validateMemberConstraints(data: SchemaData, definition: RawDefinition):
     ) {
       throw new SchemaError(
         `${definition.name} defines ${property} both inline and on its resolved itemtype`,
+        {
+          code: DiagnosticCodes.EXCLUSIVE_PROPERTIES,
+          ...(definition.schemaPath !== undefined ? { schemaPath: definition.schemaPath } : {}),
+        },
       );
     }
   }
@@ -450,22 +490,44 @@ function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
 }
 
+/** Rethrows `cause` under `definition`'s name while preserving structured diagnostic metadata. */
+function annotate(definition: RawDefinition, cause: unknown): never {
+  if (cause instanceof SchemaError) {
+    throw new SchemaError(`${definition.name}: ${cause.message}`, {
+      phase: cause.phase,
+      code: cause.code,
+      ...(cause.schemaPath !== undefined ? { schemaPath: cause.schemaPath } : {}),
+    });
+  }
+  throw new SchemaError(`${definition.name}: ${errorMessage(cause)}`);
+}
+
 export function validateReferences(data: SchemaData, definitions: Readonly<Record<string, RawDefinition>>): void {
   for (const definition of Object.values(definitions)) {
-    const references: (string | undefined)[] = [
-      definition.reference,
-      definition.itemReference,
-      ...(definition.items ?? []),
-      ...(definition.oneOf ?? []),
-      ...(definition.anyOf ?? []),
-      ...(definition.condition ? [definition.thenReference, definition.elseReference] : []),
-      ...(definition.allOf ?? []),
+    const references: [string, string | undefined][] = [
+      ["type", definition.reference],
+      ["itemtype", definition.itemReference],
+      ...(definition.items ?? []).map((r): [string, string] => ["items", r]),
+      ...(definition.oneOf ?? []).map((r): [string, string] => ["oneof", r]),
+      ...(definition.anyOf ?? []).map((r): [string, string] => ["anyof", r]),
+      ...(definition.condition
+        ? ([
+            ["then", definition.thenReference],
+            ["else", definition.elseReference],
+          ] as [string, string | undefined][])
+        : []),
+      ...(definition.allOf ?? []).map((r): [string, string] => ["allof", r]),
     ];
-    for (const reference of references) {
+    for (const [property, reference] of references) {
       if (!reference) continue;
       if (isBuiltIn(reference)) continue;
       if (!Object.hasOwn(data.types, reference)) {
-        throw new SchemaError(`${definition.name} contains unknown type reference: ${reference}`);
+        throw new SchemaError(`${definition.name} contains unknown type reference: ${reference}`, {
+          code: DiagnosticCodes.UNRESOLVED_REFERENCE,
+          ...(definition.schemaPath !== undefined
+            ? { schemaPath: `${definition.schemaPath}.${property}` }
+            : {}),
+        });
       }
     }
     validateReferences(data, definition.children);
@@ -487,7 +549,10 @@ function validateSelectorCycle(
 ): void {
   if (isBuiltIn(typeName) || visited.has(typeName)) return;
   if (visiting.has(typeName)) {
-    throw new SchemaError(`cyclic type selector reference involving types.${typeName}`);
+    throw new SchemaError(`cyclic type selector reference involving types.${typeName}`, {
+      code: DiagnosticCodes.CYCLIC_REFERENCE,
+      schemaPath: schemaPathOf(["types", typeName]),
+    });
   }
   const definition = data.types[typeName];
   if (!definition) return;
@@ -638,7 +703,10 @@ export function effectiveDefault(
     }
     if (!candidate.found) continue;
     if (found && !valuesEqual(value, candidate.value)) {
-      throw new SchemaError(`${definition.name} has conflicting inherited defaults`);
+      throw new SchemaError(`${definition.name} has conflicting inherited defaults`, {
+        code: DiagnosticCodes.INVALID_DEFAULT,
+        ...(definition.schemaPath !== undefined ? { schemaPath: `${definition.schemaPath}.default` } : {}),
+      });
     }
     value = candidate.value;
     found = true;
@@ -659,7 +727,10 @@ export function validateDefaults(data: SchemaData, validateValue: DefaultValueVa
     if (found) {
       const error = validateValue(definition, value as TomlValue);
       if (error !== undefined) {
-        throw new SchemaError(`${definition.name} default is invalid: ${error}`);
+        throw new SchemaError(`${definition.name} default is invalid: ${error}`, {
+          code: DiagnosticCodes.INVALID_DEFAULT,
+          ...(definition.schemaPath !== undefined ? { schemaPath: `${definition.schemaPath}.default` } : {}),
+        });
       }
     }
     for (const child of Object.values(definition.children)) validateDefinition(child);

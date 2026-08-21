@@ -102,21 +102,25 @@ final class SchemaLoader {
         }
         Map<String, SchemaDefinition> definitions = new LinkedHashMap<>();
         for (String key : table.keySet()) {
+            String entrySchemaPath = "$." + prefix + "." + PathEncoding.encodeKey(key);
             if (prefix.equals("types") && SchemaType.fromSchemaNameOptional(key).isPresent()) {
-                throw new SchemaException("[types." + key + "] uses a reserved built-in type name");
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, entrySchemaPath,
+                        "[types." + key + "] uses a reserved built-in type name");
             }
             if (prefix.equals("types") && key.startsWith("types.")) {
-                throw new SchemaException("[types." + key + "] uses the reserved type-reference prefix");
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, entrySchemaPath,
+                        "[types." + key + "] uses the reserved type-reference prefix");
             }
             if (!(table.get(List.of(key)) instanceof TomlTable definitionTable)) {
-                throw new SchemaException("[" + prefix + "] entry must be a table: " + key);
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, "$." + prefix,
+                        "[" + prefix + "] entry must be a table: " + key);
             }
-            definitions.put(key, parseDefinition(prefix + "." + key, definitionTable));
+            definitions.put(key, parseDefinition(prefix + "." + key, entrySchemaPath, definitionTable));
         }
         return definitions;
     }
 
-    private SchemaDefinition parseDefinition(String name, TomlTable table) {
+    private SchemaDefinition parseDefinition(String name, String schemaPath, TomlTable table) {
         String typeSelector = getString(table, "type");
         String normalizedTypeSelector = normalizeReference(typeSelector);
         SchemaType type = typeSelector == null
@@ -137,20 +141,22 @@ final class SchemaLoader {
         boolean hasItems = getPropertyValue(table, "items") != null;
         List<String> items = getStringArrayValues(table, "items").stream().map(this::normalizeReference).toList();
         if (hasItems && items.isEmpty()) {
-            throw new SchemaException(name + " items must contain at least one type reference");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, schemaPath + ".items",
+                    name + " items must contain at least one type reference");
         }
         Boolean optional = getBoolean(table, "optional");
-        Pattern pattern = getPattern(name, table, "pattern");
+        Pattern pattern = getPattern(name, schemaPath, table, "pattern");
         String formatName = getString(table, "format");
         SchemaStringFormat format = formatName == null
                 ? null : SchemaStringFormat.fromSchemaName(formatName);
-        Pattern keyPattern = getPattern(name, table, "keypattern");
+        Pattern keyPattern = getPattern(name, schemaPath, table, "keypattern");
         Integer minLength = getInteger(table, "minlength");
         Integer maxLength = getInteger(table, "maxlength");
         boolean hasAllowedValues = getPropertyValue(table, "allowedvalues") != null;
         List<Object> allowedValues = getArrayValues(table, "allowedvalues");
         if (hasAllowedValues && allowedValues.isEmpty()) {
-            throw new SchemaException(name + " allowedvalues must contain at least one entry");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, schemaPath + ".allowedvalues",
+                    name + " allowedvalues must contain at least one entry");
         }
         boolean hasOneOf = getPropertyValue(table, "oneof") != null;
         boolean hasAnyOf = getPropertyValue(table, "anyof") != null;
@@ -159,13 +165,14 @@ final class SchemaLoader {
                 || isProperty(table, "else");
         List<String> oneOf = getStringArrayValues(table, "oneof");
         List<String> anyOf = getStringArrayValues(table, "anyof");
-        ConditionalParts conditional = hasConditionalKeyword ? getConditional(name, table) : null;
+        ConditionalParts conditional = hasConditionalKeyword ? getConditional(name, schemaPath, table) : null;
         boolean hasAllOf = getPropertyValue(table, "allof") != null;
         List<String> allOf = getStringArrayValues(table, "allof");
         if (hasAllOf && allOf.isEmpty()) {
-            throw new SchemaException(name + " allof must contain at least one type reference");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, schemaPath + ".allof",
+                    name + " allof must contain at least one type reference");
         }
-        validateAlternativeReferences(name, "allof", allOf);
+        validateAlternativeReferences(name, schemaPath, "allof", allOf);
         Map<String, List<String>> dependentRequired = getDependentRequired(name, table);
         List<List<String>> mutuallyExclusive = getNameGroups(name, table, "mutuallyexclusive");
         List<List<String>> exactlyOne = getNameGroups(name, table, "exactlyone");
@@ -173,19 +180,22 @@ final class SchemaLoader {
         boolean hasDefault = isProperty(table, "default");
         Object defaultValue = hasDefault ? table.get(List.of("default")) : null;
         if (conditional != null && hasDefault && !(defaultValue instanceof TomlTable)) {
-            throw new SchemaException(name + " conditional default must be a table");
+            throw new SchemaException(DiagnosticCodes.INVALID_DEFAULT, schemaPath + ".default",
+                    name + " conditional default must be a table");
         }
         Boolean deprecated = getBoolean(table, "deprecated");
         if (hasOneOf && oneOf.isEmpty()) {
-            throw new SchemaException(name + " oneof must contain at least one type reference");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, schemaPath + ".oneof",
+                    name + " oneof must contain at least one type reference");
         }
         if (hasAnyOf && anyOf.isEmpty()) {
-            throw new SchemaException(name + " anyof must contain at least one type reference");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, schemaPath + ".anyof",
+                    name + " anyof must contain at least one type reference");
         }
         rejectBareCollectionReference(name, "itemtype", itemReference);
         rejectBareCollectionReferences(name, "items", items);
-        validateAlternativeReferences(name, "oneof", oneOf);
-        validateAlternativeReferences(name, "anyof", anyOf);
+        validateAlternativeReferences(name, schemaPath, "oneof", oneOf);
+        validateAlternativeReferences(name, schemaPath, "anyof", anyOf);
         if (typeSelector != null
                 && type != SchemaType.COLLECTION
                 && normalizeReference(typeSelector).equals(SchemaType.COLLECTION.schemaName())) {
@@ -196,7 +206,7 @@ final class SchemaLoader {
                 + (hasAnyOf ? 1 : 0)
                 + (conditional == null ? 0 : 1);
         if (typeSelectors > 1) {
-            throw new SchemaException(
+            throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, schemaPath,
                     name + " cannot define more than one of type, oneof, anyof, and if/then/else");
         }
 
@@ -218,7 +228,8 @@ final class SchemaLoader {
                 if (!(value instanceof TomlTable childTable)) {
                     throw new SchemaException(name + ".children." + key + " must be a table");
                 }
-                children.put(key, parseDefinition(name + "." + key, childTable));
+                children.put(key, parseDefinition(name + "." + key,
+                        schemaPath + ".children." + PathEncoding.encodeKey(key), childTable));
             }
         }
         for (String key : table.keySet()) {
@@ -234,9 +245,12 @@ final class SchemaLoader {
                 if (children.containsKey(key)) {
                     throw new SchemaException(name + " defines child " + key + " more than once");
                 }
-                children.put(key, parseDefinition(name + "." + key, childTable));
+                children.put(key, parseDefinition(name + "." + key,
+                        schemaPath + "." + PathEncoding.encodeKey(key), childTable));
             } else if (!DEFINITION_KEYS.contains(key)) {
-                throw new SchemaException(name + " contains unsupported property: " + key);
+                throw new SchemaException(DiagnosticCodes.UNRECOGNIZED_PROPERTY,
+                        schemaPath + "." + PathEncoding.encodeKey(key),
+                        name + " contains unsupported property: " + key);
             }
         }
         if (hasOneOf || hasAnyOf) {
@@ -265,63 +279,78 @@ final class SchemaLoader {
             }
         }
         if (!children.isEmpty() && type != SchemaType.TABLE && type != SchemaType.COLLECTION) {
-            throw new SchemaException(name + " can only define children when type is table or collection");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, schemaPath,
+                    name + " can only define children when type is table or collection");
         }
         if (type != SchemaType.ARRAY && type != SchemaType.COLLECTION && itemReference != null) {
-            throw new SchemaException(name + " can only define itemtype when type is array or collection");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, schemaPath + ".itemtype",
+                    name + " can only define itemtype when type is array or collection");
         }
         if (type != SchemaType.ARRAY && !items.isEmpty()) {
-            throw new SchemaException(name + " can only define items when type is array");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, schemaPath + ".items",
+                    name + " can only define items when type is array");
         }
         if (!items.isEmpty()) {
             if (itemReference != null) {
-                throw new SchemaException(name + " cannot define both items and itemtype");
+                throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, schemaPath,
+                        name + " cannot define both items and itemtype");
             }
             if (minLength != null || maxLength != null) {
-                throw new SchemaException(name + " cannot define minlength or maxlength together with items");
+                throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, schemaPath,
+                        name + " cannot define minlength or maxlength together with items");
             }
             if (hasAllowedValues) {
-                throw new SchemaException(name + " cannot define allowedvalues together with items");
+                throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, schemaPath,
+                        name + " cannot define allowedvalues together with items");
             }
             if (getPropertyValue(table, "min") != null || getPropertyValue(table, "max") != null) {
-                throw new SchemaException(name + " cannot define min or max together with items");
+                throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, schemaPath,
+                        name + " cannot define min or max together with items");
             }
             if (pattern != null || format != null) {
-                throw new SchemaException(name + " cannot define pattern or format together with items");
+                throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, schemaPath,
+                        name + " cannot define pattern or format together with items");
             }
         }
         if (minLength != null && maxLength != null && minLength > maxLength) {
-            throw new SchemaException(name + " minlength must not be greater than maxlength");
+            throw new SchemaException(DiagnosticCodes.INVERTED_RANGE, schemaPath,
+                    name + " minlength must not be greater than maxlength");
         }
         if (keyPattern != null && type != SchemaType.COLLECTION) {
-            throw new SchemaException(name + " can only define keypattern when type is collection");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, schemaPath + ".keypattern",
+                    name + " can only define keypattern when type is collection");
         }
         if (pattern != null && type != SchemaType.STRING
                 && type != SchemaType.ARRAY && type != SchemaType.COLLECTION) {
-            throw new SchemaException(name + " can only define pattern when type is string");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, schemaPath + ".pattern",
+                    name + " can only define pattern when type is string");
         }
         if (format != null && type != SchemaType.STRING
                 && type != SchemaType.ARRAY && type != SchemaType.COLLECTION) {
-            throw new SchemaException(name + " can only define format when type is string");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, schemaPath + ".format",
+                    name + " can only define format when type is string");
         }
         if (hasAllowedValues && type == SchemaType.TABLE) {
-            throw new SchemaException(name + " can only define allowedvalues for scalar, unconstrained, or array types");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, schemaPath + ".allowedvalues",
+                    name + " can only define allowedvalues for scalar, unconstrained, or array types");
         }
         if ((minLength != null || maxLength != null)
                 && type != SchemaType.STRING
                 && type != SchemaType.ARRAY
                 && type != SchemaType.COLLECTION) {
-            throw new SchemaException(name
-                    + " can only define minlength or maxlength when type is string, array, or collection");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY,
+                    schemaPath + "." + (minLength != null ? "minlength" : "maxlength"),
+                    name + " can only define minlength or maxlength when type is string, array, or collection");
         }
         if (type == SchemaType.COLLECTION && itemReference == null && allOf.isEmpty()) {
-            throw new SchemaException(name + " must define itemtype when type is collection");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, schemaPath,
+                    name + " must define itemtype when type is collection");
         }
         Object min = getPropertyValue(table, "min");
         Object max = getPropertyValue(table, "max");
-        validateRangeConstraints(name, type, itemReference, min, max);
+        validateRangeConstraints(name, schemaPath, type, itemReference, min, max);
         validateAllowedValuesConstraints(
-                name, type, allowedValues, pattern, format, min, max, minLength, maxLength);
+                name, schemaPath, type, allowedValues, pattern, format, min, max, minLength, maxLength);
         return new SchemaDefinition(
                 name,
                 type,
@@ -351,7 +380,8 @@ final class SchemaLoader {
                 hasDefault,
                 defaultValue,
                 deprecated != null && deprecated,
-                children
+                children,
+                schemaPath
         );
     }
 
@@ -360,21 +390,22 @@ final class SchemaLoader {
             Map<String, SchemaDefinition> definitions
     ) {
         for (SchemaDefinition definition : definitions.values()) {
-            validateReference(types, definition.name(), definition.reference());
-            validateReference(types, definition.name(), definition.itemReference());
+            String base = definition.schemaPath();
+            validateReference(types, definition.name(), base + ".type", definition.reference());
+            validateReference(types, definition.name(), base + ".itemtype", definition.itemReference());
             for (String reference : definition.items()) {
-                validateReference(types, definition.name(), reference);
+                validateReference(types, definition.name(), base + ".items", reference);
             }
             for (String reference : definition.oneOf()) {
-                validateReference(types, definition.name(), reference);
+                validateReference(types, definition.name(), base + ".oneof", reference);
             }
             for (String reference : definition.anyOf()) {
-                validateReference(types, definition.name(), reference);
+                validateReference(types, definition.name(), base + ".anyof", reference);
             }
-            validateReference(types, definition.name(), definition.thenReference());
-            validateReference(types, definition.name(), definition.elseReference());
+            validateReference(types, definition.name(), base + ".then", definition.thenReference());
+            validateReference(types, definition.name(), base + ".else", definition.elseReference());
             for (String reference : definition.allOf()) {
-                validateReference(types, definition.name(), reference);
+                validateReference(types, definition.name(), base + ".allof", reference);
             }
             validateReferences(types, definition.children());
         }
@@ -383,13 +414,15 @@ final class SchemaLoader {
     private void validateReference(
             Map<String, SchemaDefinition> types,
             String definitionName,
+            String schemaPath,
             String reference
     ) {
         if (reference == null || SchemaType.fromSchemaNameOptional(reference).isPresent()) {
             return;
         }
         if (!types.containsKey(reference)) {
-            throw new SchemaException(definitionName + " contains unknown type reference: " + reference);
+            throw new SchemaException(DiagnosticCodes.UNRESOLVED_REFERENCE, schemaPath,
+                    definitionName + " contains unknown type reference: " + reference);
         }
     }
 
@@ -410,7 +443,8 @@ final class SchemaLoader {
             return;
         }
         if (!visiting.add(typeName)) {
-            throw new SchemaException("Cyclic type selector reference involving types." + typeName);
+            throw new SchemaException(DiagnosticCodes.CYCLIC_REFERENCE, "$.types." + PathEncoding.encodeKey(typeName),
+                    "Cyclic type selector reference involving types." + typeName);
         }
         SchemaDefinition definition = types.get(typeName);
         if (definition == null) {
@@ -448,7 +482,7 @@ final class SchemaLoader {
         }
     }
 
-    private void validateAlternativeReferences(String name, String property, List<String> references) {
+    private void validateAlternativeReferences(String name, String schemaPath, String property, List<String> references) {
         Map<String, String> seen = new LinkedHashMap<>();
         for (String reference : references) {
             String normalizedReference = normalizeReference(reference);
@@ -458,18 +492,20 @@ final class SchemaLoader {
             }
             String first = seen.putIfAbsent(normalizedReference, reference);
             if (first != null) {
-                throw new SchemaException(name + " " + property
+                throw new SchemaException(DiagnosticCodes.DUPLICATE_REFERENCE, schemaPath + "." + property,
+                        name + " " + property
                         + " contains duplicate type references \"" + first + "\" and \"" + reference
                         + "\"; both resolve to " + normalizedReference);
             }
         }
     }
 
-    private ConditionalParts getConditional(String name, TomlTable table) {
+    private ConditionalParts getConditional(String name, String schemaPath, TomlTable table) {
         if (!isProperty(table, "if")
                 || !isProperty(table, "then")
                 || !isProperty(table, "else")) {
-            throw new SchemaException(name + " must define if, then, and else together");
+            throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, schemaPath,
+                    name + " must define if, then, and else together");
         }
         if (!(table.get(List.of("if")) instanceof TomlTable conditionTable)) {
             throw new SchemaException(name + " if must be an inline table");
@@ -632,29 +668,30 @@ final class SchemaLoader {
         return longValue.intValue();
     }
 
-    private Pattern getPattern(String definitionName, TomlTable table, String key) {
+    private Pattern getPattern(String definitionName, String schemaPath, TomlTable table, String key) {
         String pattern = getString(table, key);
         if (pattern == null) {
             return null;
         }
-        validatePortablePattern(definitionName, key, pattern);
+        validatePortablePattern(definitionName, schemaPath, key, pattern);
         try {
             return Pattern.compile(toJavaPattern(pattern));
         } catch (PatternSyntaxException e) {
-            throw new SchemaException(
+            throw new SchemaException(DiagnosticCodes.INVALID_PATTERN, schemaPath + "." + key,
                     "invalid-pattern: " + definitionName + " has invalid " + key + ": " + pattern, e);
         }
     }
 
-    private void validatePortablePattern(String definitionName, String key, String pattern) {
+    private void validatePortablePattern(String definitionName, String schemaPath, String key, String pattern) {
         boolean inCharacterClass = false;
         for (int index = 0; index < pattern.length(); index++) {
             char current = pattern.charAt(index);
             if (current == '\\' && index + 1 < pattern.length()) {
                 char escaped = pattern.charAt(index + 1);
                 if ("\\.^$*+?()[]{}|-tnrfva".indexOf(escaped) < 0) {
-                    throw new SchemaException("unsupported-pattern: " + definitionName + " " + key
-                            + " uses non-portable escape \\" + escaped);
+                    throw new SchemaException(DiagnosticCodes.UNSUPPORTED_PATTERN, schemaPath + "." + key,
+                            "unsupported-pattern: " + definitionName + " " + key
+                                    + " uses non-portable escape \\" + escaped);
                 }
                 index++;
             } else if (current == '[') {
@@ -664,12 +701,14 @@ final class SchemaLoader {
             } else if (!inCharacterClass && current == '(' && index + 1 < pattern.length()
                     && pattern.charAt(index + 1) == '?'
                     && (index + 2 >= pattern.length() || pattern.charAt(index + 2) != ':')) {
-                throw new SchemaException("unsupported-pattern: " + definitionName + " " + key
-                        + " uses non-portable group syntax");
+                throw new SchemaException(DiagnosticCodes.UNSUPPORTED_PATTERN, schemaPath + "." + key,
+                        "unsupported-pattern: " + definitionName + " " + key
+                                + " uses non-portable group syntax");
             } else if (!inCharacterClass && "?*+}".indexOf(current) >= 0 && index + 1 < pattern.length()
                     && "?+".indexOf(pattern.charAt(index + 1)) >= 0) {
-                throw new SchemaException("unsupported-pattern: " + definitionName + " " + key
-                        + " uses a non-greedy or possessive quantifier");
+                throw new SchemaException(DiagnosticCodes.UNSUPPORTED_PATTERN, schemaPath + "." + key,
+                        "unsupported-pattern: " + definitionName + " " + key
+                                + " uses a non-greedy or possessive quantifier");
             }
         }
     }
@@ -728,44 +767,51 @@ final class SchemaLoader {
         return strings;
     }
 
-    private void validateRangeConstraints(String name, SchemaType type, String itemReference, Object min, Object max) {
+    private void validateRangeConstraints(String name, String schemaPath, SchemaType type, String itemReference, Object min, Object max) {
         if (min == null && max == null) {
             return;
         }
-        validateRangeBoundary(name, "min", min);
-        validateRangeBoundary(name, "max", max);
-        rejectNaNBoundary(name, "min", min);
-        rejectNaNBoundary(name, "max", max);
+        validateRangeBoundary(name, schemaPath, "min", min);
+        validateRangeBoundary(name, schemaPath, "max", max);
+        rejectNaNBoundary(name, schemaPath, "min", min);
+        rejectNaNBoundary(name, schemaPath, "max", max);
+        String boundaryPath = schemaPath + "." + (min != null ? "min" : "max");
         if (type == SchemaType.ANY) {
-            throw new SchemaException(name + " cannot define min or max when type is any");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, boundaryPath,
+                    name + " cannot define min or max when type is any");
         }
         if (type == SchemaType.ARRAY || type == SchemaType.COLLECTION) {
             if (itemReference == null) {
-                throw new SchemaException(name + " can only define min or max when itemtype resolves to one comparable built-in type");
+                throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, boundaryPath,
+                        name + " can only define min or max when itemtype resolves to one comparable built-in type");
             }
             return;
         }
         if (type != null && !isRangeComparable(type)) {
-            throw new SchemaException(name + " can only define min or max for integer, float, date/time, or compatible array types");
+            throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, boundaryPath,
+                    name + " can only define min or max for integer, float, date/time, or compatible array types");
         }
         if (type != null) {
-            validateBoundaryMatchesType(name, "min", min, type);
-            validateBoundaryMatchesType(name, "max", max, type);
-            validateOrderedRange(name, min, max, type);
+            validateBoundaryMatchesType(name, schemaPath, "min", min, type);
+            validateBoundaryMatchesType(name, schemaPath, "max", max, type);
+            validateOrderedRange(name, schemaPath, min, max, type);
         }
     }
 
-    private void validateOrderedRange(String name, Object min, Object max, SchemaType comparableKind) {
+    private void validateOrderedRange(String name, String schemaPath, Object min, Object max, SchemaType comparableKind) {
         if (comparableKind == SchemaType.INTEGER) {
             if (min instanceof Double value && value.isInfinite()) {
-                throw new SchemaException(name + " cannot use infinity as min when comparable kind is integer");
+                throw new SchemaException(DiagnosticCodes.INVALID_BOUNDARY, schemaPath + ".min",
+                        name + " cannot use infinity as min when comparable kind is integer");
             }
             if (max instanceof Double value && value.isInfinite()) {
-                throw new SchemaException(name + " cannot use infinity as max when comparable kind is integer");
+                throw new SchemaException(DiagnosticCodes.INVALID_BOUNDARY, schemaPath + ".max",
+                        name + " cannot use infinity as max when comparable kind is integer");
             }
         }
         if (min != null && max != null && ValueSemantics.compare(min, max) > 0) {
-            throw new SchemaException(name + " min must not be greater than max");
+            throw new SchemaException(DiagnosticCodes.INVERTED_RANGE, schemaPath,
+                    name + " min must not be greater than max");
         }
     }
 
@@ -776,15 +822,18 @@ final class SchemaLoader {
         for (SchemaDefinition definition : definitions.values()) {
             if ((definition.type() == SchemaType.ARRAY || definition.type() == SchemaType.COLLECTION)
                     && (definition.min() != null || definition.max() != null)) {
+                String boundaryPath = definition.schemaPath() + "."
+                        + (definition.min() != null ? "min" : "max");
                 Set<SchemaType> itemTypes = resolveItemTypes(definition.itemReference(), types, new HashSet<>());
                 if (itemTypes.size() != 1 || !isRangeComparable(itemTypes.iterator().next())) {
-                    throw new SchemaException(definition.name()
+                    throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, boundaryPath,
+                            definition.name()
                             + " can only define min or max when itemtype resolves to one comparable built-in type");
                 }
                 SchemaType itemType = itemTypes.iterator().next();
-                validateBoundaryMatchesType(definition.name(), "min", definition.min(), itemType);
-                validateBoundaryMatchesType(definition.name(), "max", definition.max(), itemType);
-                validateOrderedRange(definition.name(), definition.min(), definition.max(), itemType);
+                validateBoundaryMatchesType(definition.name(), definition.schemaPath(), "min", definition.min(), itemType);
+                validateBoundaryMatchesType(definition.name(), definition.schemaPath(), "max", definition.max(), itemType);
+                validateOrderedRange(definition.name(), definition.schemaPath(), definition.min(), definition.max(), itemType);
             }
             validateArrayRangeConstraints(types, definition.children());
         }
@@ -808,7 +857,9 @@ final class SchemaLoader {
                     Object value = definition.allowedValues().get(index);
                     if (!permittedTypes.isEmpty()
                             && permittedTypes.stream().noneMatch(type -> valueMatchesType(value, type))) {
-                        throw new SchemaException(definition.name() + " allowedvalues[" + index
+                        throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED,
+                                definition.schemaPath() + ".allowedvalues",
+                                definition.name() + " allowedvalues[" + index
                                 + "] does not match the permitted TOML type");
                     }
                 }
@@ -871,16 +922,18 @@ final class SchemaLoader {
         return Set.of(definition.type());
     }
 
-    private void validateRangeBoundary(String name, String key, Object value) {
+    private void validateRangeBoundary(String name, String schemaPath, String key, Object value) {
         if (value == null || isRangeBoundary(value)) {
             return;
         }
-        throw new SchemaException(name + " " + key + " must be an integer, float, or temporal value");
+        throw new SchemaException(DiagnosticCodes.INVALID_BOUNDARY, schemaPath + "." + key,
+                name + " " + key + " must be an integer, float, or temporal value");
     }
 
-    private void rejectNaNBoundary(String name, String key, Object value) {
+    private void rejectNaNBoundary(String name, String schemaPath, String key, Object value) {
         if (value instanceof Double doubleValue && doubleValue.isNaN()) {
-            throw new SchemaException(name + " cannot use NaN as " + key);
+            throw new SchemaException(DiagnosticCodes.INVALID_BOUNDARY, schemaPath + "." + key,
+                    name + " cannot use NaN as " + key);
         }
     }
 
@@ -900,11 +953,12 @@ final class SchemaLoader {
         };
     }
 
-    private void validateBoundaryMatchesType(String name, String key, Object value, SchemaType type) {
+    private void validateBoundaryMatchesType(String name, String schemaPath, String key, Object value, SchemaType type) {
         if (value == null || boundaryMatchesType(value, type)) {
             return;
         }
-        throw new SchemaException(name + " " + key + " must be comparable with " + type.schemaName());
+        throw new SchemaException(DiagnosticCodes.INVALID_BOUNDARY, schemaPath + "." + key,
+                name + " " + key + " must be comparable with " + type.schemaName());
     }
 
     private boolean boundaryMatchesType(Object value, SchemaType type) {
@@ -920,6 +974,7 @@ final class SchemaLoader {
 
     private void validateAllowedValuesConstraints(
             String name,
+            String schemaPath,
             SchemaType type,
             List<Object> allowedValues,
             Pattern pattern,
@@ -932,35 +987,38 @@ final class SchemaLoader {
         if (allowedValues.isEmpty()) {
             return;
         }
+        String allowedPath = schemaPath + ".allowedvalues";
         boolean isContainer = type == SchemaType.ARRAY || type == SchemaType.COLLECTION;
         for (int i = 0; i < allowedValues.size(); i++) {
             Object allowed = allowedValues.get(i);
             String entry = name + " allowedvalues[" + i + "]";
             if (pattern != null && (!(allowed instanceof String stringValue) || !pattern.matcher(stringValue).find())) {
-                throw new SchemaException(entry + " does not satisfy pattern");
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath, entry + " does not satisfy pattern");
             }
             if (format != null && (!(allowed instanceof String stringValue) || !format.isValid(stringValue))) {
-                throw new SchemaException(entry + " does not satisfy format " + format.schemaName());
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath,
+                        entry + " does not satisfy format " + format.schemaName());
             }
             if ((min != null || max != null) && allowed instanceof Double doubleValue && doubleValue.isNaN()) {
-                throw new SchemaException(entry + " does not satisfy min or max");
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath, entry + " does not satisfy min or max");
             }
             if (min != null && ValueSemantics.compare(allowed, min) < 0) {
-                throw new SchemaException(entry + " is less than min");
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath, entry + " is less than min");
             }
             if (max != null && ValueSemantics.compare(allowed, max) > 0) {
-                throw new SchemaException(entry + " is greater than max");
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath, entry + " is greater than max");
             }
             if (!isContainer && (minLength != null || maxLength != null)) {
                 if (!(allowed instanceof String stringValue)) {
-                    throw new SchemaException(entry + " does not satisfy string length constraints");
+                    throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath,
+                            entry + " does not satisfy string length constraints");
                 }
                 int length = stringValue.codePointCount(0, stringValue.length());
                 if (minLength != null && length < minLength) {
-                    throw new SchemaException(entry + " is shorter than minlength");
+                    throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath, entry + " is shorter than minlength");
                 }
                 if (maxLength != null && length > maxLength) {
-                    throw new SchemaException(entry + " is longer than maxlength");
+                    throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, allowedPath, entry + " is longer than maxlength");
                 }
             }
         }
@@ -1008,23 +1066,29 @@ final class SchemaLoader {
         for (SchemaDefinition definition : definitions.values()) {
             Set<SchemaType> kinds = effectiveKinds(definition, types, new HashSet<>());
             if (!definition.allOf().isEmpty() && kinds.size() != 1) {
-                throw new SchemaException(definition.name() + " allof components must resolve to one compatible kind");
+                throw new SchemaException(DiagnosticCodes.INCOMPATIBLE_COMPOSITION,
+                        definition.schemaPath() + ".allof",
+                        definition.name() + " allof components must resolve to one compatible kind");
             }
             boolean hasPresenceRules = !definition.dependentRequired().isEmpty()
                     || !definition.mutuallyExclusive().isEmpty()
                     || !definition.exactlyOne().isEmpty();
             if (hasPresenceRules && kinds.stream().anyMatch(kind ->
                     kind != SchemaType.TABLE && kind != SchemaType.COLLECTION)) {
-                throw new SchemaException(definition.name()
+                throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY, definition.schemaPath(),
+                        definition.name()
                         + " presence rules require an effective table or collection");
             }
             if (definition.uniqueItems() != null
                     && (kinds.size() != 1 || !kinds.contains(SchemaType.ARRAY))) {
-                throw new SchemaException(definition.name() + " uniqueitems requires an effective array");
+                throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY,
+                        definition.schemaPath() + ".uniqueitems",
+                        definition.name() + " uniqueitems requires an effective array");
             }
             if (kinds.size() == 1 && kinds.contains(SchemaType.COLLECTION)
                     && !hasCollectionItemConstraint(definition, types, new HashSet<>())) {
-                throw new SchemaException(definition.name()
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, definition.schemaPath(),
+                        definition.name()
                         + " effective collection must define at least one itemtype");
             }
             if (definition.type() == SchemaType.ARRAY || definition.type() == SchemaType.COLLECTION) {
@@ -1033,7 +1097,10 @@ final class SchemaLoader {
                     Set<SchemaType> itemTypes =
                             resolveItemTypes(definition.itemReference(), types, new HashSet<>());
                     if (!itemTypes.equals(Set.of(SchemaType.STRING))) {
-                        throw new SchemaException(definition.name()
+                        String prop = definition.pattern() != null ? ".pattern" : ".format";
+                        throw new SchemaException(DiagnosticCodes.INAPPLICABLE_PROPERTY,
+                                definition.schemaPath() + prop,
+                                definition.name()
                                 + " can only define pattern or format when itemtype resolves to string");
                     }
                 }
@@ -1057,7 +1124,8 @@ final class SchemaLoader {
                             determinateFixedChildren(branch, types, new HashSet<>());
                     if (!fixedChildren.isEmpty()
                             && !fixedChildren.contains(definition.condition().key())) {
-                        throw new SchemaException(definition.name() + " " + branchEntry.getKey()
+                        throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, null,
+                                definition.name() + " " + branchEntry.getKey()
                                 + " branch has a non-empty determinate fixed-child set that omits discriminator "
                                 + definition.condition().key());
                     }
@@ -1084,7 +1152,8 @@ final class SchemaLoader {
         for (Map.Entry<String, Boolean> entry : constraints.entrySet()) {
             if (entry.getValue() && referenceHasConstraint(
                     definition.itemReference(), entry.getKey(), types, new HashSet<>())) {
-                throw new SchemaException(definition.name() + " defines " + entry.getKey()
+                throw new SchemaException(DiagnosticCodes.EXCLUSIVE_PROPERTIES, definition.schemaPath(),
+                        definition.name() + " defines " + entry.getKey()
                         + " both inline and on its resolved itemtype");
             }
         }
@@ -1147,12 +1216,14 @@ final class SchemaLoader {
                     referenceDefinition(definition.elseReference(), types), types,
                     addVisit(definition.elseReference(), visiting));
             if (thenKinds.size() != 1 || !thenKinds.equals(elseKinds)) {
-                throw new SchemaException(definition.name()
+                throw new SchemaException(DiagnosticCodes.INCOMPATIBLE_COMPOSITION, definition.schemaPath(),
+                        definition.name()
                         + " conditional branches must resolve to compatible effective TOML kinds");
             }
             SchemaType kind = thenKinds.iterator().next();
             if (kind != SchemaType.TABLE && kind != SchemaType.COLLECTION) {
-                throw new SchemaException(definition.name()
+                throw new SchemaException(DiagnosticCodes.INCOMPATIBLE_COMPOSITION, definition.schemaPath(),
+                        definition.name()
                         + " conditional branches must resolve to table or collection");
             }
             localKinds.add(kind);
@@ -1171,7 +1242,9 @@ final class SchemaLoader {
             if (componentKinds.size() != 1 || componentKinds.contains(SchemaType.ANY)
                     || (!localKinds.isEmpty()
                     && (localKinds.size() != 1 || !localKinds.equals(componentKinds)))) {
-                throw new SchemaException(definition.name()
+                throw new SchemaException(DiagnosticCodes.INCOMPATIBLE_COMPOSITION,
+                        definition.schemaPath() + ".allof",
+                        definition.name()
                         + " allof components must resolve to compatible effective TOML kinds");
             }
             if (localKinds.isEmpty()) {
@@ -1260,31 +1333,33 @@ final class SchemaLoader {
         return new SchemaDefinition(name, type, null, null, null, List.of(), false,
                 List.of(), null, null, null, null, null, null, null, List.of(), List.of(),
                 null, null, null, List.of(), Map.of(), List.of(), List.of(), null,
-                false, null, false, Map.of());
+                false, null, false, Map.of(), null);
     }
 
     private void validateRuleNames(SchemaDefinition definition, Set<String> fixedChildren) {
+        String base = definition.schemaPath();
         for (Map.Entry<String, List<String>> entry : definition.dependentRequired().entrySet()) {
-            requireFixedChild(definition.name(), "dependentrequired", entry.getKey(), fixedChildren);
+            requireFixedChild(definition.name(), base + ".dependentrequired", "dependentrequired", entry.getKey(), fixedChildren);
             for (String required : entry.getValue()) {
-                requireFixedChild(definition.name(), "dependentrequired", required, fixedChildren);
+                requireFixedChild(definition.name(), base + ".dependentrequired", "dependentrequired", required, fixedChildren);
             }
         }
         for (List<String> group : definition.mutuallyExclusive()) {
             for (String operand : group) {
-                requireFixedChild(definition.name(), "mutuallyexclusive", operand, fixedChildren);
+                requireFixedChild(definition.name(), base + ".mutuallyexclusive", "mutuallyexclusive", operand, fixedChildren);
             }
         }
         for (List<String> group : definition.exactlyOne()) {
             for (String operand : group) {
-                requireFixedChild(definition.name(), "exactlyone", operand, fixedChildren);
+                requireFixedChild(definition.name(), base + ".exactlyone", "exactlyone", operand, fixedChildren);
             }
         }
     }
 
-    private void requireFixedChild(String name, String property, String operand, Set<String> fixedChildren) {
+    private void requireFixedChild(String name, String schemaPath, String property, String operand, Set<String> fixedChildren) {
         if (!fixedChildren.contains(operand)) {
-            throw new SchemaException(name + " " + property + " operand " + operand
+            throw new SchemaException(DiagnosticCodes.INDETERMINATE_OPERAND, schemaPath,
+                    name + " " + property + " operand " + operand
                     + " is not an effective fixed child");
         }
     }
@@ -1296,7 +1371,9 @@ final class SchemaLoader {
                 ValidationResult result = new TomlSchemaValidator(schema)
                         .validateDefinitionDefault(effective.value(), definition);
                 if (!result.isValid()) {
-                    throw new SchemaException(definition.name() + " has invalid default: "
+                    throw new SchemaException(DiagnosticCodes.INVALID_DEFAULT,
+                            definition.schemaPath() + ".default",
+                            definition.name() + " has invalid default: "
                             + result.errors().getFirst().message());
                 }
             }

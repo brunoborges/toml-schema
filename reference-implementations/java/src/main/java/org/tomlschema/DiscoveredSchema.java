@@ -16,7 +16,7 @@ import java.util.List;
  *                  schema's declared version; empty when the document omits
  *                  {@code [toml-schema].version} or the versions match exactly
  */
-public record DiscoveredSchema(TomlSchema schema, TomlParseResult document, List<ValidationWarning> warnings) {
+public record DiscoveredSchema(TomlSchema schema, TomlParseResult document, List<ValidationDiagnostic> warnings) {
     public DiscoveredSchema {
         warnings = List.copyOf(warnings);
     }
@@ -32,7 +32,7 @@ public record DiscoveredSchema(TomlSchema schema, TomlParseResult document, List
         if (warnings.isEmpty()) {
             return result;
         }
-        List<ValidationWarning> combined = new java.util.ArrayList<>(warnings);
+        List<ValidationDiagnostic> combined = new java.util.ArrayList<>(warnings);
         combined.addAll(result.warnings());
         return new ValidationResult(result.errors(), combined);
     }

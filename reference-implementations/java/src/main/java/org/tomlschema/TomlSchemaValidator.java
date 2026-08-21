@@ -8,6 +8,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -16,9 +17,9 @@ import java.util.Set;
 
 final class TomlSchemaValidator {
     private final TomlSchema schema;
-    private final List<ValidationError> errors = new ArrayList<>();
-    private final LinkedHashSet<ValidationWarning> warnings = new LinkedHashSet<>();
-    private LinkedHashSet<ValidationWarning> nodeWarnings = warnings;
+    private final List<ValidationDiagnostic> errors = new ArrayList<>();
+    private final LinkedHashSet<ValidationDiagnostic> warnings = new LinkedHashSet<>();
+    private LinkedHashSet<ValidationDiagnostic> nodeWarnings = warnings;
     private boolean suppressWarnings;
 
     TomlSchemaValidator(TomlSchema schema) {
@@ -29,7 +30,7 @@ final class TomlSchemaValidator {
         validateFixedChildren("$", document, schema.elements());
         for (String key : document.keySet()) {
             if (!schema.elements().containsKey(key) && !key.equals("toml-schema")) {
-                add("unexpected-key", appendPath("$", key), "unexpected key");
+                add(DiagnosticCodes.UNKNOWN_KEY, appendPath("$", key), "$.elements", "unexpected key");
             }
         }
         return result();
@@ -42,7 +43,20 @@ final class TomlSchemaValidator {
     }
 
     private ValidationResult result() {
-        return new ValidationResult(errors, List.copyOf(warnings));
+        return new ValidationResult(dedup(errors), dedup(new ArrayList<>(warnings)));
+    }
+
+    private static List<ValidationDiagnostic> dedup(List<ValidationDiagnostic> diagnostics) {
+        Set<List<String>> seen = new HashSet<>();
+        List<ValidationDiagnostic> out = new ArrayList<>();
+        for (ValidationDiagnostic diagnostic : diagnostics) {
+            List<String> identity = Arrays.asList(
+                    diagnostic.code(), diagnostic.instancePath(), diagnostic.schemaPath());
+            if (seen.add(identity)) {
+                out.add(diagnostic);
+            }
+        }
+        return out;
     }
 
     private void validateFixedChildren(
@@ -56,7 +70,8 @@ final class TomlSchemaValidator {
             String childPath = appendPath(path, key);
             if (value == null) {
                 if (!isOptional(entry.getValue(), new HashSet<>())) {
-                    add("required", childPath, "required value is missing");
+                    add(DiagnosticCodes.MISSING_REQUIRED, childPath, entry.getValue().schemaPath(),
+                            "required value is missing");
                 }
             } else {
                 validateNode(childPath, value, entry.getValue());
@@ -85,10 +100,10 @@ final class TomlSchemaValidator {
             Set<String> externalChildren,
             Set<String> closure,
             boolean enforceClosure,
-            Set<ValidationWarning> nodeSink
+            Set<ValidationDiagnostic> nodeSink
     ) {
-        LinkedHashSet<ValidationWarning> enclosingWarnings = nodeWarnings;
-        LinkedHashSet<ValidationWarning> scopedWarnings = new LinkedHashSet<>();
+        LinkedHashSet<ValidationDiagnostic> enclosingWarnings = nodeWarnings;
+        LinkedHashSet<ValidationDiagnostic> scopedWarnings = new LinkedHashSet<>();
         nodeWarnings = scopedWarnings;
         int errorsBefore = errors.size();
         try {
@@ -100,12 +115,13 @@ final class TomlSchemaValidator {
                     && !closure.isEmpty()) {
                 for (String key : table.keySet()) {
                     if (!closure.contains(key)) {
-                        add("unexpected-key", appendPath(path, key), "unexpected key");
+                        add(DiagnosticCodes.UNKNOWN_KEY, appendPath(path, key),
+                                definition.schemaPath(), "unexpected key");
                     }
                 }
             }
             if (!suppressWarnings && isDeprecatedWithoutAlternatives(definition, new HashSet<>())) {
-                warn(path);
+                warn(path, deprecatedSchemaPath(definition, new HashSet<>()));
             }
         } finally {
             nodeWarnings = enclosingWarnings;
@@ -137,7 +153,7 @@ final class TomlSchemaValidator {
                 validatePresenceRules(path, table, definition);
             }
             if (value instanceof TomlArray array && Boolean.TRUE.equals(definition.uniqueItems())) {
-                validateUniqueItems(path, array);
+                validateUniqueItems(path, array, sp(definition, "uniqueitems"));
             }
         } else if (definition.condition() != null) {
             validateConditional(path, value, definition,
@@ -149,12 +165,12 @@ final class TomlSchemaValidator {
                 validatePresenceRules(path, table, definition);
             }
             if (value instanceof TomlArray array && Boolean.TRUE.equals(definition.uniqueItems())) {
-                validateUniqueItems(path, array);
+                validateUniqueItems(path, array, sp(definition, "uniqueitems"));
             }
         } else {
             SchemaType type = definition.type() == null ? SchemaType.ANY : definition.type();
             if (!isType(value, type)) {
-                add("type-mismatch", path,
+                add(DiagnosticCodes.TYPE_MISMATCH, path, typeSchemaPath(definition),
                         "expected " + type.schemaName() + " but found " + typeName(value));
             } else {
                 validateCommonConstraints(path, value, definition);
@@ -234,7 +250,7 @@ final class TomlSchemaValidator {
      */
     private record BranchOutcome(
             ValidationResult result,
-            LinkedHashSet<ValidationWarning> nodeWarnings
+            LinkedHashSet<ValidationDiagnostic> nodeWarnings
     ) {
     }
 
@@ -244,19 +260,16 @@ final class TomlSchemaValidator {
             SchemaDefinition definition,
             Set<String> sharedChildren
     ) {
-        if (!(value instanceof TomlTable table)) {
-            SchemaType kind = effectiveKind(definition, new HashSet<>());
-            add("type-mismatch", path,
-                    "expected " + kind.schemaName() + " but found " + typeName(value));
-            return;
+        boolean matches = false;
+        if (value instanceof TomlTable table) {
+            SchemaCondition condition = definition.condition();
+            Object discriminator = table.get(List.of(condition.key()));
+            matches = discriminator != null
+                    && (condition.usesEquals()
+                    ? ValueSemantics.valuesEqual(discriminator, condition.equalsValue())
+                    : condition.inValues().stream()
+                    .anyMatch(candidate -> ValueSemantics.valuesEqual(discriminator, candidate)));
         }
-        SchemaCondition condition = definition.condition();
-        Object discriminator = table.get(List.of(condition.key()));
-        boolean matches = discriminator != null
-                && (condition.usesEquals()
-                ? ValueSemantics.valuesEqual(discriminator, condition.equalsValue())
-                : condition.inValues().stream()
-                .anyMatch(candidate -> ValueSemantics.valuesEqual(discriminator, candidate)));
         String selected = matches ? definition.thenReference() : definition.elseReference();
 
         TomlSchemaValidator branch = new TomlSchemaValidator(schema);
@@ -265,7 +278,7 @@ final class TomlSchemaValidator {
         Set<String> branchClosure = branch.collectEffectiveClosureChildren(
                 selectedDefinition, value, new HashSet<>());
         branchClosure.addAll(sharedChildren);
-        LinkedHashSet<ValidationWarning> branchNodeWarnings = new LinkedHashSet<>();
+        LinkedHashSet<ValidationDiagnostic> branchNodeWarnings = new LinkedHashSet<>();
         branch.validateComposedNode(path, value, selectedDefinition,
                 sharedChildren, branchClosure, true, branchNodeWarnings);
         ValidationResult branchResult = branch.result();
@@ -292,7 +305,7 @@ final class TomlSchemaValidator {
                     branch.collectEffectiveClosureChildren(alternativeDefinition, value, new HashSet<>());
             Set<String> branchClosure = new HashSet<>(alternativeChildren);
             branchClosure.addAll(sharedChildren);
-            LinkedHashSet<ValidationWarning> branchNodeWarnings = new LinkedHashSet<>();
+            LinkedHashSet<ValidationDiagnostic> branchNodeWarnings = new LinkedHashSet<>();
             branch.validateComposedNode(path, value, alternativeDefinition,
                     sharedChildren, branchClosure, true, branchNodeWarnings);
             ValidationResult branchResult = branch.result();
@@ -301,12 +314,13 @@ final class TomlSchemaValidator {
             }
         }
         if (!definition.oneOf().isEmpty() && successful.size() != 1) {
-            add("oneof", path,
+            add(DiagnosticCodes.ONEOF, path, sp(definition, "oneof"),
                     "expected exactly one matching type from oneof but found " + successful.size());
             return;
         }
         if (!definition.anyOf().isEmpty() && successful.isEmpty()) {
-            add("anyof", path, "expected at least one matching type from anyof");
+            add(DiagnosticCodes.ANYOF, path, sp(definition, "anyof"),
+                    "expected at least one matching type from anyof");
             return;
         }
         if (!suppressWarnings) {
@@ -340,7 +354,7 @@ final class TomlSchemaValidator {
             String childPath = appendPath(path, key);
             if (definition.keyPattern() != null
                     && !definition.keyPattern().matcher(key).find()) {
-                add("keypattern", childPath,
+                add(DiagnosticCodes.KEYPATTERN, childPath, sp(definition, "keypattern"),
                         "key does not match keypattern " + definition.keyPattern().pattern());
             }
             if (definition.itemReference() != null) {
@@ -359,7 +373,8 @@ final class TomlSchemaValidator {
             }
             for (String required : dependency.getValue()) {
                 if (!table.contains(List.of(required))) {
-                    add("dependentrequired", appendPath(path, required),
+                    add(DiagnosticCodes.DEPENDENTREQUIRED, appendPath(path, required),
+                            sp(definition, "dependentrequired"),
                             required + " is required when " + dependency.getKey() + " is present");
                 }
             }
@@ -367,14 +382,14 @@ final class TomlSchemaValidator {
         for (List<String> group : definition.mutuallyExclusive()) {
             long present = group.stream().filter(name -> table.contains(List.of(name))).count();
             if (present > 1) {
-                add("mutuallyexclusive", path,
+                add(DiagnosticCodes.MUTUALLYEXCLUSIVE, path, sp(definition, "mutuallyexclusive"),
                         "at most one of " + group + " may be present");
             }
         }
         for (List<String> group : definition.exactlyOne()) {
             long present = group.stream().filter(name -> table.contains(List.of(name))).count();
             if (present != 1) {
-                add("exactlyone", path,
+                add(DiagnosticCodes.EXACTLYONE, path, sp(definition, "exactlyone"),
                         "exactly one of " + group + " must be present");
             }
         }
@@ -383,11 +398,11 @@ final class TomlSchemaValidator {
     private void validateArray(String path, TomlArray array, SchemaDefinition definition) {
         validateLength(path, array.size(), definition);
         if (Boolean.TRUE.equals(definition.uniqueItems())) {
-            validateUniqueItems(path, array);
+            validateUniqueItems(path, array, sp(definition, "uniqueitems"));
         }
         if (!definition.items().isEmpty()) {
             if (array.size() != definition.items().size()) {
-                add("tuple-length", path,
+                add(DiagnosticCodes.TUPLE_LENGTH, path, sp(definition, "items"),
                         "expected array length " + definition.items().size()
                                 + " but found " + array.size());
             }
@@ -415,22 +430,22 @@ final class TomlSchemaValidator {
             if (item instanceof String stringValue) {
                 if (definition.pattern() != null
                         && !definition.pattern().matcher(stringValue).find()) {
-                    add("pattern", itemPath,
+                    add(DiagnosticCodes.PATTERN, itemPath, sp(definition, "pattern"),
                             "does not match pattern " + definition.pattern().pattern());
                 }
                 if (definition.format() != null && !definition.format().isValid(stringValue)) {
-                    add("format", itemPath,
+                    add(DiagnosticCodes.FORMAT, itemPath, sp(definition, "format"),
                             "does not match format " + definition.format().schemaName());
                 }
             }
         }
     }
 
-    private void validateUniqueItems(String path, TomlArray array) {
+    private void validateUniqueItems(String path, TomlArray array, String schemaPath) {
         for (int i = 0; i < array.size(); i++) {
             for (int j = 0; j < i; j++) {
                 if (ValueSemantics.valuesEqual(array.get(i), array.get(j))) {
-                    add("uniqueitems", path + "[" + i + "]",
+                    add(DiagnosticCodes.UNIQUEITEMS, path + "[" + i + "]", schemaPath,
                             "array item duplicates item at index " + j);
                     break;
                 }
@@ -453,11 +468,11 @@ final class TomlSchemaValidator {
             validateLength(path, stringValue.codePointCount(0, stringValue.length()), definition);
             if (definition.pattern() != null
                     && !definition.pattern().matcher(stringValue).find()) {
-                add("pattern", path,
+                add(DiagnosticCodes.PATTERN, path, sp(definition, "pattern"),
                         "does not match pattern " + definition.pattern().pattern());
             }
             if (definition.format() != null && !definition.format().isValid(stringValue)) {
-                add("format", path,
+                add(DiagnosticCodes.FORMAT, path, sp(definition, "format"),
                         "does not match format " + definition.format().schemaName());
             }
         }
@@ -467,7 +482,8 @@ final class TomlSchemaValidator {
         if (!definition.allowedValues().isEmpty()
                 && definition.allowedValues().stream()
                 .noneMatch(allowed -> ValueSemantics.valuesEqual(allowed, value))) {
-            add("allowedvalues", path, "value is not in allowedvalues");
+            add(DiagnosticCodes.ALLOWEDVALUES, path, sp(definition, "allowedvalues"),
+                    "value is not in allowedvalues");
         }
     }
 
@@ -485,11 +501,11 @@ final class TomlSchemaValidator {
         if (value instanceof String stringValue) {
             if (definition.pattern() != null
                     && !definition.pattern().matcher(stringValue).find()) {
-                add("pattern", path,
+                add(DiagnosticCodes.PATTERN, path, sp(definition, "pattern"),
                         "does not match pattern " + definition.pattern().pattern());
             }
             if (definition.format() != null && !definition.format().isValid(stringValue)) {
-                add("format", path,
+                add(DiagnosticCodes.FORMAT, path, sp(definition, "format"),
                         "does not match format " + definition.format().schemaName());
             }
         }
@@ -499,29 +515,31 @@ final class TomlSchemaValidator {
         if (definition.min() != null) {
             try {
                 if (ValueSemantics.compare(value, definition.min()) < 0) {
-                    add("min", path, "value is less than min");
+                    add(DiagnosticCodes.MIN, path, sp(definition, "min"), "value is less than min");
                 }
             } catch (SchemaException error) {
-                add("min", path, error.getMessage());
+                add(DiagnosticCodes.MIN, path, sp(definition, "min"), error.getMessage());
             }
         }
         if (definition.max() != null) {
             try {
                 if (ValueSemantics.compare(value, definition.max()) > 0) {
-                    add("max", path, "value is greater than max");
+                    add(DiagnosticCodes.MAX, path, sp(definition, "max"), "value is greater than max");
                 }
             } catch (SchemaException error) {
-                add("max", path, error.getMessage());
+                add(DiagnosticCodes.MAX, path, sp(definition, "max"), error.getMessage());
             }
         }
     }
 
     private void validateLength(String path, int length, SchemaDefinition definition) {
         if (definition.minLength() != null && length < definition.minLength()) {
-            add("minlength", path, "length is less than minlength");
+            add(DiagnosticCodes.MINLENGTH, path, sp(definition, "minlength"),
+                    "length is less than minlength");
         }
         if (definition.maxLength() != null && length > definition.maxLength()) {
-            add("maxlength", path, "length is greater than maxlength");
+            add(DiagnosticCodes.MAXLENGTH, path, sp(definition, "maxlength"),
+                    "length is greater than maxlength");
         }
     }
 
@@ -666,6 +684,25 @@ final class TomlSchemaValidator {
         return false;
     }
 
+    private String deprecatedSchemaPath(SchemaDefinition definition, Set<String> visiting) {
+        if (definition.deprecated()) {
+            return definition.schemaPath() == null ? null : definition.schemaPath() + ".deprecated";
+        }
+        if (definition.reference() != null) {
+            SchemaDefinition target = reference(definition.reference(), visiting);
+            if (isDeprecatedWithoutAlternatives(target, new HashSet<>(visiting))) {
+                return deprecatedSchemaPath(target, new HashSet<>(visiting));
+            }
+        }
+        for (String component : definition.allOf()) {
+            SchemaDefinition target = reference(component, visiting);
+            if (isDeprecatedWithoutAlternatives(target, new HashSet<>(visiting))) {
+                return deprecatedSchemaPath(target, new HashSet<>(visiting));
+            }
+        }
+        return definition.schemaPath() == null ? null : definition.schemaPath() + ".deprecated";
+    }
+
     private SchemaDefinition reference(String reference, Set<String> visiting) {
         String normalized = normalizeReference(reference);
         SchemaType builtIn = SchemaType.fromSchemaNameOptional(normalized).orElse(null);
@@ -686,7 +723,7 @@ final class TomlSchemaValidator {
         return new SchemaDefinition(name, type, null, null, null, List.of(), false,
                 List.of(), null, null, null, null, null, null, null, List.of(), List.of(),
                 null, null, null, List.of(), Map.of(), List.of(), List.of(), null,
-                false, null, false, Map.of());
+                false, null, false, Map.of(), null);
     }
 
     private boolean isType(Object value, SchemaType type) {
@@ -727,22 +764,25 @@ final class TomlSchemaValidator {
     }
 
     private String appendPath(String path, String key) {
-        return path + "." + formatKey(key);
+        return path + "." + PathEncoding.encodeKey(key);
     }
 
-    private String formatKey(String key) {
-        if (key.matches("[A-Za-z0-9_-]+")) {
-            return key;
-        }
-        return "\"" + key.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    private void add(String code, String instancePath, String schemaPath, String message) {
+        errors.add(ValidationDiagnostic.error(
+                DiagnosticPhase.VALIDATION, code, instancePath, schemaPath, message));
     }
 
-    private void add(String code, String path, String message) {
-        errors.add(new ValidationError(code, path, message));
+    private static String sp(SchemaDefinition definition, String property) {
+        return definition.schemaPath() == null ? null : definition.schemaPath() + "." + property;
     }
 
-    private void warn(String path) {
-        nodeWarnings.add(new ValidationWarning(
-                "deprecated", path, "value is deprecated"));
+    private static String typeSchemaPath(SchemaDefinition definition) {
+        return sp(definition, "type");
+    }
+
+    private void warn(String instancePath, String schemaPath) {
+        nodeWarnings.add(ValidationDiagnostic.warning(
+                DiagnosticPhase.VALIDATION, DiagnosticCodes.DEPRECATED, instancePath, schemaPath,
+                "value is deprecated"));
     }
 }

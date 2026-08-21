@@ -14,7 +14,7 @@ func TestValidatesCheckedInExample(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := schema.ValidateFile(fixture("config.toml"))
+	result, _ := schema.ValidateFile(fixture("config.toml"))
 
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
@@ -69,7 +69,7 @@ type = "table"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(documentPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(documentPath); !result.Valid() {
 		t.Fatalf("expected escaped schema-key children to validate, got %#v", result.Errors)
 	}
 	if _, err := LoadSchema(invalidEscape); err == nil {
@@ -191,20 +191,20 @@ type = "string"
 		fixture("config.tosd"),
 		filepath.Join(fixture("examples"), "database-conditional.tosd"),
 	} {
-		if result := schemaSchema.ValidateFile(schemaPath); !result.Valid() {
+		if result, _ := schemaSchema.ValidateFile(schemaPath); !result.Valid() {
 			t.Fatalf("expected self-schema to accept %s, got %#v", schemaPath, result.Errors)
 		}
-		if result := schemaSchema.ValidateFile(literalChildren); !result.Valid() {
+		if result, _ := schemaSchema.ValidateFile(literalChildren); !result.Valid() {
 			t.Fatalf("expected self-schema to accept a literal children definition, got %#v", result.Errors)
 		}
 	}
 	for _, schemaPath := range []string{invalidPropertyType, unknownProperty, invalidEscape} {
-		if result := schemaSchema.ValidateFile(schemaPath); result.Valid() {
+		if result, _ := schemaSchema.ValidateFile(schemaPath); result.Valid() {
 			t.Fatalf("expected self-schema to reject %s", schemaPath)
 		}
 	}
 	for _, schemaPath := range invalidSemantics {
-		if result := schemaSchema.ValidateFile(schemaPath); result.Valid() {
+		if result, _ := schemaSchema.ValidateFile(schemaPath); result.Valid() {
 			t.Fatalf("expected self-schema to reject semantic violation in %s", schemaPath)
 		}
 	}
@@ -216,7 +216,7 @@ func TestValidatesCargoManifestExample(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result := schema.ValidateFile(fixture("reference-implementations/rust/Cargo.toml"))
+	result, _ := schema.ValidateFile(fixture("reference-implementations/rust/Cargo.toml"))
 	if !result.Valid() {
 		t.Fatalf("expected valid Cargo.toml, got %#v", result.Errors)
 	}
@@ -253,12 +253,12 @@ extra = true
 	}
 
 	for _, document := range []string{emptyDocument, metadataOnlyDocument} {
-		if result := schema.ValidateFile(document); !result.Valid() {
+		if result, _ := schema.ValidateFile(document); !result.Valid() {
 			t.Fatalf("expected %s to be valid, got %#v", document, result.Errors)
 		}
 	}
 
-	result := schema.ValidateFile(applicationDocument)
+	result, _ := schema.ValidateFile(applicationDocument)
 	if result.Valid() || !hasPath(result, "$.extra") {
 		t.Fatalf("expected an unexpected-key error at $.extra, got %#v", result.Errors)
 	}
@@ -267,7 +267,7 @@ extra = true
 	if err != nil {
 		t.Fatal(err)
 	}
-	result = definedSchema.ValidateFile(documentWithExtraKey)
+	result, _ = definedSchema.ValidateFile(documentWithExtraKey)
 	if result.Valid() || !hasPath(result, "$.extra") {
 		t.Fatalf("expected an unexpected-key error beside a declared root key, got %#v", result.Errors)
 	}
@@ -276,7 +276,7 @@ extra = true
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schemaSchema.ValidateFile(schemaPath); !result.Valid() {
+	if result, _ := schemaSchema.ValidateFile(schemaPath); !result.Valid() {
 		t.Fatalf("expected self-schema to accept empty [elements], got %#v", result.Errors)
 	}
 }
@@ -369,7 +369,7 @@ port = 70000
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.ValidateFile(documentPath)
+	result, _ := schema.ValidateFile(documentPath)
 
 	if result.Valid() {
 		t.Fatal("expected validation errors")
@@ -481,10 +481,10 @@ alternatives = [0, 11]
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(validPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(validPath); !result.Valid() {
 		t.Fatalf("expected comparable itemtype ranges to validate, got %#v", result.Errors)
 	}
-	result := schema.ValidateFile(invalidPath)
+	result, _ := schema.ValidateFile(invalidPath)
 	for _, path := range []string{
 		"$.direct[0]", "$.direct[1]",
 		"$.named[0]", "$.named[1]",
@@ -636,10 +636,10 @@ maxlength = 2
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(validDocument); !result.Valid() {
+	if result, _ := schema.ValidateFile(validDocument); !result.Valid() {
 		t.Fatalf("expected valid allowed value, got %#v", result.Errors)
 	}
-	result := schema.ValidateFile(invalidDocument)
+	result, _ := schema.ValidateFile(invalidDocument)
 	if len(result.Errors) != 1 || result.Errors[0].Message != "value is not in allowedvalues" {
 		t.Fatalf("expected only allowedvalues membership error, got %#v", result.Errors)
 	}
@@ -669,12 +669,12 @@ id = "abcdef"
 		t.Fatal(err)
 	}
 
-	matchResult := schema.ValidateFile(matchingPath)
+	matchResult, _ := schema.ValidateFile(matchingPath)
 	if !matchResult.Valid() {
 		t.Fatalf("expected unanchored pattern to accept a superstring, got %#v", matchResult.Errors)
 	}
 
-	noMatchResult := schema.ValidateFile(nonMatchingPath)
+	noMatchResult, _ := schema.ValidateFile(nonMatchingPath)
 	if noMatchResult.Valid() {
 		t.Fatal("expected pattern to reject string with no matching substring")
 	}
@@ -731,7 +731,7 @@ entries = [
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.ValidateFile(documentPath)
+	result, _ := schema.ValidateFile(documentPath)
 
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
@@ -765,12 +765,12 @@ mixed = [1, "two", [true]]
 		t.Fatal(err)
 	}
 
-	validResult := schema.ValidateFile(validPath)
+	validResult, _ := schema.ValidateFile(validPath)
 	if !validResult.Valid() {
 		t.Fatalf("expected nested arrays and unconstrained mixed items to be valid, got %#v", validResult.Errors)
 	}
 
-	invalidResult := schema.ValidateFile(invalidPath)
+	invalidResult, _ := schema.ValidateFile(invalidPath)
 	if invalidResult.Valid() {
 		t.Fatal("expected array itemtype to reject a non-array item")
 	}
@@ -814,7 +814,7 @@ flex = "abc"
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.ValidateFile(documentPath)
+	result, _ := schema.ValidateFile(documentPath)
 
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
@@ -939,10 +939,10 @@ colors = [ "red", "green" ]
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(validPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(validPath); !result.Valid() {
 		t.Fatalf("expected array items in allowedvalues to validate, got %#v", result.Errors)
 	}
-	result := schema.ValidateFile(invalidPath)
+	result, _ := schema.ValidateFile(invalidPath)
 	if result.Valid() || !hasPath(result, "$.colors[1]") {
 		t.Fatalf("expected disallowed array item error, got %#v", result.Errors)
 	}
@@ -1025,7 +1025,7 @@ qualified = "two"
 	if err != nil {
 		t.Fatalf("load schema: %v", err)
 	}
-	result := schema.ValidateFile(documentPath)
+	result, _ := schema.ValidateFile(documentPath)
 	if !result.Valid() {
 		t.Fatalf("expected dotted type references to validate: %#v", result.Errors)
 	}
@@ -1081,10 +1081,10 @@ ip = "10.0.0.2"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(validDocument); !result.Valid() {
+	if result, _ := schema.ValidateFile(validDocument); !result.Valid() {
 		t.Fatalf("expected valid keys to pass, got %#v", result.Errors)
 	}
-	result := schema.ValidateFile(invalidDocument)
+	result, _ := schema.ValidateFile(invalidDocument)
 	if result.Valid() {
 		t.Fatal("expected non-matching key to be rejected")
 	}
@@ -1143,7 +1143,7 @@ optional = false
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(documentPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(documentPath); !result.Valid() {
 		t.Fatalf("expected optional named reference to validate: %#v", result.Errors)
 	}
 }
@@ -1217,7 +1217,7 @@ port = 8080
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(documentPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(documentPath); !result.Valid() {
 		t.Fatalf("expected collection values to validate through itemtype union, got %#v", result.Errors)
 	}
 }
@@ -1305,7 +1305,7 @@ maps = [ { one = "1", two = "2" } ]
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(documentPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(documentPath); !result.Valid() {
 		t.Fatalf("expected valid special references, got %#v", result.Errors)
 	}
 }
@@ -1478,7 +1478,7 @@ value = [ [ 1.5, "Hello" ], 2.0 ]
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.ValidateFile(documentPath)
+	result, _ := schema.ValidateFile(documentPath)
 
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
@@ -1515,17 +1515,17 @@ value = [ 1.5, "Hello", true ]
 	if err != nil {
 		t.Fatal(err)
 	}
-	wrongOrder := schema.ValidateFile(wrongOrderPath)
+	wrongOrder, _ := schema.ValidateFile(wrongOrderPath)
 	if wrongOrder.Valid() || !hasPath(wrongOrder, "$.value[0]") || !hasPath(wrongOrder, "$.value[1]") {
 		t.Fatalf("expected positional tuple errors, got %#v", wrongOrder.Errors)
 	}
 
-	tooShort := schema.ValidateFile(tooShortPath)
+	tooShort, _ := schema.ValidateFile(tooShortPath)
 	if tooShort.Valid() || !hasPath(tooShort, "$.value") {
 		t.Fatalf("expected tuple length error, got %#v", tooShort.Errors)
 	}
 
-	tooLong := schema.ValidateFile(tooLongPath)
+	tooLong, _ := schema.ValidateFile(tooLongPath)
 	if tooLong.Valid() || !hasPath(tooLong, "$.value") {
 		t.Fatalf("expected tuple length error, got %#v", tooLong.Errors)
 	}
@@ -1632,7 +1632,7 @@ type = "npm"
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.ValidateFile(documentPath)
+	result, _ := schema.ValidateFile(documentPath)
 
 	if !result.Valid() {
 		t.Fatalf("expected valid document, got %#v", result.Errors)
@@ -1720,10 +1720,10 @@ localTime = 12:00:00.101
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result := schema.ValidateFile(validPath); !result.Valid() {
+	if result, _ := schema.ValidateFile(validPath); !result.Valid() {
 		t.Fatalf("expected valid value semantics, got %#v", result.Errors)
 	}
-	invalid := schema.ValidateFile(invalidPath)
+	invalid, _ := schema.ValidateFile(invalidPath)
 	for _, path := range []string{
 		"$.precise", "$.mixed", "$.nanValue", "$.nanRange", "$.zero",
 		"$.instant", "$.instantMember", "$.localMember",
@@ -1836,7 +1836,7 @@ location = "ignored.tosd"
 	if err != nil {
 		t.Fatal(err)
 	}
-	result := schema.ValidateFile(documentPath)
+	result, _ := schema.ValidateFile(documentPath)
 	if !result.Valid() {
 		t.Fatalf("expected extracted schema to validate source document, got %#v", result.Errors)
 	}
@@ -1909,4 +1909,36 @@ func hasPath(result ValidationResult, path string) bool {
 		}
 	}
 	return false
+}
+
+// TestEncodePathKeyMatchesRFC8259 pins the path-segment encoding from SPEC.md
+// `### Instance Path`. Go's %q is not a substitute: it renders other control
+// characters as \x00 where RFC 8259 requires \u0000. The conformance corpus does
+// not exercise control characters, so this guards the profile directly.
+func TestEncodePathKeyMatchesRFC8259(t *testing.T) {
+	cases := []struct {
+		key  string
+		want string
+	}{
+		{"port", "port"},
+		{"a-b_9", "a-b_9"},
+		{"", `""`},
+		{"google.com", `"google.com"`},
+		{"a b", `"a b"`},
+		{"a\"b", `"a\"b"`},
+		{"a\\b", `"a\\b"`},
+		{"\b", `"\b"`},
+		{"\t", `"\t"`},
+		{"\n", `"\n"`},
+		{"\f", `"\f"`},
+		{"\r", `"\r"`},
+		{"\x01", `"\u0001"`},
+		{"\x1f", `"\u001f"`},
+		{"café", `"café"`},
+	}
+	for _, testCase := range cases {
+		if got := encodePathKey(testCase.key); got != testCase.want {
+			t.Errorf("encodePathKey(%q) = %s, want %s", testCase.key, got, testCase.want)
+		}
+	}
 }
