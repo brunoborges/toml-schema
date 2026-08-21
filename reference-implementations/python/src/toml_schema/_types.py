@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Sequence
+from typing import List, Optional, Sequence
 
 
 class SchemaType(str, Enum):
@@ -59,14 +59,45 @@ class Severity(str, Enum):
         return self.value
 
 
+class Phase(str, Enum):
+    """The processing phase that produced a diagnostic (SPEC.md ``### Phases``)."""
+
+    DISCOVERY = "discovery"
+    SCHEMA_LOAD = "schema-load"
+    VALIDATION = "validation"
+
+    def __str__(self) -> str:  # pragma: no cover - trivial
+        return self.value
+
+
 @dataclass(frozen=True)
 class Diagnostic:
-    """A single structured validation diagnostic (error or warning)."""
+    """A single structured diagnostic (error or warning).
+
+    One record shape carries every normative field from SPEC.md's
+    ``### Diagnostic Record``: the ``phase``, the ``severity``, the registry
+    ``code``, an optional ``instance_path`` (where in the document the condition
+    was observed), an optional ``schema_path`` (where in the schema the failing
+    rule is declared), and a human-readable ``message``. Errors and warnings
+    share this type and are told apart by ``severity``; they are exposed
+    separately by :class:`ValidationResult`.
+
+    Message text is presentation only: SPEC.md states implementations "MUST NOT
+    be compared, and MUST NOT compare themselves, by message text".
+    """
 
     severity: Severity
     code: str
-    path: str
+    instance_path: Optional[str]
     message: str
+    phase: Phase = Phase.VALIDATION
+    schema_path: Optional[str] = None
+
+    @property
+    def path(self) -> Optional[str]:
+        """Alias for :attr:`instance_path`, kept for call sites that referred to
+        a document ``path``."""
+        return self.instance_path
 
 
 # ValidationError is an alias for Diagnostic, mirroring the other reference

@@ -24,7 +24,24 @@ from ._compare import (
     values_equal,
 )
 from ._definition import Condition, Definition
-from ._errors import SchemaError
+from ._errors import DocumentParseError, SchemaError
+from ._codes import (
+    CYCLIC_REFERENCE,
+    DUPLICATE_REFERENCE,
+    EXCLUSIVE_PROPERTIES,
+    INAPPLICABLE_PROPERTY,
+    INCOMPATIBLE_COMPOSITION,
+    INVALID_BOUNDARY,
+    INVALID_DEFAULT,
+    INVALID_PATTERN,
+    INVERTED_RANGE,
+    SCHEMA_MALFORMED,
+    UNKNOWN_KEY,
+    UNRECOGNIZED_PROPERTY,
+    UNRESOLVED_REFERENCE,
+    UNSUPPORTED_PATTERN,
+    UNSUPPORTED_VERSION,
+)
 from ._formats import SUPPORTED_FORMATS, matches_format
 from ._source import SchemaSource
 from ._types import (
@@ -39,6 +56,47 @@ from ._types import (
 from ._validator import Validator
 
 Path = Tuple[str, ...]
+
+_SEGMENT_PLAIN_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+
+
+def _encode_segment(key: str) -> str:
+    """Encodes one path segment per SPEC.md ``### Instance Path`` grammar."""
+    if key and _SEGMENT_PLAIN_RE.match(key):
+        return key
+    parts = ['"']
+    for char in key:
+        code = ord(char)
+        if char == '"':
+            parts.append('\\"')
+        elif char == "\\":
+            parts.append("\\\\")
+        elif code == 0x08:
+            parts.append("\\b")
+        elif code == 0x09:
+            parts.append("\\t")
+        elif code == 0x0A:
+            parts.append("\\n")
+        elif code == 0x0C:
+            parts.append("\\f")
+        elif code == 0x0D:
+            parts.append("\\r")
+        elif code <= 0x1F:
+            parts.append("\\u%04x" % code)
+        else:
+            parts.append(char)
+    parts.append('"')
+    return "".join(parts)
+
+
+def schema_path_of(path: Path) -> str:
+    """Builds a schema path (``$``-rooted) from a schema value-tree key tuple.
+
+    The reserved ``children`` escape segment is part of the tuple and is written
+    literally into schema paths (SPEC.md ``### Schema Path``); it never appears
+    in an instance path.
+    """
+    return "$" + "".join(f".{_encode_segment(segment)}" for segment in path)
 
 # The full TOML Schema vocabulary. Must exactly match the ABNF `schema-key`
 # production (see toml-schema.abnf and tests/test_abnf_conformance.py).
@@ -92,15 +150,32 @@ SEMVER_PATTERN = re.compile(
 
 
 def validate_schema_version(value: Any) -> None:
+    version_path = "$.toml-schema.version"
     if not isinstance(value, str):
-        raise SchemaError("[toml-schema].version must be a SemVer string")
+        raise SchemaError(
+            "[toml-schema].version must be a SemVer string",
+            code=UNSUPPORTED_VERSION,
+            schema_path=version_path,
+        )
     match = SEMVER_PATTERN.match(value)
     if not match:
-        raise SchemaError("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
+        raise SchemaError(
+            "[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax",
+            code=UNSUPPORTED_VERSION,
+            schema_path=version_path,
+        )
     if match.group(1) != "1":
-        raise SchemaError(f"unsupported TOML Schema major version: {value}")
+        raise SchemaError(
+            f"unsupported TOML Schema major version: {value}",
+            code=UNSUPPORTED_VERSION,
+            schema_path=version_path,
+        )
     if match.group(2) != "0":
-        raise SchemaError(f"unsupported TOML Schema minor version: {value}")
+        raise SchemaError(
+            f"unsupported TOML Schema minor version: {value}",
+            code=UNSUPPORTED_VERSION,
+            schema_path=version_path,
+        )
 
 
 def load_document(path: str) -> dict:
@@ -147,24 +222,32 @@ def _get_optional_bool(table: dict, key: str) -> Optional[bool]:
     return value
 
 
-def _get_pattern(name: str, table: dict) -> Optional[re.Pattern]:
-    return _get_pattern_key(name, table, "pattern")
+def _get_pattern(name: str, table: dict, schema_path: str = "") -> Optional[re.Pattern]:
+    return _get_pattern_key(name, table, "pattern", schema_path)
 
 
-def _get_pattern_key(name: str, table: dict, key: str) -> Optional[re.Pattern]:
+def _get_pattern_key(
+    name: str, table: dict, key: str, schema_path: str = ""
+) -> Optional[re.Pattern]:
     value = _property_value(table, key)
     if value is None:
         return None
     if not isinstance(value, str):
         raise SchemaError(f"expected {key} to be a string")
-    _validate_portable_pattern(name, key, value)
+    _validate_portable_pattern(name, key, value, schema_path)
+    property_path = f"{schema_path}.{key}" if schema_path else None
     try:
         return re.compile(value)
     except re.error as exc:
-        raise SchemaError(f"invalid-pattern: {name} has invalid {key}: {exc}") from exc
+        raise SchemaError(
+            f"invalid-pattern: {name} has invalid {key}: {exc}",
+            code=INVALID_PATTERN,
+            schema_path=property_path,
+        ) from exc
 
 
-def _validate_portable_pattern(name: str, key: str, pattern: str) -> None:
+def _validate_portable_pattern(name: str, key: str, pattern: str, schema_path: str = "") -> None:
+    property_path = f"{schema_path}.{key}" if schema_path else None
     index = 0
     in_character_class = False
     while index < len(pattern):
@@ -173,7 +256,9 @@ def _validate_portable_pattern(name: str, key: str, pattern: str) -> None:
             escaped = pattern[index + 1]
             if escaped not in "\\.^$*+?()[]{}|-tnrfva":
                 raise SchemaError(
-                    f"unsupported-pattern: {name} {key} uses non-portable escape \\{escaped}"
+                    f"unsupported-pattern: {name} {key} uses non-portable escape \\{escaped}",
+                    code=UNSUPPORTED_PATTERN,
+                    schema_path=property_path,
                 )
             index += 2
             continue
@@ -184,7 +269,9 @@ def _validate_portable_pattern(name: str, key: str, pattern: str) -> None:
         elif not in_character_class and current == "(" and pattern[index + 1 : index + 2] == "?":
             if pattern[index + 2 : index + 3] != ":":
                 raise SchemaError(
-                    f"unsupported-pattern: {name} {key} uses non-portable group syntax"
+                    f"unsupported-pattern: {name} {key} uses non-portable group syntax",
+                    code=UNSUPPORTED_PATTERN,
+                    schema_path=property_path,
                 )
         elif (
             not in_character_class
@@ -192,7 +279,9 @@ def _validate_portable_pattern(name: str, key: str, pattern: str) -> None:
             and pattern[index + 1 : index + 2] in ("?", "+")
         ):
             raise SchemaError(
-                f"unsupported-pattern: {name} {key} uses a non-greedy or possessive quantifier"
+                f"unsupported-pattern: {name} {key} uses a non-greedy or possessive quantifier",
+                code=UNSUPPORTED_PATTERN,
+                schema_path=property_path,
             )
         index += 1
 
@@ -340,7 +429,10 @@ def _reject_bare_collection_references(name: str, property_name: str, references
         _reject_bare_collection_reference(name, property_name, normalize_reference(reference))
 
 
-def _validate_alternative_references(name: str, property_name: str, references: List[str]) -> None:
+def _validate_alternative_references(
+    name: str, property_name: str, references: List[str], schema_path: str = ""
+) -> None:
+    property_path = f"{schema_path}.{property_name}" if schema_path else None
     seen: Dict[str, str] = {}
     for reference in references:
         normalized = normalize_reference(reference)
@@ -350,7 +442,9 @@ def _validate_alternative_references(name: str, property_name: str, references: 
         if normalized in seen:
             raise SchemaError(
                 f"{name} {property_name} contains duplicate type references "
-                f"{seen[normalized]!r} and {reference!r}; both resolve to {normalized}"
+                f"{seen[normalized]!r} and {reference!r}; both resolve to {normalized}",
+                code=DUPLICATE_REFERENCE,
+                schema_path=property_path,
             )
         seen[normalized] = reference
 
@@ -367,10 +461,14 @@ def _is_range_boundary(value: Any) -> bool:
     )
 
 
-def _validate_range_boundary(name: str, key: str, value: Any) -> None:
+def _validate_range_boundary(name: str, key: str, value: Any, schema_path: str = "") -> None:
     if value is None or _is_range_boundary(value):
         return
-    raise SchemaError(f"{name} {key} must be an integer, float, or temporal value")
+    raise SchemaError(
+        f"{name} {key} must be an integer, float, or temporal value",
+        code=INVALID_BOUNDARY,
+        schema_path=f"{schema_path}.{key}" if schema_path else None,
+    )
 
 
 def _boundary_matches_type(value: Any, type_name: SchemaType) -> bool:
@@ -389,47 +487,91 @@ def _boundary_matches_type(value: Any, type_name: SchemaType) -> bool:
     return False
 
 
-def _validate_boundary_matches_type(name: str, key: str, value: Any, type_name: SchemaType) -> None:
+def _validate_boundary_matches_type(
+    name: str, key: str, value: Any, type_name: SchemaType, schema_path: str = ""
+) -> None:
     if value is None or _boundary_matches_type(value, type_name):
         return
-    raise SchemaError(f"{name} {key} must be comparable with {type_name}")
+    raise SchemaError(
+        f"{name} {key} must be comparable with {type_name}",
+        code=INVALID_BOUNDARY,
+        schema_path=f"{schema_path}.{key}" if schema_path else None,
+    )
 
 
 def _validate_range_constraints(
-    name: str, type_name: Optional[SchemaType], min_value: Any, max_value: Any
+    name: str,
+    type_name: Optional[SchemaType],
+    min_value: Any,
+    max_value: Any,
+    schema_path: str = "",
 ) -> None:
     if min_value is None and max_value is None:
         return
-    _validate_range_boundary(name, "min", min_value)
-    _validate_range_boundary(name, "max", max_value)
+    _validate_range_boundary(name, "min", min_value, schema_path)
+    _validate_range_boundary(name, "max", max_value, schema_path)
     if is_nan(min_value):
-        raise SchemaError(f"{name} cannot use NaN as min")
+        raise SchemaError(
+            f"{name} cannot use NaN as min",
+            code=INVALID_BOUNDARY,
+            schema_path=f"{schema_path}.min" if schema_path else None,
+        )
     if is_nan(max_value):
-        raise SchemaError(f"{name} cannot use NaN as max")
+        raise SchemaError(
+            f"{name} cannot use NaN as max",
+            code=INVALID_BOUNDARY,
+            schema_path=f"{schema_path}.max" if schema_path else None,
+        )
     if type_name == SchemaType.ANY:
-        raise SchemaError(f"{name} cannot define min or max when type is any")
+        raise SchemaError(
+            f"{name} cannot define min or max when type is any",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{schema_path}.min" if schema_path and min_value is not None else (
+                f"{schema_path}.max" if schema_path else None
+            ),
+        )
     if type_name in (SchemaType.ARRAY, SchemaType.COLLECTION):
         return
     if type_name is not None and not is_range_comparable(type_name):
         raise SchemaError(
-            f"{name} can only define min or max for integer, float, date/time, or compatible array types"
+            f"{name} can only define min or max for integer, float, date/time, or compatible array types",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{schema_path}.min" if schema_path and min_value is not None else (
+                f"{schema_path}.max" if schema_path else None
+            ),
         )
     if type_name is not None:
-        _validate_boundary_matches_type(name, "min", min_value, type_name)
-        _validate_boundary_matches_type(name, "max", max_value, type_name)
-        _validate_ordered_range(name, min_value, max_value, type_name)
+        _validate_boundary_matches_type(name, "min", min_value, type_name, schema_path)
+        _validate_boundary_matches_type(name, "max", max_value, type_name, schema_path)
+        _validate_ordered_range(name, min_value, max_value, type_name, schema_path)
 
 
 def _validate_ordered_range(
-    name: str, min_value: Any, max_value: Any, comparable_kind: SchemaType
+    name: str,
+    min_value: Any,
+    max_value: Any,
+    comparable_kind: SchemaType,
+    schema_path: str = "",
 ) -> None:
     if comparable_kind == SchemaType.INTEGER:
         if is_infinite(min_value):
-            raise SchemaError(f"{name} cannot use infinity as min when comparable kind is integer")
+            raise SchemaError(
+                f"{name} cannot use infinity as min when comparable kind is integer",
+                code=INVALID_BOUNDARY,
+                schema_path=f"{schema_path}.min" if schema_path else None,
+            )
         if is_infinite(max_value):
-            raise SchemaError(f"{name} cannot use infinity as max when comparable kind is integer")
+            raise SchemaError(
+                f"{name} cannot use infinity as max when comparable kind is integer",
+                code=INVALID_BOUNDARY,
+                schema_path=f"{schema_path}.max" if schema_path else None,
+            )
     if min_value is not None and max_value is not None and compare(min_value, max_value) > 0:
-        raise SchemaError(f"{name} min must not be greater than max")
+        raise SchemaError(
+            f"{name} min must not be greater than max",
+            code=INVERTED_RANGE,
+            schema_path=schema_path or None,
+        )
 
 
 def _validate_allowed_values_constraints(
@@ -442,44 +584,50 @@ def _validate_allowed_values_constraints(
     max_value: Any,
     min_length: Optional[int],
     max_length: Optional[int],
+    schema_path: str = "",
 ) -> None:
     from ._compare import IncomparableError, compare
 
     if not allowed_values:
         return
+    allowed_path = f"{schema_path}.allowedvalues" if schema_path else None
+
+    def malformed(message: str) -> SchemaError:
+        return SchemaError(message, code=SCHEMA_MALFORMED, schema_path=allowed_path)
+
     is_container = type_name in (SchemaType.ARRAY, SchemaType.COLLECTION)
     for index, allowed in enumerate(allowed_values):
         entry = f"{name} allowedvalues[{index}]"
         if pattern is not None:
             if not isinstance(allowed, str) or not pattern.search(allowed):
-                raise SchemaError(f"{entry} does not satisfy pattern")
+                raise malformed(f"{entry} does not satisfy pattern")
         if format_name:
             if not isinstance(allowed, str) or not matches_format(allowed, format_name):
-                raise SchemaError(f"{entry} does not satisfy format {format_name}")
+                raise malformed(f"{entry} does not satisfy format {format_name}")
         if (min_value is not None or max_value is not None) and is_nan(allowed):
-            raise SchemaError(f"{entry} does not satisfy min or max")
+            raise malformed(f"{entry} does not satisfy min or max")
         if min_value is not None:
             try:
                 comparison = compare(allowed, min_value)
             except IncomparableError as exc:
-                raise SchemaError(f"{entry} cannot be compared with min: {exc}") from exc
+                raise malformed(f"{entry} cannot be compared with min: {exc}") from exc
             if comparison < 0:
-                raise SchemaError(f"{entry} is less than min")
+                raise malformed(f"{entry} is less than min")
         if max_value is not None:
             try:
                 comparison = compare(allowed, max_value)
             except IncomparableError as exc:
-                raise SchemaError(f"{entry} cannot be compared with max: {exc}") from exc
+                raise malformed(f"{entry} cannot be compared with max: {exc}") from exc
             if comparison > 0:
-                raise SchemaError(f"{entry} is greater than max")
+                raise malformed(f"{entry} is greater than max")
         if not is_container and (min_length is not None or max_length is not None):
             if not isinstance(allowed, str):
-                raise SchemaError(f"{entry} does not satisfy string length constraints")
+                raise malformed(f"{entry} does not satisfy string length constraints")
             length = len(allowed)
             if min_length is not None and length < min_length:
-                raise SchemaError(f"{entry} is shorter than minlength")
+                raise malformed(f"{entry} is shorter than minlength")
             if max_length is not None and length > max_length:
-                raise SchemaError(f"{entry} is longer than maxlength")
+                raise malformed(f"{entry} is longer than maxlength")
 
 
 def parse_definitions(
@@ -491,13 +639,23 @@ def parse_definitions(
         return {}
     definitions: Dict[str, Definition] = {}
     for key, value in table.items():
+        entry_path = schema_path_of((prefix, key))
         if prefix == "types":
             if parse_schema_type(key) is not None:
-                raise SchemaError(f"[types.{key}] uses a reserved built-in type name")
+                raise SchemaError(
+                    f"[types.{key}] uses a reserved built-in type name",
+                    schema_path=entry_path,
+                )
             if key.startswith("types."):
-                raise SchemaError(f"[types.{key}] uses the reserved type-reference prefix")
+                raise SchemaError(
+                    f"[types.{key}] uses the reserved type-reference prefix",
+                    schema_path=entry_path,
+                )
         if not isinstance(value, dict):
-            raise SchemaError(f"[{prefix}] entry must be a table: {key}")
+            raise SchemaError(
+                f"[{prefix}] entry must be a table: {key}",
+                schema_path=schema_path_of((prefix,)),
+            )
         definition = parse_definition(f"{prefix}.{key}", (prefix, key), value, source)
         definitions[key] = definition
     return definitions
@@ -511,9 +669,10 @@ def _is_selector_bearing_child(table: dict, path: Path, source: SchemaSource) ->
 
 
 def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -> Definition:
+    sp = schema_path_of(path)
     type_selector = _get_string(table, "type")
     if _property_value(table, "type") is not None and type_selector == "":
-        raise SchemaError(f"{name} type must not be blank")
+        raise SchemaError(f"{name} type must not be blank", schema_path=f"{sp}.type")
     type_name: Optional[SchemaType] = None
     reference = ""
     if type_selector:
@@ -526,28 +685,41 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
     if reference:
         for key in table:
             if key not in NAMED_REFERENCE_KEYS:
-                raise SchemaError(f"{name} named type reference cannot define {key}")
+                raise SchemaError(
+                    f"{name} named type reference cannot define {key}",
+                    code=INAPPLICABLE_PROPERTY,
+                    schema_path=f"{sp}.{_encode_segment(key)}",
+                )
 
     description = _get_string(table, "description")
     item_reference = _get_string(table, "itemtype")
     if _property_value(table, "itemtype") is not None and item_reference == "":
-        raise SchemaError(f"{name} itemtype must not be blank")
+        raise SchemaError(f"{name} itemtype must not be blank", schema_path=f"{sp}.itemtype")
     items = _get_string_array_values(table, "items")
     if _property_value(table, "items") is not None and len(items) == 0:
-        raise SchemaError(f"{name} items must contain at least one type reference")
+        raise SchemaError(
+            f"{name} items must contain at least one type reference",
+            schema_path=f"{sp}.items",
+        )
     optional = _get_bool(table, "optional")
-    pattern = _get_pattern(name, table)
+    pattern = _get_pattern(name, table, sp)
     format_name = _get_string(table, "format")
     if _property_value(table, "format") is not None and format_name not in SUPPORTED_FORMATS:
         supported = ", ".join(sorted(SUPPORTED_FORMATS))
-        raise SchemaError(f"{name} has unknown format {format_name!r}; supported formats: {supported}")
-    key_pattern = _get_pattern_key(name, table, "keypattern")
+        raise SchemaError(
+            f"{name} has unknown format {format_name!r}; supported formats: {supported}",
+            schema_path=f"{sp}.format",
+        )
+    key_pattern = _get_pattern_key(name, table, "keypattern", sp)
     min_length = _get_integer_pointer(table, "minlength")
     max_length = _get_integer_pointer(table, "maxlength")
     allowed_values = _get_array_values(table, "allowedvalues") or []
     has_allowed_values = _property_value(table, "allowedvalues") is not None
     if has_allowed_values and len(allowed_values) == 0:
-        raise SchemaError(f"{name} allowedvalues must contain at least one entry")
+        raise SchemaError(
+            f"{name} allowedvalues must contain at least one entry",
+            schema_path=f"{sp}.allowedvalues",
+        )
     has_one_of = _property_value(table, "oneof") is not None
     has_any_of = _property_value(table, "anyof") is not None
     one_of = _get_string_array_values(table, "oneof")
@@ -563,27 +735,38 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
     ):
         for reference_value in references:
             if reference_value == "":
-                raise SchemaError(f"{name} {property_name} references must not be blank")
+                raise SchemaError(
+                    f"{name} {property_name} references must not be blank",
+                    schema_path=f"{sp}.{property_name}",
+                )
 
     if has_one_of and len(one_of) == 0:
-        raise SchemaError(f"{name} oneof must contain at least one type reference")
+        raise SchemaError(
+            f"{name} oneof must contain at least one type reference", schema_path=f"{sp}.oneof"
+        )
     if has_any_of and len(any_of) == 0:
-        raise SchemaError(f"{name} anyof must contain at least one type reference")
+        raise SchemaError(
+            f"{name} anyof must contain at least one type reference", schema_path=f"{sp}.anyof"
+        )
     if _property_value(table, "allof") is not None and len(all_of) == 0:
-        raise SchemaError(f"{name} allof must contain at least one type reference")
+        raise SchemaError(
+            f"{name} allof must contain at least one type reference", schema_path=f"{sp}.allof"
+        )
 
     _reject_bare_collection_reference(name, "itemtype", item_reference)
     _reject_bare_collection_references(name, "items", items)
-    _validate_alternative_references(name, "oneof", one_of)
-    _validate_alternative_references(name, "anyof", any_of)
-    _validate_alternative_references(name, "allof", all_of)
+    _validate_alternative_references(name, "oneof", one_of, sp)
+    _validate_alternative_references(name, "anyof", any_of, sp)
+    _validate_alternative_references(name, "allof", all_of, sp)
 
     if (
         type_selector
         and type_name != SchemaType.COLLECTION
         and normalize_reference(type_selector) == SchemaType.COLLECTION.value
     ):
-        raise SchemaError(f"{name} cannot use collection as a bare type reference")
+        raise SchemaError(
+            f"{name} cannot use collection as a bare type reference", schema_path=f"{sp}.type"
+        )
 
     type_selectors = 0
     if type_selector:
@@ -595,7 +778,11 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
     if condition is not None:
         type_selectors += 1
     if type_selectors > 1:
-        raise SchemaError(f"{name} cannot define more than one of type, oneof, anyof, and if")
+        raise SchemaError(
+            f"{name} cannot define more than one of type, oneof, anyof, and if",
+            code=EXCLUSIVE_PROPERTIES,
+            schema_path=sp,
+        )
 
     children: Dict[str, Definition] = {}
     escaped_children = table.get("children")
@@ -628,82 +815,144 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
             child = parse_definition(f"{name}.{key}", path + (key,), value, source)
             children[key] = child
         elif key not in DEFINITION_KEYS:
-            raise SchemaError(f"{name} contains unsupported property: {key}")
+            raise SchemaError(
+                f"{name} contains unsupported property: {key}",
+                code=UNRECOGNIZED_PROPERTY,
+                schema_path=f"{sp}.{_encode_segment(key)}",
+            )
 
     if has_one_of or has_any_of:
         for key in table:
             if key not in UNION_KEYS:
-                raise SchemaError(f"{name} union cannot define {key}")
+                raise SchemaError(f"{name} union cannot define {key}", schema_path=sp)
 
     if condition is not None:
         for key in table:
             if key not in CONDITIONAL_KEYS:
-                raise SchemaError(f"{name} conditional selector cannot define {key}")
+                raise SchemaError(
+                    f"{name} conditional selector cannot define {key}", schema_path=sp
+                )
         if children:
-            raise SchemaError(f"{name} conditional selector cannot define child definitions")
+            raise SchemaError(
+                f"{name} conditional selector cannot define child definitions", schema_path=sp
+            )
 
     if type_name is None and not reference and not has_one_of and not has_any_of and condition is None:
         if not children:
             if not all_of:
-                raise SchemaError(f"{name} must define type, oneof, anyof, or child definitions")
+                raise SchemaError(
+                    f"{name} must define type, oneof, anyof, or child definitions", schema_path=sp
+                )
         else:
             type_name = SchemaType.TABLE
 
     if children and type_name not in (SchemaType.TABLE, SchemaType.COLLECTION):
-        raise SchemaError(f"{name} can only define children when type is table or collection")
+        raise SchemaError(
+            f"{name} can only define children when type is table or collection", schema_path=sp
+        )
     if type_name not in (SchemaType.ARRAY, SchemaType.COLLECTION) and item_reference:
-        raise SchemaError(f"{name} can only define itemtype when type is array or collection")
+        raise SchemaError(
+            f"{name} can only define itemtype when type is array or collection",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{sp}.itemtype",
+        )
     if type_name != SchemaType.ARRAY and items:
-        raise SchemaError(f"{name} can only define items when type is array")
+        raise SchemaError(
+            f"{name} can only define items when type is array",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{sp}.items",
+        )
 
     if items:
         if item_reference:
-            raise SchemaError(f"{name} cannot define both items and itemtype")
+            raise SchemaError(
+                f"{name} cannot define both items and itemtype",
+                code=EXCLUSIVE_PROPERTIES,
+                schema_path=sp,
+            )
         if min_length is not None or max_length is not None:
-            raise SchemaError(f"{name} cannot define minlength or maxlength together with items")
+            raise SchemaError(
+                f"{name} cannot define minlength or maxlength together with items",
+                code=EXCLUSIVE_PROPERTIES,
+                schema_path=sp,
+            )
         if has_allowed_values:
-            raise SchemaError(f"{name} cannot define allowedvalues together with items")
+            raise SchemaError(
+                f"{name} cannot define allowedvalues together with items",
+                code=EXCLUSIVE_PROPERTIES,
+                schema_path=sp,
+            )
         if _property_value(table, "min") is not None or _property_value(table, "max") is not None:
-            raise SchemaError(f"{name} cannot define min or max together with items")
+            raise SchemaError(
+                f"{name} cannot define min or max together with items",
+                code=EXCLUSIVE_PROPERTIES,
+                schema_path=sp,
+            )
         if pattern is not None or format_name:
-            raise SchemaError(f"{name} cannot define pattern or format together with items")
+            raise SchemaError(
+                f"{name} cannot define pattern or format together with items",
+                code=EXCLUSIVE_PROPERTIES,
+                schema_path=sp,
+            )
 
     min_value = _property_value(table, "min")
     max_value = _property_value(table, "max")
     if min_length is not None and max_length is not None and min_length > max_length:
-        raise SchemaError(f"{name} minlength must not be greater than maxlength")
+        raise SchemaError(
+            f"{name} minlength must not be greater than maxlength",
+            code=INVERTED_RANGE,
+            schema_path=sp,
+        )
     if key_pattern is not None and type_name != SchemaType.COLLECTION:
-        raise SchemaError(f"{name} can only define keypattern when type is collection")
+        raise SchemaError(
+            f"{name} can only define keypattern when type is collection",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{sp}.keypattern",
+        )
     if pattern is not None and type_name not in (
         SchemaType.STRING,
         SchemaType.ARRAY,
         SchemaType.COLLECTION,
     ):
-        raise SchemaError(f"{name} can only define pattern when type is string")
+        raise SchemaError(
+            f"{name} can only define pattern when type is string",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{sp}.pattern",
+        )
     if format_name and type_name not in (
         SchemaType.STRING,
         SchemaType.ARRAY,
         SchemaType.COLLECTION,
     ):
         raise SchemaError(
-            f"{name} can only define format when locally selecting built-in type string"
+            f"{name} can only define format when locally selecting built-in type string",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{sp}.format",
         )
     if has_allowed_values and type_name == SchemaType.TABLE:
-        raise SchemaError(f"{name} can only define allowedvalues for scalar, unconstrained, or array types")
+        raise SchemaError(
+            f"{name} can only define allowedvalues for scalar, unconstrained, or array types",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{sp}.allowedvalues",
+        )
     if (min_length is not None or max_length is not None) and type_name not in (
         SchemaType.STRING,
         SchemaType.ARRAY,
         SchemaType.COLLECTION,
     ):
         raise SchemaError(
-            f"{name} can only define minlength or maxlength when type is string, array, or collection"
+            f"{name} can only define minlength or maxlength when type is string, array, or collection",
+            code=INAPPLICABLE_PROPERTY,
+            schema_path=f"{sp}.minlength" if min_length is not None else f"{sp}.maxlength",
         )
     if type_name == SchemaType.COLLECTION and not item_reference and not all_of:
-        raise SchemaError(f"{name} must define itemtype when type is collection")
+        raise SchemaError(
+            f"{name} must define itemtype when type is collection", schema_path=sp
+        )
 
-    _validate_range_constraints(name, type_name, min_value, max_value)
+    _validate_range_constraints(name, type_name, min_value, max_value, sp)
     _validate_allowed_values_constraints(
-        name, type_name, allowed_values, pattern, format_name, min_value, max_value, min_length, max_length
+        name, type_name, allowed_values, pattern, format_name, min_value, max_value, min_length, max_length, sp
     )
 
     dependent_required = _get_dependent_required(name, path, table, source)
@@ -715,7 +964,11 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
     has_default = source.is_property(table, path, "default")
     default_value = table.get("default") if has_default else None
     if condition is not None and has_default and not isinstance(default_value, dict):
-        raise SchemaError(f"{name} conditional default must be a table")
+        raise SchemaError(
+            f"{name} conditional default must be a table",
+            code=INVALID_DEFAULT,
+            schema_path=f"{sp}.default",
+        )
 
     return Definition(
         name=name,
@@ -748,6 +1001,7 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
         deprecated=bool(deprecated_ptr) if deprecated_ptr is not None else False,
         has_deprecated=deprecated_ptr is not None,
         children=children,
+        schema_path=sp,
     )
 
 
@@ -790,17 +1044,19 @@ class Schema:
         validator.validate_table("$", document, self.elements)
         for key in document:
             if key not in self.elements and key != "toml-schema":
-                validator.add(f"$.{_encode_root_key(key)}", "unexpected key")
+                validator.add(
+                    UNKNOWN_KEY,
+                    f"$.{_encode_root_key(key)}",
+                    "$.elements",
+                    "unexpected key",
+                )
         return ValidationResult(errors=validator.errors, warnings=validator.warnings)
 
     def validate_file(self, path: str) -> ValidationResult:
         try:
             document = load_document(path)
-        except Exception as exc:  # noqa: BLE001 - surfaced as a structured diagnostic
-            diagnostic = Diagnostic(
-                severity=Severity.ERROR, code="document-parse-error", path="$", message=str(exc)
-            )
-            return ValidationResult(errors=[diagnostic])
+        except tomllib.TOMLDecodeError as exc:
+            raise DocumentParseError(str(exc)) from exc
         return self.validate(document)
 
     # -- annotation resolution -------------------------------------------------
@@ -917,7 +1173,11 @@ class Schema:
                 branch = self.definition_for_reference(reference)
                 branch_kind, ok = self.effective_kind(branch, visiting)
                 if not ok or (resolved and branch_kind != kind):
-                    raise SchemaError("conditional branches have incompatible effective kinds")
+                    raise SchemaError(
+                        "conditional branches have incompatible effective kinds",
+                        code=INCOMPATIBLE_COMPOSITION,
+                        schema_path=definition.schema_path or None,
+                    )
                 kind, resolved = branch_kind, True
         else:
             kind, resolved = definition.type_name, definition.type_name is not None
@@ -928,9 +1188,17 @@ class Schema:
             component = self.definition_for_reference(reference)
             component_kind, ok = self.effective_kind(component, visiting)
             if not ok or component_kind == SchemaType.ANY:
-                raise SchemaError(f"allof component {reference} has indeterminate effective kind")
+                raise SchemaError(
+                    f"allof component {reference} has indeterminate effective kind",
+                    code=INCOMPATIBLE_COMPOSITION,
+                    schema_path=f"{definition.schema_path}.allof" if definition.schema_path else None,
+                )
             if resolved and component_kind != kind:
-                raise SchemaError(f"allof component {reference} has incompatible effective kind")
+                raise SchemaError(
+                    f"allof component {reference} has incompatible effective kind",
+                    code=INCOMPATIBLE_COMPOSITION,
+                    schema_path=f"{definition.schema_path}.allof" if definition.schema_path else None,
+                )
             if not resolved:
                 kind, resolved = component_kind, True
         return kind, True
@@ -1066,20 +1334,30 @@ class Schema:
 
     def validate_references(self, definitions: Dict[str, Definition]) -> None:
         for definition in definitions.values():
-            references = [definition.reference, definition.item_reference]
-            references += list(definition.items)
-            references += list(definition.one_of)
-            references += list(definition.any_of)
+            labeled: List[Tuple[str, str]] = [
+                ("type", definition.reference),
+                ("itemtype", definition.item_reference),
+            ]
+            labeled += [("items", ref) for ref in definition.items]
+            labeled += [("oneof", ref) for ref in definition.one_of]
+            labeled += [("anyof", ref) for ref in definition.any_of]
             if definition.condition is not None:
-                references += [definition.then_reference, definition.else_reference]
-            references += list(definition.all_of)
-            for reference in references:
+                labeled += [
+                    ("then", definition.then_reference),
+                    ("else", definition.else_reference),
+                ]
+            labeled += [("allof", ref) for ref in definition.all_of]
+            for property_name, reference in labeled:
                 if not reference:
                     continue
                 if parse_schema_type(reference) is not None:
                     continue
                 if reference not in self.types:
-                    raise SchemaError(f"{definition.name} contains unknown type reference: {reference}")
+                    raise SchemaError(
+                        f"{definition.name} contains unknown type reference: {reference}",
+                        code=UNRESOLVED_REFERENCE,
+                        schema_path=f"{definition.schema_path}.{property_name}",
+                    )
             self.validate_references(definition.children)
 
     def validate_selector_cycles(self) -> None:
@@ -1091,7 +1369,11 @@ class Schema:
         if parse_schema_type(type_name) is not None or type_name in visited:
             return
         if type_name in visiting:
-            raise SchemaError(f"cyclic type selector reference involving types.{type_name}")
+            raise SchemaError(
+                f"cyclic type selector reference involving types.{type_name}",
+                code=CYCLIC_REFERENCE,
+                schema_path=schema_path_of(("types", type_name)),
+            )
         definition = self.types.get(type_name)
         if definition is None:
             return
@@ -1142,8 +1424,8 @@ class Schema:
     def validate_definition_semantics(self, definition: Definition) -> None:
         try:
             kind, resolved = self.effective_kind(definition, set())
-        except SchemaError as exc:
-            raise SchemaError(f"{definition.name}: {exc}") from exc
+        except SchemaError:
+            raise
         has_sibling_rules = bool(definition.dependent_required) or bool(
             definition.mutually_exclusive
         ) or bool(definition.exactly_one)
@@ -1152,8 +1434,8 @@ class Schema:
                 raise SchemaError(f"{definition.name} sibling rules require an effective table or collection")
             try:
                 fixed = self.determinate_fixed_children(definition, set())
-            except SchemaError as exc:
-                raise SchemaError(f"{definition.name}: {exc}") from exc
+            except SchemaError:
+                raise
 
             def check_name(property_name: str, operand: str) -> None:
                 if operand not in fixed:
@@ -1177,8 +1459,8 @@ class Schema:
         if resolved and kind == SchemaType.COLLECTION:
             try:
                 has_constraint = self.has_collection_item_constraint(definition, set())
-            except SchemaError as exc:
-                raise SchemaError(f"{definition.name}: {exc}") from exc
+            except SchemaError:
+                raise
             if not has_constraint:
                 raise SchemaError(f"{definition.name} effective collection must define at least one itemtype")
         if definition.condition is not None:
@@ -1210,38 +1492,53 @@ class Schema:
 
     def validate_array_ranges(self) -> None:
         def validate_definition(definition: Definition) -> None:
+            sp = definition.schema_path
             if definition.type_name in (SchemaType.ARRAY, SchemaType.COLLECTION):
                 has_range = definition.min is not None or definition.max is not None
                 has_string_constraint = definition.pattern is not None or bool(definition.format)
+                range_path = (
+                    f"{sp}.min" if definition.min is not None else f"{sp}.max"
+                ) if sp else None
+                string_path = (
+                    f"{sp}.pattern" if definition.pattern is not None else f"{sp}.format"
+                ) if sp else None
                 if has_range or has_string_constraint:
                     try:
                         item_type, ok = self.resolve_item_kind(definition.item_reference, set())
-                    except SchemaError as exc:
-                        raise SchemaError(f"{definition.name} has invalid itemtype: {exc}") from exc
+                    except SchemaError:
+                        raise
                     if not ok:
                         message = (
                             "can only define min or max when itemtype resolves to one comparable built-in type"
                             if has_range
                             else "per-member constraints require a determinate itemtype"
                         )
-                        raise SchemaError(f"{definition.name} {message}")
+                        raise SchemaError(
+                            f"{definition.name} {message}",
+                            code=INAPPLICABLE_PROPERTY,
+                            schema_path=range_path if has_range else string_path,
+                        )
                     if has_range and not is_range_comparable(item_type):
                         raise SchemaError(
-                            f"{definition.name} can only define min or max when itemtype resolves to one comparable built-in type"
+                            f"{definition.name} can only define min or max when itemtype resolves to one comparable built-in type",
+                            code=INAPPLICABLE_PROPERTY,
+                            schema_path=range_path,
                         )
                     if has_string_constraint and item_type != SchemaType.STRING:
                         raise SchemaError(
-                            f"{definition.name} can only define pattern or format when itemtype resolves to string"
+                            f"{definition.name} can only define pattern or format when itemtype resolves to string",
+                            code=INAPPLICABLE_PROPERTY,
+                            schema_path=string_path,
                         )
                     if has_range:
                         _validate_boundary_matches_type(
-                            definition.name, "min", definition.min, item_type
+                            definition.name, "min", definition.min, item_type, sp
                         )
                         _validate_boundary_matches_type(
-                            definition.name, "max", definition.max, item_type
+                            definition.name, "max", definition.max, item_type, sp
                         )
                         _validate_ordered_range(
-                            definition.name, definition.min, definition.max, item_type
+                            definition.name, definition.min, definition.max, item_type, sp
                         )
                 self.validate_duplicate_member_constraints(definition)
             for child in definition.children.values():
@@ -1254,6 +1551,7 @@ class Schema:
     def validate_duplicate_member_constraints(self, definition: Definition) -> None:
         if not definition.item_reference:
             return
+        sp = definition.schema_path
         constraints = (
             ("allowedvalues", bool(definition.allowed_values)),
             ("min", definition.min is not None),
@@ -1266,7 +1564,9 @@ class Schema:
                 definition.item_reference, property_name, set()
             ):
                 raise SchemaError(
-                    f"{definition.name} defines {property_name} both inline and on its resolved itemtype"
+                    f"{definition.name} defines {property_name} both inline and on its resolved itemtype",
+                    code=EXCLUSIVE_PROPERTIES,
+                    schema_path=sp or None,
                 )
 
     def reference_has_constraint(
@@ -1312,7 +1612,11 @@ class Schema:
                 candidate = Validator(self, suppress_warnings=True)
                 candidate.validate_value(definition.name, value, definition)
                 if candidate.errors:
-                    raise SchemaError(f"{definition.name} default is invalid: {candidate.errors[0].message}")
+                    raise SchemaError(
+                        f"{definition.name} default is invalid: {candidate.errors[0].message}",
+                        code=INVALID_DEFAULT,
+                        schema_path=f"{definition.schema_path}.default" if definition.schema_path else None,
+                    )
             for child in definition.children.values():
                 validate_definition(child)
 
@@ -1385,11 +1689,7 @@ _PLAIN_ROOT_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
 
 def _encode_root_key(key: str) -> str:
-    if key and _PLAIN_ROOT_KEY_RE.match(key):
-        return key
-    import json
-
-    return json.dumps(key)
+    return _encode_segment(key)
 
 
 def load_schema(path: str) -> Schema:

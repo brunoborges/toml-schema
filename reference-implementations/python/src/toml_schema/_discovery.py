@@ -9,12 +9,19 @@ from __future__ import annotations
 
 import os
 import sys
+import tomllib
 from typing import Any, Tuple
 from urllib.parse import quote, urljoin, urlsplit, unquote
 
-from ._errors import DiscoveryError, SchemaError
+from ._codes import (
+    DISCOVERY_INVALID_METADATA,
+    DISCOVERY_MISSING_LOCATION,
+    DISCOVERY_UNRESOLVED_LOCATION,
+    UNSUPPORTED_VERSION,
+)
+from ._errors import DiscoveryError, DocumentParseError, SchemaError
 from ._schema import Schema, load_document, load_schema, SEMVER_PATTERN
-from ._types import Diagnostic, Severity, ValidationResult
+from ._types import Diagnostic, Phase, Severity, ValidationResult
 
 _INVALID_URI_REFERENCE_CHARS = set('\\"<>^`{|}')
 
@@ -36,24 +43,24 @@ def _is_schema_reference_scalar(value: Any) -> bool:
 
 def _local_path_from_file_uri(parts) -> str:
     if parts.fragment or parts.query:
-        raise DiscoveryError("file URI contains unsupported components")
+        raise DiscoveryError("file URI contains unsupported components", code=DISCOVERY_UNRESOLVED_LOCATION)
     netloc = parts.netloc
     if "@" in netloc:
-        raise DiscoveryError("file URI contains unsupported components")
+        raise DiscoveryError("file URI contains unsupported components", code=DISCOVERY_UNRESOLVED_LOCATION)
     if netloc and netloc.lower() != "localhost":
-        raise DiscoveryError("file URI has a non-local host")
+        raise DiscoveryError("file URI has a non-local host", code=DISCOVERY_UNRESOLVED_LOCATION)
     escaped_path = parts.path.lower()
     if "%2f" in escaped_path or "%5c" in escaped_path:
-        raise DiscoveryError("file URI contains an encoded path separator")
+        raise DiscoveryError("file URI contains an encoded path separator", code=DISCOVERY_UNRESOLVED_LOCATION)
     path = unquote(parts.path)
     if not path or "\x00" in path:
-        raise DiscoveryError("file URI does not contain a safe path")
+        raise DiscoveryError("file URI does not contain a safe path", code=DISCOVERY_UNRESOLVED_LOCATION)
     if sys.platform.startswith("win") and len(path) >= 3 and path[0] == "/" and path[2] == ":":
         path = path[1:]
     if os.sep != "/":
         path = path.replace("/", os.sep)
     if not os.path.isabs(path):
-        raise DiscoveryError("file URI path is not absolute")
+        raise DiscoveryError("file URI path is not absolute", code=DISCOVERY_UNRESOLVED_LOCATION)
     return path
 
 
@@ -61,7 +68,7 @@ def resolve_schema_location(document_path: str, location: str) -> str:
     if os.path.isabs(location):
         return os.path.normpath(location)
     if _has_invalid_uri_reference_character(location):
-        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}")
+        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}", code=DISCOVERY_UNRESOLVED_LOCATION)
     try:
         parts = urlsplit(location)
         if parts.scheme:
@@ -78,17 +85,18 @@ def resolve_schema_location(document_path: str, location: str) -> str:
             parts = urlsplit(urljoin(base, location))
             is_opaque = False
     except ValueError as exc:
-        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}: {exc}") from exc
+        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}: {exc}", code=DISCOVERY_UNRESOLVED_LOCATION) from exc
     if parts.scheme.lower() != "file":
-        raise DiscoveryError(f"unsupported schema location URI scheme: {parts.scheme}")
+        raise DiscoveryError(f"unsupported schema location URI scheme: {parts.scheme}", code=DISCOVERY_UNRESOLVED_LOCATION)
     if is_opaque:
         raise DiscoveryError(
-            f"invalid file schema location: {location}: file URI contains unsupported components"
+            f"invalid file schema location: {location}: file URI contains unsupported components",
+            code=DISCOVERY_UNRESOLVED_LOCATION,
         )
     try:
         path = _local_path_from_file_uri(parts)
     except DiscoveryError as exc:
-        raise DiscoveryError(f"invalid file schema location: {location}: {exc}") from exc
+        raise DiscoveryError(f"invalid file schema location: {location}: {exc}", code=DISCOVERY_UNRESOLVED_LOCATION) from exc
     return os.path.normpath(path)
 
 
@@ -97,14 +105,15 @@ def compare_document_schema_version(value: Any, actual: str) -> str:
     (same major version); raises DiscoveryError on incompatible/invalid
     versions."""
     if not isinstance(value, str):
-        raise DiscoveryError("document [toml-schema].version must be a SemVer string")
+        raise DiscoveryError("document [toml-schema].version must be a SemVer string", code=DISCOVERY_INVALID_METADATA)
     expected_parts = SEMVER_PATTERN.match(value)
     if not expected_parts:
-        raise DiscoveryError("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
+        raise DiscoveryError("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax", code=DISCOVERY_INVALID_METADATA)
     actual_parts = SEMVER_PATTERN.match(actual)
     if expected_parts.group(1) != actual_parts.group(1):
         raise DiscoveryError(
-            f"document expects TOML Schema major version {value}, but resolved schema uses {actual}"
+            f"document expects TOML Schema major version {value}, but resolved schema uses {actual}",
+            code=UNSUPPORTED_VERSION,
         )
     if value != actual:
         return f"Warning: document expects TOML Schema version {value}, but resolved schema uses {actual}"
@@ -120,13 +129,16 @@ def schema_from_document(document_path: str) -> Tuple[Schema, dict]:
     Raises :class:`toml_schema.SchemaError`/:class:`toml_schema.DiscoveryError`
     if discovery or schema loading fails.
     """
-    document = load_document(document_path)
+    try:
+        document = load_document(document_path)
+    except tomllib.TOMLDecodeError as exc:
+        raise DocumentParseError(str(exc)) from exc
     metadata = document.get("toml-schema")
     if not isinstance(metadata, dict):
         raise DiscoveryError("document does not contain [toml-schema].location")
     for key, value in metadata.items():
         if not _is_schema_reference_scalar(value):
-            raise DiscoveryError(f"document [toml-schema].{key} must be a scalar value")
+            raise DiscoveryError(f"document [toml-schema].{key} must be a scalar value", code=DISCOVERY_INVALID_METADATA)
     location = metadata.get("location")
     if not isinstance(location, str) or location.strip() == "":
         raise DiscoveryError("document does not contain [toml-schema].location")
@@ -145,15 +157,24 @@ def validate_document(document_path: str) -> ValidationResult:
     single document: loads the document, discovers its schema via
     ``[toml-schema].location``, and validates the document against it.
 
-    Discovery or schema-load failures are reported as a single structured
-    error diagnostic rather than raised, so callers can treat this the same
-    way as :meth:`Schema.validate_file`.
+    A document that is not well-formed TOML raises
+    :class:`toml_schema.DocumentParseError` -- SPEC.md forbids reporting that as
+    a diagnostic. Discovery or schema-load failures are reported as a single
+    structured error diagnostic (carrying the failure's phase and registry
+    ``code``) rather than raised, so callers can treat this the same way as
+    :meth:`Schema.validate_file`.
     """
     try:
         schema, document = schema_from_document(document_path)
-    except (SchemaError, DiscoveryError, OSError) as exc:
+    except (SchemaError, DiscoveryError) as exc:
+        phase = Phase.DISCOVERY if isinstance(exc, DiscoveryError) else Phase.SCHEMA_LOAD
         diagnostic = Diagnostic(
-            severity=Severity.ERROR, code="document-parse-error", path="$", message=str(exc)
+            severity=Severity.ERROR,
+            code=exc.code,
+            instance_path=None,
+            message=str(exc),
+            phase=phase,
+            schema_path=exc.schema_path,
         )
         return ValidationResult(errors=[diagnostic])
     return schema.validate(document)

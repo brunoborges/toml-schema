@@ -10,7 +10,6 @@ conditional contributors).
 from __future__ import annotations
 
 import dataclasses
-import json
 import re
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple
@@ -19,7 +18,37 @@ from ._compare import IncomparableError, compare, is_type, type_name_of, values_
 from ._definition import Condition, Definition
 from ._errors import SchemaError
 from ._formats import matches_format
-from ._types import Diagnostic, Severity, SchemaType, normalize_reference, parse_schema_type
+from ._codes import (
+    ALLOWEDVALUES,
+    ANYOF,
+    DEPENDENTREQUIRED,
+    DEPRECATED,
+    EXACTLYONE,
+    FORMAT,
+    INCOMPATIBLE_COMPOSITION,
+    KEYPATTERN,
+    MAX,
+    MAXLENGTH,
+    MIN,
+    MINLENGTH,
+    MISSING_REQUIRED,
+    MUTUALLYEXCLUSIVE,
+    ONEOF,
+    PATTERN,
+    SCHEMA_MALFORMED,
+    TUPLE_LENGTH,
+    TYPE_MISMATCH,
+    UNIQUEITEMS,
+    UNKNOWN_KEY,
+)
+from ._types import (
+    Diagnostic,
+    Phase,
+    Severity,
+    SchemaType,
+    normalize_reference,
+    parse_schema_type,
+)
 
 _PLAIN_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 
@@ -27,7 +56,29 @@ _PLAIN_KEY_RE = re.compile(r"^[A-Za-z0-9_-]+$")
 def _encode_path_key(key: str) -> str:
     if key and _PLAIN_KEY_RE.match(key):
         return key
-    return json.dumps(key)
+    parts = ['"']
+    for char in key:
+        code = ord(char)
+        if char == '"':
+            parts.append('\\"')
+        elif char == "\\":
+            parts.append("\\\\")
+        elif code == 0x08:
+            parts.append("\\b")
+        elif code == 0x09:
+            parts.append("\\t")
+        elif code == 0x0A:
+            parts.append("\\n")
+        elif code == 0x0C:
+            parts.append("\\f")
+        elif code == 0x0D:
+            parts.append("\\r")
+        elif code <= 0x1F:
+            parts.append("\\u%04x" % code)
+        else:
+            parts.append(char)
+    parts.append('"')
+    return "".join(parts)
 
 
 def append_path(path: str, key: str) -> str:
@@ -86,12 +137,14 @@ class Validator:
             try:
                 resolved = self.resolve(definition, set())
             except SchemaError as exc:
-                self.add(append_path(path, key), str(exc))
+                self.add_exc(append_path(path, key), exc)
                 continue
             child_path = append_path(path, key)
             if key not in table:
                 if not resolved.optional:
-                    self.add(child_path, "required value is missing")
+                    self.add(
+                        MISSING_REQUIRED, child_path, self._sp(definition), "required value is missing"
+                    )
                 continue
             self.validate_value(child_path, table[key], resolved)
 
@@ -106,7 +159,7 @@ class Validator:
         try:
             resolved = self.resolve(definition, set())
         except SchemaError as exc:
-            self.add(path, str(exc))
+            self.add_exc(path, exc)
             return
         if resolved.condition is not None:
             self.validate_conditional(path, value, resolved)
@@ -117,7 +170,7 @@ class Validator:
         else:
             self.validate_plain_value(path, value, resolved)
         if not self.errors and resolved.deprecated:
-            self.warn(path, "deprecated", "value is deprecated")
+            self.warn(DEPRECATED, path, self._sp(resolved, "deprecated"), "value is deprecated")
 
     def validate_conditional(self, path: str, value: Any, definition: Definition) -> None:
         reference = definition.else_reference
@@ -126,14 +179,14 @@ class Validator:
         try:
             branch = self.resolve_reference(reference, set())
         except SchemaError as exc:
-            self.add(path, str(exc))
+            self.add_exc(path, exc)
             return
         branch = dataclasses.replace(branch, all_of=branch.all_of + definition.all_of)
         self.validate_value(path, value, branch)
 
     def validate_plain_value(self, path: str, value: Any, definition: Definition) -> None:
         type_name = definition.type_name if definition.type_name is not None else SchemaType.ANY
-        self.validate_type(path, value, type_name)
+        self.validate_type(path, value, type_name, self._sp(definition, "type"))
         if not is_type(value, type_name):
             return
         self.validate_common_constraints(path, value, definition)
@@ -152,7 +205,7 @@ class Validator:
             try:
                 referenced = self.resolve_reference(reference, set())
             except SchemaError as exc:
-                self.add(path, str(exc))
+                self.add_exc(path, exc)
                 return
             referenced = dataclasses.replace(
                 referenced,
@@ -174,11 +227,21 @@ class Validator:
                 matches += 1
                 successes.append(candidate)
         if definition.one_of and matches != 1:
-            self.add(path, f"expected exactly one matching type from oneof but found {matches}")
+            self.add(
+                ONEOF,
+                path,
+                self._sp(definition, "oneof"),
+                f"expected exactly one matching type from oneof but found {matches}",
+            )
         elif definition.one_of:
             self.append_warnings(successes[0].warnings)
         if definition.any_of and matches == 0:
-            self.add(path, "expected at least one matching type from anyof")
+            self.add(
+                ANYOF,
+                path,
+                self._sp(definition, "anyof"),
+                "expected at least one matching type from anyof",
+            )
         elif definition.any_of:
             for candidate in successes:
                 self.append_warnings(candidate.warnings)
@@ -187,10 +250,15 @@ class Validator:
         try:
             kind, resolved = self.schema.effective_kind(definition, set())
         except SchemaError as exc:
-            self.add(path, str(exc))
+            self.add_exc(path, exc)
             return
         if not resolved:
-            self.add(path, "allof has no determinate effective kind")
+            self.add(
+                INCOMPATIBLE_COMPOSITION,
+                path,
+                self._sp(definition, "allof"),
+                "allof has no determinate effective kind",
+            )
             return
         if kind in (SchemaType.TABLE, SchemaType.COLLECTION):
             if (
@@ -209,7 +277,7 @@ class Validator:
             try:
                 component = self.resolve_reference(reference, set())
             except SchemaError as exc:
-                self.add(path, str(exc))
+                self.add_exc(path, exc)
                 continue
             self.validate_value(path, value, component)
 
@@ -251,7 +319,7 @@ class Validator:
         try:
             parts = self.composition_parts(definition, set())
         except SchemaError as exc:
-            self.add(path, str(exc))
+            self.add_exc(path, exc)
             return
         self.validate_composed_parts(path, value, kind, parts, inherited_keys)
 
@@ -271,7 +339,12 @@ class Validator:
         has_fixed_structure = bool(inherited_keys)
         for component in parts.structural:
             if component.type_name != kind:
-                self.add(path, f"expected {kind} component but found {component.type_name}")
+                self.add(
+                    TYPE_MISMATCH,
+                    path,
+                    self._sp(component, "type"),
+                    f"expected {kind} component but found {component.type_name}",
+                )
                 continue
             if component.children:
                 has_fixed_structure = True
@@ -285,7 +358,7 @@ class Validator:
             try:
                 alternative_keys = self.effective_closure_keys(union, value, set())
             except SchemaError as exc:
-                self.add(path, str(exc))
+                self.add_exc(path, exc)
                 continue
             if alternative_keys:
                 has_fixed_structure = True
@@ -298,7 +371,7 @@ class Validator:
             try:
                 branch_keys = self.effective_closure_keys(conditional, value, set())
             except SchemaError as exc:
-                self.add(path, str(exc))
+                self.add_exc(path, exc)
                 continue
             if branch_keys:
                 has_fixed_structure = True
@@ -314,11 +387,13 @@ class Validator:
                 try:
                     resolved = self.resolve(child, set())
                 except SchemaError as exc:
-                    self.add(child_path, str(exc))
+                    self.add_exc(child_path, exc)
                     continue
                 if not present:
                     if not resolved.optional:
-                        self.add(child_path, "required value is missing")
+                        self.add(
+                            MISSING_REQUIRED, child_path, self._sp(child), "required value is missing"
+                        )
                     continue
                 self.validate_value(child_path, child_value, child)
         for index, union in enumerate(unions):
@@ -342,11 +417,12 @@ class Validator:
             self.validate_sibling_rules(path, table, component)
         for union in unions:
             self.validate_sibling_rules(path, table, union)
+        closed_sp = self._sp(parts.structural[0]) if parts.structural else None
         if kind == SchemaType.TABLE:
             if has_fixed_structure:
                 for key in table:
                     if key not in known_keys:
-                        self.add(append_path(path, key), "unexpected key")
+                        self.add(UNKNOWN_KEY, append_path(path, key), closed_sp, "unexpected key")
         else:
             for component in parts.structural:
                 dynamic_entries = 0
@@ -357,7 +433,9 @@ class Validator:
                     child_path = append_path(path, key)
                     if component.key_pattern is not None and not component.key_pattern.search(key):
                         self.add(
+                            KEYPATTERN,
                             child_path,
+                            self._sp(component, "keypattern"),
                             f"key does not match keypattern {component.key_pattern.pattern}",
                         )
                     self.validate_member_value_constraints(child_path, entry, component)
@@ -366,19 +444,21 @@ class Validator:
                     try:
                         item = self.resolve_reference(component.item_reference, set())
                     except SchemaError as exc:
-                        self.add(child_path, str(exc))
+                        self.add_exc(child_path, exc)
                     else:
                         self.validate_value(child_path, entry, item)
                 self.validate_length(path, dynamic_entries, component)
         for component in parts.structural:
             if component.deprecated:
-                self.warn(path, "deprecated", "value is deprecated")
+                self.warn(DEPRECATED, path, self._sp(component, "deprecated"), "value is deprecated")
         for union in unions:
             if union.deprecated:
-                self.warn(path, "deprecated", "value is deprecated")
+                self.warn(DEPRECATED, path, self._sp(union, "deprecated"), "value is deprecated")
         for conditional in conditionals:
             if conditional.deprecated:
-                self.warn(path, "deprecated", "value is deprecated")
+                self.warn(
+                    DEPRECATED, path, self._sp(conditional, "deprecated"), "value is deprecated"
+                )
 
     def effective_closure_keys(
         self, definition: Definition, value: Any, visiting: Set[str]
@@ -426,16 +506,21 @@ class Validator:
             try:
                 alternative = self.resolve_reference(reference, set())
             except SchemaError as exc:
-                self.add(path, str(exc))
+                self.add_exc(path, exc)
                 return
             candidate = Validator(self.schema, suppress_warnings=self.suppress_warnings)
             try:
                 alternative_kind, resolved = self.schema.effective_kind(alternative, set())
             except SchemaError as exc:
-                candidate.add(path, str(exc))
+                candidate.add_exc(path, exc)
             else:
                 if not resolved or alternative_kind != kind:
-                    candidate.add(path, f"expected {kind} alternative but found {alternative_kind}")
+                    candidate.add(
+                        TYPE_MISMATCH,
+                        path,
+                        self._sp(alternative, "type"),
+                        f"expected {kind} alternative but found {alternative_kind}",
+                    )
                 else:
                     candidate.validate_composed_structure(path, value, kind, alternative, known_keys)
             if not candidate.errors:
@@ -443,12 +528,22 @@ class Validator:
                 successes.append(candidate)
         if definition.one_of:
             if matches != 1:
-                self.add(path, f"expected exactly one matching type from oneof but found {matches}")
+                self.add(
+                    ONEOF,
+                    path,
+                    self._sp(definition, "oneof"),
+                    f"expected exactly one matching type from oneof but found {matches}",
+                )
                 return
             self.append_warnings(successes[0].warnings)
             return
         if matches == 0:
-            self.add(path, "expected at least one matching type from anyof")
+            self.add(
+                ANYOF,
+                path,
+                self._sp(definition, "anyof"),
+                "expected at least one matching type from anyof",
+            )
             return
         for candidate in successes:
             self.append_warnings(candidate.warnings)
@@ -467,15 +562,20 @@ class Validator:
         try:
             branch = self.resolve_reference(reference, set())
         except SchemaError as exc:
-            self.add(path, str(exc))
+            self.add_exc(path, exc)
             return
         try:
             branch_kind, resolved = self.schema.effective_kind(branch, set())
         except SchemaError as exc:
-            self.add(path, str(exc))
+            self.add_exc(path, exc)
             return
         if not resolved or branch_kind != kind:
-            self.add(path, f"expected {kind} conditional branch but found {branch_kind}")
+            self.add(
+                TYPE_MISMATCH,
+                path,
+                self._sp(branch, "type"),
+                f"expected {kind} conditional branch but found {branch_kind}",
+            )
             return
         self.validate_composed_structure(path, value, kind, branch, known_keys)
 
@@ -487,7 +587,7 @@ class Validator:
         self.validate_table(path, table, definition.children)
         for key in table:
             if key not in definition.children:
-                self.add(append_path(path, key), "unexpected key")
+                self.add(UNKNOWN_KEY, append_path(path, key), self._sp(definition), "unexpected key")
         self.validate_sibling_rules(path, table, definition)
 
     def validate_collection(self, path: str, table: dict, definition: Definition) -> None:
@@ -500,14 +600,24 @@ class Validator:
                 continue
             dynamic_entries += 1
             if definition.key_pattern is not None and not definition.key_pattern.search(key):
-                self.add(child_path, f"key does not match keypattern {definition.key_pattern.pattern}")
+                self.add(
+                    KEYPATTERN,
+                    child_path,
+                    self._sp(definition, "keypattern"),
+                    f"key does not match keypattern {definition.key_pattern.pattern}",
+                )
             if not definition.item_reference:
-                self.add(child_path, "collection entry has no itemtype reference")
+                self.add(
+                    SCHEMA_MALFORMED,
+                    child_path,
+                    self._sp(definition),
+                    "collection entry has no itemtype reference",
+                )
                 continue
             try:
                 referenced = self.resolve_reference(definition.item_reference, set())
             except SchemaError as exc:
-                self.add(child_path, str(exc))
+                self.add_exc(child_path, exc)
                 continue
             self.validate_value(child_path, value, referenced)
             self.validate_member_value_constraints(child_path, value, definition)
@@ -516,10 +626,15 @@ class Validator:
             try:
                 resolved = self.resolve(child, set())
             except SchemaError as exc:
-                self.add(append_path(path, key), str(exc))
+                self.add_exc(append_path(path, key), exc)
                 continue
             if key not in table and not resolved.optional:
-                self.add(append_path(path, key), "required value is missing")
+                self.add(
+                    MISSING_REQUIRED,
+                    append_path(path, key),
+                    self._sp(child),
+                    "required value is missing",
+                )
         self.validate_sibling_rules(path, table, definition)
 
     def validate_array(self, path: str, array: list, definition: Definition) -> None:
@@ -529,7 +644,9 @@ class Validator:
                 for previous in range(index):
                     if values_equal(array[previous], array[index]):
                         self.add(
+                            UNIQUEITEMS,
                             f"{path}[{index}]",
+                            self._sp(definition, "uniqueitems"),
                             f"duplicate item equals item at index {previous}",
                         )
                         break
@@ -545,7 +662,7 @@ class Validator:
         try:
             item_definition = self.resolve_reference(definition.item_reference, set())
         except SchemaError as exc:
-            self.add(path, str(exc))
+            self.add_exc(path, exc)
             return
         for i, item in enumerate(array):
             item_path = f"{path}[{i}]"
@@ -561,28 +678,37 @@ class Validator:
             for dependency in dependencies:
                 if dependency not in table:
                     self.add(
+                        DEPENDENTREQUIRED,
                         append_path(path, dependency),
+                        self._sp(definition, "dependentrequired"),
                         f'required by dependentrequired triggered by sibling "{trigger}"',
                     )
         for group in definition.mutually_exclusive:
             present = _present_group_members(table, group)
             if len(present) > 1:
                 self.add(
+                    MUTUALLYEXCLUSIVE,
                     path,
+                    self._sp(definition, "mutuallyexclusive"),
                     "mutuallyexclusive group has multiple present members: " + ", ".join(present),
                 )
         for group in definition.exactly_one:
             present = _present_group_members(table, group)
             if len(present) != 1:
                 self.add(
+                    EXACTLYONE,
                     path,
+                    self._sp(definition, "exactlyone"),
                     "exactlyone group requires exactly one present member from: " + ", ".join(group),
                 )
 
     def validate_tuple_array(self, path: str, array: list, definition: Definition) -> None:
         if len(array) != len(definition.items):
             self.add(
-                path, f"expected array length {len(definition.items)} but found {len(array)}"
+                TUPLE_LENGTH,
+                path,
+                self._sp(definition, "items"),
+                f"expected array length {len(definition.items)} but found {len(array)}",
             )
         upper_bound = min(len(array), len(definition.items))
         for i in range(upper_bound):
@@ -590,15 +716,22 @@ class Validator:
             try:
                 item_definition = self.resolve_reference(definition.items[i], set())
             except SchemaError as exc:
-                self.add(item_path, str(exc))
+                self.add_exc(item_path, exc)
                 continue
             self.validate_value(item_path, array[i], item_definition)
 
     # -- scalar/common constraint validation -----------------------------------
 
-    def validate_type(self, path: str, value: Any, type_name: SchemaType) -> None:
+    def validate_type(
+        self, path: str, value: Any, type_name: SchemaType, schema_path: Optional[str] = None
+    ) -> None:
         if not is_type(value, type_name):
-            self.add(path, f"expected {type_name} but found {type_name_of(value)}")
+            self.add(
+                TYPE_MISMATCH,
+                path,
+                schema_path,
+                f"expected {type_name} but found {type_name_of(value)}",
+            )
 
     def validate_common_constraints(self, path: str, value: Any, definition: Definition) -> None:
         if isinstance(value, list):
@@ -613,9 +746,19 @@ class Validator:
         if isinstance(value, str):
             self.validate_length(path, len(value), definition)
             if definition.pattern is not None and not definition.pattern.search(value):
-                self.add(path, f"does not match pattern {definition.pattern.pattern}")
+                self.add(
+                    PATTERN,
+                    path,
+                    self._sp(definition, "pattern"),
+                    f"does not match pattern {definition.pattern.pattern}",
+                )
             if definition.format and not matches_format(value, definition.format):
-                self.add(path, f"does not match format {definition.format}")
+                self.add(
+                    FORMAT,
+                    path,
+                    self._sp(definition, "format"),
+                    f"does not match format {definition.format}",
+                )
 
     def validate_allowed_values(self, path: str, value: Any, definition: Definition) -> None:
         if not definition.allowed_values:
@@ -623,7 +766,12 @@ class Validator:
         for allowed in definition.allowed_values:
             if values_equal(allowed, value):
                 return
-        self.add(path, "value is not in allowedvalues")
+        self.add(
+            ALLOWEDVALUES,
+            path,
+            self._sp(definition, "allowedvalues"),
+            "value is not in allowedvalues",
+        )
 
     def validate_member_value_constraints(
         self, path: str, value: Any, definition: Definition
@@ -633,33 +781,53 @@ class Validator:
             self.validate_range(path, value, definition)
         if isinstance(value, str):
             if definition.pattern is not None and not definition.pattern.search(value):
-                self.add(path, f"does not match pattern {definition.pattern.pattern}")
+                self.add(
+                    PATTERN,
+                    path,
+                    self._sp(definition, "pattern"),
+                    f"does not match pattern {definition.pattern.pattern}",
+                )
             if definition.format and not matches_format(value, definition.format):
-                self.add(path, f"does not match format {definition.format}")
+                self.add(
+                    FORMAT,
+                    path,
+                    self._sp(definition, "format"),
+                    f"does not match format {definition.format}",
+                )
 
     def validate_range(self, path: str, value: Any, definition: Definition) -> None:
         if definition.min is not None:
             try:
                 comparison = compare(value, definition.min)
             except IncomparableError as exc:
-                self.add(path, str(exc))
+                self.add(MIN, path, self._sp(definition, "min"), str(exc))
             else:
                 if comparison < 0:
-                    self.add(path, "value is less than min")
+                    self.add(MIN, path, self._sp(definition, "min"), "value is less than min")
         if definition.max is not None:
             try:
                 comparison = compare(value, definition.max)
             except IncomparableError as exc:
-                self.add(path, str(exc))
+                self.add(MAX, path, self._sp(definition, "max"), str(exc))
             else:
                 if comparison > 0:
-                    self.add(path, "value is greater than max")
+                    self.add(MAX, path, self._sp(definition, "max"), "value is greater than max")
 
     def validate_length(self, path: str, length: int, definition: Definition) -> None:
         if definition.min_length is not None and length < definition.min_length:
-            self.add(path, "length is less than minlength")
+            self.add(
+                MINLENGTH,
+                path,
+                self._sp(definition, "minlength"),
+                "length is less than minlength",
+            )
         if definition.max_length is not None and length > definition.max_length:
-            self.add(path, "length is greater than maxlength")
+            self.add(
+                MAXLENGTH,
+                path,
+                self._sp(definition, "maxlength"),
+                "length is greater than maxlength",
+            )
 
     # -- reference resolution ---------------------------------------------------
 
@@ -706,23 +874,67 @@ class Validator:
 
     # -- diagnostics --------------------------------------------------------
 
-    def add(self, path: str, message: str) -> None:
-        self.errors.append(
-            Diagnostic(severity=Severity.ERROR, code="validation-error", path=path, message=message)
-        )
+    def _sp(self, definition: Definition, prop: Optional[str] = None) -> Optional[str]:
+        base = definition.schema_path or None
+        if base is None:
+            return None
+        return f"{base}.{prop}" if prop else base
 
-    def warn(self, path: str, code: str, message: str) -> None:
+    def add(
+        self,
+        code: str,
+        instance_path: str,
+        schema_path: Optional[str],
+        message: str,
+    ) -> None:
+        diagnostic = Diagnostic(
+            severity=Severity.ERROR,
+            code=code,
+            instance_path=instance_path,
+            message=message,
+            phase=Phase.VALIDATION,
+            schema_path=schema_path,
+        )
+        if not self._is_duplicate(self.errors, diagnostic):
+            self.errors.append(diagnostic)
+
+    def add_exc(self, instance_path: str, exc: Exception) -> None:
+        code = getattr(exc, "code", SCHEMA_MALFORMED) or SCHEMA_MALFORMED
+        schema_path = getattr(exc, "schema_path", None)
+        self.add(code, instance_path, schema_path, str(exc))
+
+    def warn(
+        self,
+        code: str,
+        instance_path: str,
+        schema_path: Optional[str],
+        message: str,
+    ) -> None:
         if self.suppress_warnings:
             return
-        self.append_warnings([Diagnostic(severity=Severity.WARNING, code=code, path=path, message=message)])
+        self.append_warnings(
+            [
+                Diagnostic(
+                    severity=Severity.WARNING,
+                    code=code,
+                    instance_path=instance_path,
+                    message=message,
+                    phase=Phase.VALIDATION,
+                    schema_path=schema_path,
+                )
+            ]
+        )
+
+    @staticmethod
+    def _is_duplicate(existing: List[Diagnostic], candidate: Diagnostic) -> bool:
+        return any(
+            item.code == candidate.code
+            and item.instance_path == candidate.instance_path
+            and item.schema_path == candidate.schema_path
+            for item in existing
+        )
 
     def append_warnings(self, warnings: List[Diagnostic]) -> None:
         for warning in warnings:
-            duplicate = any(
-                existing.code == warning.code
-                and existing.path == warning.path
-                and existing.message == warning.message
-                for existing in self.warnings
-            )
-            if not duplicate:
+            if not self._is_duplicate(self.warnings, warning):
                 self.warnings.append(warning)

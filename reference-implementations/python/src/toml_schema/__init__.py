@@ -29,10 +29,17 @@ from ._discovery import (
     schema_from_document,
     validate_document,
 )
-from ._errors import DiscoveryError, SchemaError
+from ._errors import DiscoveryError, DocumentParseError, SchemaError
 from ._extract import extract_schema_file, generate_schema
 from ._schema import Schema, load_document, load_schema
-from ._types import Diagnostic, Severity, SchemaType, ValidationError, ValidationResult
+from ._types import (
+    Diagnostic,
+    Phase,
+    Severity,
+    SchemaType,
+    ValidationError,
+    ValidationResult,
+)
 
 __version__ = "1.0.0-rc.2"
 
@@ -53,7 +60,9 @@ __all__ = [
     "Diagnostic",
     "ValidationError",
     "Severity",
+    "Phase",
     "SchemaType",
     "SchemaError",
     "DiscoveryError",
+    "DocumentParseError",
 ]

@@ -11,6 +11,7 @@ import unittest
 
 import helpers
 from toml_schema import DiscoveryError, schema_from_document, validate_document
+from toml_schema import Phase
 
 
 class SchemaFromDocumentTests(unittest.TestCase):
@@ -277,7 +278,11 @@ location = "schema.tosd"
             result = validate_document(document_path)
             self.assertFalse(result.valid)
             self.assertEqual(len(result.errors), 1)
-            self.assertEqual(result.errors[0].path, "$")
+            # Discovery diagnostics carry no instance path (SPEC.md ### Phases)
+            # and report a structured registry code rather than a placeholder.
+            self.assertIsNone(result.errors[0].instance_path)
+            self.assertEqual(result.errors[0].phase, Phase.DISCOVERY)
+            self.assertEqual(result.errors[0].code, "discovery-missing-location")
 
     def test_validate_document_using_checked_in_config_example(self):
         result = validate_document(helpers.repo_path("config.toml"))
