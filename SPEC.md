@@ -12,7 +12,7 @@ The schema format follows the TOML specification, meaning that a TOML Schema is 
 ## Conformance Terminology
 
 The key words **MUST**, **MUST NOT**, **REQUIRED**, **SHOULD**, **SHOULD NOT**,
-and **MAY** in this document are to be interpreted as described in
+**MAY**, and **OPTIONAL** in this document are to be interpreted as described in
 [BCP 14](https://www.rfc-editor.org/info/bcp14) when, and only when, they
 appear in all capitals.
 
@@ -368,6 +368,9 @@ and the preferred term is the one to use in new text.
 
 ## First Glance
 
+*This section is informative. It illustrates the language through a worked pair
+of documents; the normative rules are stated in the sections that follow.*
+
 ### TOML example
 Let's look at the TOML example displayed on the front page of [toml.io](https://toml.io/en/):
 
@@ -514,11 +517,11 @@ A TOML Schema file has the following structure:
 ### Top-level Structure Conditions
 
  - `[toml-schema]`: table with information and metadata of the schema.
-   - **Required**
+   - **REQUIRED**
  - `[types]`: table with definitions of types to be reused in elements.
-   - _Optional_
+   - **OPTIONAL**
  - `[elements]`: table with the overall structure of the TOML document, its tables, properties, and conditions.
-   - **Required**
+   - **REQUIRED**
 
 Any other top-level table or key-value pair MUST NOT appear in a TOML Schema document.
 
@@ -544,9 +547,9 @@ version = "1.0.0"
 ### Supported Properties
 
  - `version`: the TOML Schema language version used by this schema document. **Type:** string.
-   - **Required**.
+   - **REQUIRED**.
  - `meta`: subtable reserved for any custom user-provided metadata. **Type:** table.
-   - **Optional**.
+   - **OPTIONAL**.
 
 Custom properties and tables MUST NOT appear directly under `toml-schema`; they
 MAY appear only inside the `toml-schema.meta` table.
@@ -1116,7 +1119,7 @@ The formats use the following portable rules:
 - `uuid` consists of exactly 32 hexadecimal digits, case-insensitive, displayed
   in groups of 8, 4, 4, 4, and 12 digits separated by hyphens.
 - `uri` MUST match the RFC 3986 `URI` production rather than `relative-ref`.
-  It is ASCII; non-ASCII components must be percent-encoded. Every percent
+  It is ASCII; non-ASCII components MUST be percent-encoded. Every percent
   escape MUST contain exactly two hexadecimal digits.
 - `hostname` is ASCII and case-insensitive. After excluding one optional final
   root dot, its total length MUST be from 1 through 253 characters. Each
@@ -1166,7 +1169,7 @@ These properties define inclusive value ranges. The **comparable kinds** are:
  - `integer`
  - date and/or time types: `offset-date-time`, `local-date-time`, `local-date`, and `local-time`
 
-`min` and `max` may be declared only on a definition whose type resolves to
+`min` and `max` MAY be declared only on a definition whose type resolves to
 exactly one comparable kind, and on an `array` or a `collection` whose members
 do, as the next paragraph describes.
 
@@ -1926,8 +1929,8 @@ kind of its own, with one another. When the local selector is `oneof` or
 `anyof`, all of its
 alternatives MUST resolve to the same effective kind before `allof` can be
 applied; a multi-kind local union combined with `allof` is indeterminate and
-MUST be rejected at schema-load time. Scalar and array components must have the
-same kind as the local definition. Structured components must all be `table` or
+MUST be rejected at schema-load time. Scalar and array components MUST have the
+same kind as the local definition. Structured components MUST all be `table` or
 all be `collection`; a `table` and a `collection` are not interchangeable for
 composition because they have different unknown-key semantics. A component
 whose alternatives resolve to different kinds is likewise indeterminate and
@@ -2628,7 +2631,7 @@ evaluated, so dependencies may apply transitively.
 #### Mutual Exclusion - `mutuallyexclusive`
 
 `mutuallyexclusive` is a non-empty array of groups. Each group is an array of
-at least two unique child-name strings. At most one member of each group may be
+at least two unique child-name strings. At most one member of each group MAY be
 present.
 
 ```toml
@@ -4206,10 +4209,11 @@ target child definitions as dynamic collection entries. The
 collision when one definition needs both a schema property and a target child
 with the same name.
 
-The self-schema validates property value shapes, selector exclusivity,
-conditional completeness, tuple-versus-homogeneous array structure, nested child
-applicability, string formats, sibling-rule structures, annotations, and the
-selective `children` namespace.
+The self-schema validates property value shapes, selector mutual exclusivity —
+that no more than one selector is declared, though not that at least one selector
+is present — conditional completeness, tuple-versus-homogeneous array structure,
+nested child applicability, string formats, sibling-rule structures, annotations,
+and the selective `children` namespace.
 
 Rules that require resolving the schema's reference graph cannot be expressed
 that way and remain schema-load semantics:
@@ -4231,6 +4235,9 @@ semantics:
 
  - `version` rejecting a major-version-zero value, which the Semantic Versioning
    `pattern` in the self-schema necessarily accepts;
+ - rejecting a definition that declares no selector, no nested child definition,
+   and no `allof`, which the self-schema accepts today because it cannot require
+   that at least one of a selector, a nested child, or an `allof` be present;
  - `min` being less than or equal to `max`, `minlength` being less than or equal
    to `maxlength`, and a boundary's TOML kind agreeing with the type it
    constrains; and
