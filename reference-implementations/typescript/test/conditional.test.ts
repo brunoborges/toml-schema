@@ -61,6 +61,9 @@ type = "integer"
 type = "table"
 [types.disabled.flag]
 type = "boolean"
+[types.disabled.count]
+type = "integer"
+optional = true
 
 [elements.item]
 if = { key = "count", equals = 3 }

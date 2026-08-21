@@ -28,11 +28,15 @@ class ConditionalValidationTest {
 
                 [types.sqlite]
                 type = "table"
+                [types.sqlite.engine]
+                type = "string"
                 [types.sqlite.file]
                 type = "string"
 
                 [types.server]
                 type = "table"
+                [types.server.engine]
+                type = "string"
                 [types.server.host]
                 type = "string"
 
@@ -116,15 +120,20 @@ class ConditionalValidationTest {
     }
 
     @Test
-    void loadsUndeclaredDiscriminatorButSelectedClosedBranchRejectsIt() throws IOException {
+    void declaredDiscriminatorDoesNotOpenSelectedClosedBranch() throws IOException {
         TomlSchema schema = load("""
                 [types.sqlite]
                 type = "table"
+                [types.sqlite.engine]
+                type = "string"
                 [types.sqlite.file]
                 type = "string"
 
                 [types.server]
                 type = "table"
+                [types.server.engine]
+                type = "string"
+                optional = true
                 [types.server.host]
                 type = "string"
 
@@ -134,15 +143,16 @@ class ConditionalValidationTest {
                 else = "types.server"
                 """);
 
-        ValidationResult result = schema.validate(write("undeclared-discriminator.toml", """
+        ValidationResult result = schema.validate(write("unknown-branch-key.toml", """
                 [database]
                 engine = "sqlite"
                 file = "data.db"
+                unexpected = true
                 """));
 
         assertFalse(result.isValid());
         assertTrue(result.errors().stream().anyMatch(error ->
-                error.code().equals("unexpected-key") && error.path().equals("$.database.engine")));
+                error.code().equals("unexpected-key") && error.path().equals("$.database.unexpected")));
     }
 
     @Test
@@ -154,6 +164,9 @@ class ConditionalValidationTest {
                 type = "integer"
                 [types.match.selected]
                 type = "boolean"
+                [types.match."settings.mode"]
+                type = "string"
+                optional = true
 
                 [types.other]
                 type = "table"
@@ -167,6 +180,9 @@ class ConditionalValidationTest {
                 optional = true
                 [types.other.settings.mode]
                 type = "string"
+                [types.other."settings.mode"]
+                type = "string"
+                optional = true
 
                 [elements.numeric]
                 if = { key = "mode", equals = 1.0 }
@@ -201,6 +217,9 @@ class ConditionalValidationTest {
 
                 [types.other]
                 type = "table"
+                [types.other.""]
+                type = "string"
+                optional = true
                 [types.other.fallback]
                 type = "boolean"
 

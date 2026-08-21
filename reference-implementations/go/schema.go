@@ -333,6 +333,31 @@ func (s *Schema) validateDefinitionSemantics(definition Definition) error {
 		if !resolved || (kind != TypeTable && kind != TypeCollection) {
 			return fmt.Errorf("%s conditional selector requires compatible table or collection branches", definition.name)
 		}
+		for property, reference := range map[string]string{
+			"then": definition.thenReference,
+			"else": definition.elseReference,
+		} {
+			branch, ok := s.types[reference]
+			if !ok {
+				return fmt.Errorf("%s contains unknown type reference: %s", definition.name, reference)
+			}
+			branchKind, branchResolved, err := s.effectiveKind(branch, map[string]bool{})
+			if err != nil {
+				return fmt.Errorf("%s: %w", definition.name, err)
+			}
+			if branchResolved && branchKind == TypeCollection {
+				continue
+			}
+			fixed, err := s.determinateFixedChildren(branch, map[string]bool{})
+			if err != nil {
+				return fmt.Errorf("%s: %w", definition.name, err)
+			}
+			if len(fixed) > 0 && !fixed[definition.condition.key] {
+				return fmt.Errorf(
+					"%s %s branch has a non-empty determinate fixed-child set that omits discriminator %q",
+					definition.name, property, definition.condition.key)
+			}
+		}
 	}
 	for _, child := range definition.children {
 		if err := s.validateDefinitionSemantics(child); err != nil {
@@ -807,10 +832,11 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	var typeName SchemaType
 	var reference string
 	if typeSelector != "" {
-		if builtInType, ok := parseSchemaType(typeSelector); ok {
+		normalizedSelector := normalizeReference(typeSelector)
+		if builtInType, ok := parseSchemaType(normalizedSelector); ok {
 			typeName = builtInType
 		} else {
-			reference = normalizeReference(typeSelector)
+			reference = normalizedSelector
 		}
 	}
 	if reference != "" {
@@ -1093,6 +1119,11 @@ func parseDefinition(name string, path []string, table map[string]any, source *s
 	var defaultValue any
 	if hasDefault {
 		defaultValue = table["default"]
+	}
+	if condition != nil && hasDefault {
+		if _, ok := asMap(defaultValue); !ok {
+			return Definition{}, fmt.Errorf("%s conditional default must be a table", name)
+		}
 	}
 	return Definition{
 		name: name, typeName: typeName, reference: reference, description: description,
@@ -2789,11 +2820,45 @@ func getPatternKey(name string, table map[string]any, key string) (*regexp.Regex
 	if !ok {
 		return nil, fmt.Errorf("expected %s to be a string", key)
 	}
+	if err := validatePortablePattern(name, key, pattern); err != nil {
+		return nil, err
+	}
 	compiled, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, fmt.Errorf("%s has invalid %s: %w", name, key, err)
+		return nil, fmt.Errorf("invalid-pattern: %s has invalid %s: %w", name, key, err)
 	}
 	return compiled, nil
+}
+
+func validatePortablePattern(name, key, pattern string) error {
+	chars := []rune(pattern)
+	inCharacterClass := false
+	for index := 0; index < len(chars); index++ {
+		if chars[index] == '\\' && index+1 < len(chars) {
+			escaped := chars[index+1]
+			if !strings.ContainsRune(`\.^$*+?()[]{}|-tnrfva`, escaped) {
+				return fmt.Errorf(
+					"unsupported-pattern: %s %s uses non-portable escape \\%c",
+					name, key, escaped)
+			}
+			index++
+		} else if chars[index] == '[' {
+			inCharacterClass = true
+		} else if chars[index] == ']' {
+			inCharacterClass = false
+		} else if !inCharacterClass && chars[index] == '(' && index+1 < len(chars) && chars[index+1] == '?' {
+			if index+2 >= len(chars) || chars[index+2] != ':' {
+				return fmt.Errorf(
+					"unsupported-pattern: %s %s uses non-portable group syntax", name, key)
+			}
+		} else if !inCharacterClass && strings.ContainsRune("?*+}", chars[index]) && index+1 < len(chars) &&
+			strings.ContainsRune("?+", chars[index+1]) {
+			return fmt.Errorf(
+				"unsupported-pattern: %s %s uses a non-greedy or possessive quantifier",
+				name, key)
+		}
+	}
+	return nil
 }
 
 func getArrayValues(table map[string]any, key string) ([]any, error) {

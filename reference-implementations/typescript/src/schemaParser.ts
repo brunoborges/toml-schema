@@ -87,13 +87,68 @@ function getPatternProp(
   if (typeof value !== "string") {
     throw new SchemaError(`expected ${key} to be a string (${context})`);
   }
+  validatePortablePattern(context, key, value);
   try {
-    return { regex: new RegExp(value, "u"), source: value };
+    return { regex: new RegExp(toJavaScriptPattern(value), "u"), source: value };
   } catch (cause) {
     throw new SchemaError(
-      `${context} has invalid ${key}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `invalid-pattern: ${context} has invalid ${key}: ${cause instanceof Error ? cause.message : String(cause)}`,
     );
   }
+}
+
+function validatePortablePattern(context: string, key: string, pattern: string): void {
+  let inCharacterClass = false;
+  for (let index = 0; index < pattern.length; index++) {
+    const current = pattern[index];
+    if (current === "\\" && index + 1 < pattern.length) {
+      const escaped = pattern[index + 1]!;
+      if (!"\\.^$*+?()[]{}|-tnrfva".includes(escaped)) {
+        throw new SchemaError(
+          `unsupported-pattern: ${context} ${key} uses non-portable escape \\${escaped}`,
+        );
+      }
+      index++;
+    } else if (current === "[") {
+      inCharacterClass = true;
+    } else if (current === "]") {
+      inCharacterClass = false;
+    } else if (
+      !inCharacterClass &&
+      current === "(" &&
+      pattern[index + 1] === "?" &&
+      pattern[index + 2] !== ":"
+    ) {
+      throw new SchemaError(
+        `unsupported-pattern: ${context} ${key} uses non-portable group syntax`,
+      );
+    } else if (
+      !inCharacterClass &&
+      "?*+}".includes(current ?? "") &&
+      index + 1 < pattern.length &&
+      "?+".includes(pattern[index + 1] ?? "")
+    ) {
+      throw new SchemaError(
+        `unsupported-pattern: ${context} ${key} uses a non-greedy or possessive quantifier`,
+      );
+    }
+  }
+
+}
+
+function toJavaScriptPattern(pattern: string): string {
+  let translated = "";
+  for (let index = 0; index < pattern.length; index++) {
+    const current = pattern[index]!;
+    if (current === "\\" && index + 1 < pattern.length) {
+      const escaped = pattern[index + 1]!;
+      translated += escaped === "a" ? "\u0007" : current + escaped;
+      index++;
+    } else {
+      translated += current;
+    }
+  }
+  return translated;
 }
 
 function getArrayProp(table: TomlTable, key: string, context: string): TomlValue[] | undefined {
@@ -494,11 +549,12 @@ export function parseDefinition(
   let typeName: SchemaType | undefined;
   let reference = "";
   if (typeSelector !== "") {
-    const builtIn = parseSchemaType(typeSelector);
+    const normalizedSelector = normalizeReference(typeSelector);
+    const builtIn = parseSchemaType(normalizedSelector);
     if (builtIn !== undefined) {
       typeName = builtIn;
     } else {
-      reference = normalizeReference(typeSelector);
+      reference = normalizedSelector;
     }
   }
   if (reference !== "") {
@@ -721,6 +777,9 @@ export function parseDefinition(
   const deprecated = getOptionalBoolProp(table, "deprecated", name);
   const hasDefault = source.isProperty(table, path, "default");
   const defaultValue = hasDefault ? table["default"] : undefined;
+  if (condition !== undefined && hasDefault && !isTomlTable(defaultValue)) {
+    throw new SchemaError(`${name} conditional default must be a table`);
+  }
 
   const raw: RawDefinition = {
     name,

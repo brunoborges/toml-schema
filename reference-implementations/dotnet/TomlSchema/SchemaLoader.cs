@@ -125,6 +125,7 @@ public class SchemaLoader
 
         ValidateRangeSemantics(types, elements);
         ValidateSiblingRuleSemantics(types, elements);
+        ValidateConditionalSemantics(types, elements);
         return new TomlSchema(version, types, elements);
     }
 
@@ -136,9 +137,10 @@ public class SchemaLoader
 
         if (typeStr != null)
         {
+            var normalizedType = NormalizeReference(typeStr);
             try
             {
-                type = SchemaTypeExtensions.FromSchemaName(typeStr);
+                type = SchemaTypeExtensions.FromSchemaName(normalizedType);
             }
             catch
             {
@@ -239,6 +241,8 @@ public class SchemaLoader
         ValidateDistinctReferences(location, "oneof", oneOf);
         ValidateDistinctReferences(location, "anyof", anyOf);
         ValidateDistinctReferences(location, "allof", allOf);
+        ValidateAlternativeReferences(location, "oneof", oneOf);
+        ValidateAlternativeReferences(location, "anyof", anyOf);
 
         var condition = ParseCondition(location, table);
 
@@ -246,6 +250,13 @@ public class SchemaLoader
             ? avArray.Cast<object?>().ToList()
             : null;
         var defaultValue = GetValue(table, "default");
+        if (condition != null && table.ContainsKey("default") && defaultValue is not TomlTable)
+            throw new InvalidOperationException($"{location} conditional default must be a table");
+
+        var pattern = GetString(table, "pattern");
+        var keyPattern = GetString(table, "keypattern");
+        ValidatePattern(location, "pattern", pattern);
+        ValidatePattern(location, "keypattern", keyPattern);
 
         if (format != null)
         {
@@ -294,9 +305,9 @@ public class SchemaLoader
             ItemType = GetString(table, "itemtype"),
             Items = GetStringArray(table, "items"),
             AllowedValues = allowedValues,
-            Pattern = GetString(table, "pattern"),
+            Pattern = pattern,
             Format = format,
-            KeyPattern = GetString(table, "keypattern"),
+            KeyPattern = keyPattern,
             Optional = GetBool(table, "optional") ?? false,
             Min = min,
             Max = max,
@@ -431,12 +442,123 @@ public class SchemaLoader
         }
     }
 
+    private static void ValidateAlternativeReferences(
+        string location,
+        string property,
+        IReadOnlyList<string>? references)
+    {
+        foreach (var reference in references ?? [])
+        {
+            var normalized = NormalizeReference(reference);
+            if (normalized == "any")
+                throw new InvalidOperationException(
+                    $"{location} cannot use any directly in {property}");
+            if (normalized == "collection")
+                throw new InvalidOperationException(
+                    $"{location} cannot use collection as a bare {property} reference");
+        }
+    }
+
+    private static void ValidatePattern(string location, string property, string? pattern)
+    {
+        if (pattern == null)
+            return;
+        var inCharacterClass = false;
+        for (var index = 0; index < pattern.Length; index++)
+        {
+            var current = pattern[index];
+            if (current == '\\' && index + 1 < pattern.Length)
+            {
+                var escaped = pattern[index + 1];
+                if (!@"\.^$*+?()[]{}|-tnrfva".Contains(escaped))
+                    throw new InvalidOperationException(
+                        $"unsupported-pattern: {location} {property} uses non-portable escape \\{escaped}");
+                index++;
+            }
+            else if (current == '[')
+            {
+                inCharacterClass = true;
+            }
+            else if (current == ']')
+            {
+                inCharacterClass = false;
+            }
+            else if (!inCharacterClass && current == '(' && index + 1 < pattern.Length
+                && pattern[index + 1] == '?'
+                && (index + 2 >= pattern.Length || pattern[index + 2] != ':'))
+            {
+                throw new InvalidOperationException(
+                    $"unsupported-pattern: {location} {property} uses non-portable group syntax");
+            }
+            else if (!inCharacterClass && "?*+}".Contains(current) && index + 1 < pattern.Length
+                && "?+".Contains(pattern[index + 1]))
+            {
+                throw new InvalidOperationException(
+                    $"unsupported-pattern: {location} {property} uses a non-greedy or possessive quantifier");
+            }
+        }
+        try
+        {
+            _ = new Regex(pattern, RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
+        }
+        catch (ArgumentException exception)
+        {
+            throw new InvalidOperationException(
+                $"invalid-pattern: {location} has invalid {property}: {exception.Message}", exception);
+        }
+    }
+
     private static void ValidateSiblingRuleSemantics(
         IReadOnlyDictionary<string, SchemaDefinition> types,
         IReadOnlyDictionary<string, SchemaDefinition> elements)
     {
         foreach (var definition in types.Values.Concat(elements.Values))
             ValidateSiblingRuleDefinition(definition, types);
+    }
+
+    private static void ValidateConditionalSemantics(
+        IReadOnlyDictionary<string, SchemaDefinition> types,
+        IReadOnlyDictionary<string, SchemaDefinition> elements)
+    {
+        foreach (var definition in types.Values.Concat(elements.Values))
+            ValidateConditionalDefinition(definition, types);
+    }
+
+    private static void ValidateConditionalDefinition(
+        SchemaDefinition definition,
+        IReadOnlyDictionary<string, SchemaDefinition> types)
+    {
+        if (definition.Condition != null)
+        {
+            foreach (var (property, reference) in new[]
+            {
+                ("then", definition.Condition.ThenType),
+                ("else", definition.Condition.ElseType)
+            })
+            {
+                if (string.IsNullOrWhiteSpace(reference))
+                    throw new InvalidOperationException(
+                        $"{definition.Name} {property} must be a named reusable type reference");
+                var normalized = NormalizeReference(reference);
+                if (SchemaTypeExtensions.AllTypeNames.Contains(normalized))
+                    throw new InvalidOperationException(
+                        $"{definition.Name} {property} must be a named reusable type reference");
+                var branch = types.TryGetValue(normalized, out var target)
+                    ? target
+                    : throw new InvalidOperationException(
+                        $"{definition.Name} contains unknown type reference: {reference}");
+                if (EffectiveKind(branch, types, new HashSet<string>()) == SchemaType.Collection)
+                    continue;
+                var fixedChildren =
+                    DeterminateFixedChildren(branch, types, new HashSet<string>());
+                if (fixedChildren.Count > 0
+                    && !fixedChildren.Contains(definition.Condition.IfKey))
+                    throw new InvalidOperationException(
+                        $"{definition.Name} {property} branch has a non-empty determinate fixed-child set that omits discriminator \"{definition.Condition.IfKey}\"");
+            }
+        }
+        foreach (var child in definition.Children.Values)
+            ValidateConditionalDefinition(child, types);
     }
 
     private static void ValidateRangeSemantics(

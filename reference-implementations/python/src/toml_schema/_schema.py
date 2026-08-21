@@ -157,10 +157,44 @@ def _get_pattern_key(name: str, table: dict, key: str) -> Optional[re.Pattern]:
         return None
     if not isinstance(value, str):
         raise SchemaError(f"expected {key} to be a string")
+    _validate_portable_pattern(name, key, value)
     try:
         return re.compile(value)
     except re.error as exc:
-        raise SchemaError(f"{name} has invalid {key}: {exc}") from exc
+        raise SchemaError(f"invalid-pattern: {name} has invalid {key}: {exc}") from exc
+
+
+def _validate_portable_pattern(name: str, key: str, pattern: str) -> None:
+    index = 0
+    in_character_class = False
+    while index < len(pattern):
+        current = pattern[index]
+        if current == "\\" and index + 1 < len(pattern):
+            escaped = pattern[index + 1]
+            if escaped not in "\\.^$*+?()[]{}|-tnrfva":
+                raise SchemaError(
+                    f"unsupported-pattern: {name} {key} uses non-portable escape \\{escaped}"
+                )
+            index += 2
+            continue
+        if current == "[":
+            in_character_class = True
+        elif current == "]":
+            in_character_class = False
+        elif not in_character_class and current == "(" and pattern[index + 1 : index + 2] == "?":
+            if pattern[index + 2 : index + 3] != ":":
+                raise SchemaError(
+                    f"unsupported-pattern: {name} {key} uses non-portable group syntax"
+                )
+        elif (
+            not in_character_class
+            and current in "?*+}"
+            and pattern[index + 1 : index + 2] in ("?", "+")
+        ):
+            raise SchemaError(
+                f"unsupported-pattern: {name} {key} uses a non-greedy or possessive quantifier"
+            )
+        index += 1
 
 
 def _get_array_values(table: dict, key: str) -> Optional[list]:
@@ -478,11 +512,12 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
     type_name: Optional[SchemaType] = None
     reference = ""
     if type_selector:
-        builtin = parse_schema_type(type_selector)
+        normalized_selector = normalize_reference(type_selector)
+        builtin = parse_schema_type(normalized_selector)
         if builtin is not None:
             type_name = builtin
         else:
-            reference = normalize_reference(type_selector)
+            reference = normalized_selector
     if reference:
         for key in table:
             if key not in NAMED_REFERENCE_KEYS:
@@ -668,6 +703,8 @@ def parse_definition(name: str, path: Path, table: dict, source: SchemaSource) -
 
     has_default = source.is_property(table, path, "default")
     default_value = table.get("default") if has_default else None
+    if condition is not None and has_default and not isinstance(default_value, dict):
+        raise SchemaError(f"{name} conditional default must be a table")
 
     return Definition(
         name=name,
@@ -1136,6 +1173,25 @@ class Schema:
                 raise SchemaError(
                     f"{definition.name} conditional selector requires compatible table or collection branches"
                 )
+            for property_name, reference in (
+                ("then", definition.then_reference),
+                ("else", definition.else_reference),
+            ):
+                branch = self.types.get(reference)
+                if branch is None:
+                    raise SchemaError(
+                        f"{definition.name} contains unknown type reference: {reference}"
+                    )
+                branch_kind, branch_resolved = self.effective_kind(branch, set())
+                if branch_resolved and branch_kind == SchemaType.COLLECTION:
+                    continue
+                fixed = self.determinate_fixed_children(branch, set())
+                if fixed and definition.condition.key not in fixed:
+                    raise SchemaError(
+                        f"{definition.name} {property_name} branch has a non-empty "
+                        "determinate fixed-child set that omits discriminator "
+                        f"{definition.condition.key!r}"
+                    )
         for child in definition.children.values():
             self.validate_definition_semantics(child)
 

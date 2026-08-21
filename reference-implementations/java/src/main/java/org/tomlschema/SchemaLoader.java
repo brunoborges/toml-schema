@@ -118,11 +118,12 @@ final class SchemaLoader {
 
     private SchemaDefinition parseDefinition(String name, TomlTable table) {
         String typeSelector = getString(table, "type");
+        String normalizedTypeSelector = normalizeReference(typeSelector);
         SchemaType type = typeSelector == null
                 ? null
-                : SchemaType.fromSchemaNameOptional(typeSelector).orElse(null);
+                : SchemaType.fromSchemaNameOptional(normalizedTypeSelector).orElse(null);
         String normalizedReference = typeSelector != null && type == null
-                ? normalizeReference(typeSelector)
+                ? normalizedTypeSelector
                 : null;
         if (normalizedReference != null) {
             for (String key : table.keySet()) {
@@ -171,6 +172,9 @@ final class SchemaLoader {
         Boolean uniqueItems = getBoolean(table, "uniqueitems");
         boolean hasDefault = isProperty(table, "default");
         Object defaultValue = hasDefault ? table.get(List.of("default")) : null;
+        if (conditional != null && hasDefault && !(defaultValue instanceof TomlTable)) {
+            throw new SchemaException(name + " conditional default must be a table");
+        }
         Boolean deprecated = getBoolean(table, "deprecated");
         if (hasOneOf && oneOf.isEmpty()) {
             throw new SchemaException(name + " oneof must contain at least one type reference");
@@ -625,10 +629,40 @@ final class SchemaLoader {
         if (pattern == null) {
             return null;
         }
+        validatePortablePattern(definitionName, key, pattern);
         try {
             return Pattern.compile(toJavaPattern(pattern));
         } catch (PatternSyntaxException e) {
-            throw new SchemaException(definitionName + " has invalid " + key + ": " + pattern, e);
+            throw new SchemaException(
+                    "invalid-pattern: " + definitionName + " has invalid " + key + ": " + pattern, e);
+        }
+    }
+
+    private void validatePortablePattern(String definitionName, String key, String pattern) {
+        boolean inCharacterClass = false;
+        for (int index = 0; index < pattern.length(); index++) {
+            char current = pattern.charAt(index);
+            if (current == '\\' && index + 1 < pattern.length()) {
+                char escaped = pattern.charAt(index + 1);
+                if ("\\.^$*+?()[]{}|-tnrfva".indexOf(escaped) < 0) {
+                    throw new SchemaException("unsupported-pattern: " + definitionName + " " + key
+                            + " uses non-portable escape \\" + escaped);
+                }
+                index++;
+            } else if (current == '[') {
+                inCharacterClass = true;
+            } else if (current == ']') {
+                inCharacterClass = false;
+            } else if (!inCharacterClass && current == '(' && index + 1 < pattern.length()
+                    && pattern.charAt(index + 1) == '?'
+                    && (index + 2 >= pattern.length() || pattern.charAt(index + 2) != ':')) {
+                throw new SchemaException("unsupported-pattern: " + definitionName + " " + key
+                        + " uses non-portable group syntax");
+            } else if (!inCharacterClass && "?*+}".indexOf(current) >= 0 && index + 1 < pattern.length()
+                    && "?+".indexOf(pattern.charAt(index + 1)) >= 0) {
+                throw new SchemaException("unsupported-pattern: " + definitionName + " " + key
+                        + " uses a non-greedy or possessive quantifier");
+            }
         }
     }
 
@@ -984,6 +1018,25 @@ final class SchemaLoader {
             if (hasPresenceRules) {
                 Set<String> fixedChildren = determinateFixedChildren(definition, types, new HashSet<>());
                 validateRuleNames(definition, fixedChildren);
+            }
+            if (definition.condition() != null) {
+                for (Map.Entry<String, String> branchEntry : Map.of(
+                        "then", definition.thenReference(),
+                        "else", definition.elseReference()).entrySet()) {
+                    SchemaDefinition branch = referenceDefinition(branchEntry.getValue(), types);
+                    Set<SchemaType> branchKinds = effectiveKinds(branch, types, new HashSet<>());
+                    if (branchKinds.size() == 1 && branchKinds.contains(SchemaType.COLLECTION)) {
+                        continue;
+                    }
+                    Set<String> fixedChildren =
+                            determinateFixedChildren(branch, types, new HashSet<>());
+                    if (!fixedChildren.isEmpty()
+                            && !fixedChildren.contains(definition.condition().key())) {
+                        throw new SchemaException(definition.name() + " " + branchEntry.getKey()
+                                + " branch has a non-empty determinate fixed-child set that omits discriminator "
+                                + definition.condition().key());
+                    }
+                }
             }
             validateDefinitionSemantics(types, definition.children());
         }
