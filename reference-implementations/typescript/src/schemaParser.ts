@@ -9,7 +9,9 @@ import {
   type SchemaType,
 } from "./builtins.js";
 import { emptyRecord, type Condition, type RawDefinition } from "./definition.js";
+import { DiagnosticCodes } from "./diagnostics.js";
 import { SchemaError } from "./errors.js";
+import { schemaPathOf } from "./paths.js";
 import { isValidStringFormat, parseStringFormat, type StringFormat } from "./formats.js";
 import { SchemaSource } from "./tomlSource.js";
 import {
@@ -81,23 +83,25 @@ function getPatternProp(
   table: TomlTable,
   key: string,
   context: string,
+  schemaPath: string,
 ): { regex: RegExp; source: string } | undefined {
   const value = propertyValue(table, key);
   if (value === undefined) return undefined;
   if (typeof value !== "string") {
     throw new SchemaError(`expected ${key} to be a string (${context})`);
   }
-  validatePortablePattern(context, key, value);
+  validatePortablePattern(context, key, value, schemaPath);
   try {
     return { regex: new RegExp(toJavaScriptPattern(value), "u"), source: value };
   } catch (cause) {
     throw new SchemaError(
-      `invalid-pattern: ${context} has invalid ${key}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      `${context} has invalid ${key}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      { code: DiagnosticCodes.INVALID_PATTERN, schemaPath: `${schemaPath}.${key}` },
     );
   }
 }
 
-function validatePortablePattern(context: string, key: string, pattern: string): void {
+function validatePortablePattern(context: string, key: string, pattern: string, schemaPath: string): void {
   let inCharacterClass = false;
   for (let index = 0; index < pattern.length; index++) {
     const current = pattern[index];
@@ -105,7 +109,8 @@ function validatePortablePattern(context: string, key: string, pattern: string):
       const escaped = pattern[index + 1]!;
       if (!"\\.^$*+?()[]{}|-tnrfva".includes(escaped)) {
         throw new SchemaError(
-          `unsupported-pattern: ${context} ${key} uses non-portable escape \\${escaped}`,
+          `${context} ${key} uses non-portable escape \\${escaped}`,
+          { code: DiagnosticCodes.UNSUPPORTED_PATTERN, schemaPath: `${schemaPath}.${key}` },
         );
       }
       index++;
@@ -120,7 +125,8 @@ function validatePortablePattern(context: string, key: string, pattern: string):
       pattern[index + 2] !== ":"
     ) {
       throw new SchemaError(
-        `unsupported-pattern: ${context} ${key} uses non-portable group syntax`,
+        `${context} ${key} uses non-portable group syntax`,
+        { code: DiagnosticCodes.UNSUPPORTED_PATTERN, schemaPath: `${schemaPath}.${key}` },
       );
     } else if (
       !inCharacterClass &&
@@ -129,7 +135,8 @@ function validatePortablePattern(context: string, key: string, pattern: string):
       "?+".includes(pattern[index + 1] ?? "")
     ) {
       throw new SchemaError(
-        `unsupported-pattern: ${context} ${key} uses a non-greedy or possessive quantifier`,
+        `${context} ${key} uses a non-greedy or possessive quantifier`,
+        { code: DiagnosticCodes.UNSUPPORTED_PATTERN, schemaPath: `${schemaPath}.${key}` },
       );
     }
   }
@@ -199,6 +206,7 @@ function validateAlternativeReferences(
   name: string,
   property: string,
   references: readonly string[],
+  schemaPath: string,
 ): void {
   const seen = new Map<string, string>();
   for (const reference of references) {
@@ -211,6 +219,7 @@ function validateAlternativeReferences(
     if (first !== undefined) {
       throw new SchemaError(
         `${name} ${property} contains duplicate type references ${JSON.stringify(first)} and ${JSON.stringify(reference)}; both resolve to ${normalized}`,
+        { code: DiagnosticCodes.DUPLICATE_REFERENCE, schemaPath: `${schemaPath}.${property}` },
       );
     }
     seen.set(normalized, reference);
@@ -221,9 +230,17 @@ function isRangeBoundary(value: TomlValue): boolean {
   return isNumeric(value) || value instanceof TomlDate;
 }
 
-function validateRangeBoundary(name: string, key: string, value: TomlValue | undefined): void {
+function validateRangeBoundary(
+  name: string,
+  key: string,
+  value: TomlValue | undefined,
+  schemaPath: string,
+): void {
   if (value === undefined || isRangeBoundary(value)) return;
-  throw new SchemaError(`${name} ${key} must be an integer, float, or temporal value`);
+  throw new SchemaError(`${name} ${key} must be an integer, float, or temporal value`, {
+    code: DiagnosticCodes.INVALID_BOUNDARY,
+    schemaPath: `${schemaPath}.${key}`,
+  });
 }
 
 function validateBoundaryMatchesType(
@@ -231,9 +248,13 @@ function validateBoundaryMatchesType(
   key: string,
   value: TomlValue | undefined,
   typeName: SchemaType,
+  schemaPath: string,
 ): void {
   if (value === undefined || boundaryMatchesType(value, typeName)) return;
-  throw new SchemaError(`${name} ${key} must be comparable with ${typeName}`);
+  throw new SchemaError(`${name} ${key} must be comparable with ${typeName}`, {
+    code: DiagnosticCodes.INVALID_BOUNDARY,
+    schemaPath: `${schemaPath}.${key}`,
+  });
 }
 
 function validateRangeConstraints(
@@ -241,12 +262,21 @@ function validateRangeConstraints(
   typeName: SchemaType | undefined,
   min: TomlValue | undefined,
   max: TomlValue | undefined,
+  schemaPath: string,
 ): void {
   if (min === undefined && max === undefined) return;
-  validateRangeBoundary(name, "min", min);
-  validateRangeBoundary(name, "max", max);
-  if (isNaNValue(min)) throw new SchemaError(`${name} cannot use NaN as min`);
-  if (isNaNValue(max)) throw new SchemaError(`${name} cannot use NaN as max`);
+  validateRangeBoundary(name, "min", min, schemaPath);
+  validateRangeBoundary(name, "max", max, schemaPath);
+  if (isNaNValue(min))
+    throw new SchemaError(`${name} cannot use NaN as min`, {
+      code: DiagnosticCodes.INVALID_BOUNDARY,
+      schemaPath: `${schemaPath}.min`,
+    });
+  if (isNaNValue(max))
+    throw new SchemaError(`${name} cannot use NaN as max`, {
+      code: DiagnosticCodes.INVALID_BOUNDARY,
+      schemaPath: `${schemaPath}.max`,
+    });
   if (typeName === "any") {
     throw new SchemaError(`${name} cannot define min or max when type is any`);
   }
@@ -257,9 +287,9 @@ function validateRangeConstraints(
     );
   }
   if (typeName !== undefined) {
-    validateBoundaryMatchesType(name, "min", min, typeName);
-    validateBoundaryMatchesType(name, "max", max, typeName);
-    validateOrderedRange(name, min, max, typeName);
+    validateBoundaryMatchesType(name, "min", min, typeName, schemaPath);
+    validateBoundaryMatchesType(name, "max", max, typeName, schemaPath);
+    validateOrderedRange(name, min, max, typeName, schemaPath);
   }
 }
 
@@ -268,17 +298,27 @@ export function validateOrderedRange(
   min: TomlValue | undefined,
   max: TomlValue | undefined,
   comparableKind: SchemaType,
+  schemaPath?: string,
 ): void {
   if (comparableKind === "integer") {
     if (typeof min === "number" && !Number.isFinite(min)) {
-      throw new SchemaError(`${name} cannot use infinity as min when comparable kind is integer`);
+      throw new SchemaError(`${name} cannot use infinity as min when comparable kind is integer`, {
+        code: DiagnosticCodes.INVALID_BOUNDARY,
+        ...(schemaPath !== undefined ? { schemaPath: `${schemaPath}.min` } : {}),
+      });
     }
     if (typeof max === "number" && !Number.isFinite(max)) {
-      throw new SchemaError(`${name} cannot use infinity as max when comparable kind is integer`);
+      throw new SchemaError(`${name} cannot use infinity as max when comparable kind is integer`, {
+        code: DiagnosticCodes.INVALID_BOUNDARY,
+        ...(schemaPath !== undefined ? { schemaPath: `${schemaPath}.max` } : {}),
+      });
     }
   }
   if (min !== undefined && max !== undefined && compareValues(min, max) > 0) {
-    throw new SchemaError(`${name} min must not be greater than max`);
+    throw new SchemaError(`${name} min must not be greater than max`, {
+      code: DiagnosticCodes.INVERTED_RANGE,
+      ...(schemaPath !== undefined ? { schemaPath } : {}),
+    });
   }
 }
 
@@ -292,23 +332,26 @@ function validateAllowedValuesConstraints(
   max: TomlValue | undefined,
   minLength: number | undefined,
   maxLength: number | undefined,
+  schemaPath: string,
 ): void {
   if (allowedValues.length === 0) return;
+  const avPath = `${schemaPath}.allowedvalues`;
+  const malformed = { code: DiagnosticCodes.SCHEMA_MALFORMED, schemaPath: avPath };
   const isContainer = typeName === "array" || typeName === "collection";
   allowedValues.forEach((allowed, index) => {
     const entry = `${name} allowedvalues[${index}]`;
     if (pattern !== undefined) {
       if (typeof allowed !== "string" || !pattern.test(allowed)) {
-        throw new SchemaError(`${entry} does not satisfy pattern`);
+        throw new SchemaError(`${entry} does not satisfy pattern`, malformed);
       }
     }
     if (format !== undefined) {
       if (typeof allowed !== "string" || !isValidStringFormat(format, allowed)) {
-        throw new SchemaError(`${entry} does not satisfy format ${format}`);
+        throw new SchemaError(`${entry} does not satisfy format ${format}`, malformed);
       }
     }
     if ((min !== undefined || max !== undefined) && isNaNValue(allowed)) {
-      throw new SchemaError(`${entry} does not satisfy min or max`);
+      throw new SchemaError(`${entry} does not satisfy min or max`, malformed);
     }
     if (min !== undefined) {
       let comparison: number;
@@ -317,9 +360,10 @@ function validateAllowedValuesConstraints(
       } catch (cause) {
         throw new SchemaError(
           `${entry} cannot be compared with min: ${cause instanceof Error ? cause.message : String(cause)}`,
+          malformed,
         );
       }
-      if (comparison < 0) throw new SchemaError(`${entry} is less than min`);
+      if (comparison < 0) throw new SchemaError(`${entry} is less than min`, malformed);
     }
     if (max !== undefined) {
       let comparison: number;
@@ -328,20 +372,21 @@ function validateAllowedValuesConstraints(
       } catch (cause) {
         throw new SchemaError(
           `${entry} cannot be compared with max: ${cause instanceof Error ? cause.message : String(cause)}`,
+          malformed,
         );
       }
-      if (comparison > 0) throw new SchemaError(`${entry} is greater than max`);
+      if (comparison > 0) throw new SchemaError(`${entry} is greater than max`, malformed);
     }
     if (!isContainer && (minLength !== undefined || maxLength !== undefined)) {
       if (typeof allowed !== "string") {
-        throw new SchemaError(`${entry} does not satisfy string length constraints`);
+        throw new SchemaError(`${entry} does not satisfy string length constraints`, malformed);
       }
       const length = scalarLength(allowed);
       if (minLength !== undefined && length < minLength) {
-        throw new SchemaError(`${entry} is shorter than minlength`);
+        throw new SchemaError(`${entry} is shorter than minlength`, malformed);
       }
       if (maxLength !== undefined && length > maxLength) {
-        throw new SchemaError(`${entry} is longer than maxlength`);
+        throw new SchemaError(`${entry} is longer than maxlength`, malformed);
       }
     }
   });
@@ -515,14 +560,18 @@ export function parseDefinitions(
   for (const [key, value] of Object.entries(table)) {
     if (prefix === "types") {
       if (parseSchemaType(key) !== undefined) {
-        throw new SchemaError(`[types.${key}] uses a reserved built-in type name`);
+        throw new SchemaError(`[types.${key}] uses a reserved built-in type name`, {
+          schemaPath: schemaPathOf([prefix, key]),
+        });
       }
       if (key.startsWith("types.")) {
         throw new SchemaError(`[types.${key}] uses the reserved type-reference prefix`);
       }
     }
     if (!isTomlTable(value)) {
-      throw new SchemaError(`[${prefix}] entry must be a table: ${key}`);
+      throw new SchemaError(`[${prefix}] entry must be a table: ${key}`, {
+        schemaPath: schemaPathOf([prefix]),
+      });
     }
     definitions[key] = parseDefinition(`${prefix}.${key}`, [prefix, key], value, source);
   }
@@ -543,6 +592,7 @@ export function parseDefinition(
   table: TomlTable,
   source: SchemaSource,
 ): RawDefinition {
+  const schemaPath = schemaPathOf(path);
   const typeSelector = getStringProp(table, "type", name);
   if (propertyValue(table, "type") !== undefined && typeSelector === "") {
     throw new SchemaError(`${name} type must not be blank`);
@@ -572,10 +622,12 @@ export function parseDefinition(
   }
   const items = getStringArrayProp(table, "items", name);
   if (propertyValue(table, "items") !== undefined && items.length === 0) {
-    throw new SchemaError(`${name} items must contain at least one type reference`);
+    throw new SchemaError(`${name} items must contain at least one type reference`, {
+      schemaPath: `${schemaPath}.items`,
+    });
   }
   const optional = getBoolProp(table, "optional", name);
-  const patternResult = getPatternProp(table, "pattern", name);
+  const patternResult = getPatternProp(table, "pattern", name, schemaPath);
   const formatValue = propertyValue(table, "format");
   if (formatValue !== undefined && typeof formatValue !== "string") {
     throw new SchemaError(`expected format to be a string (${name})`);
@@ -584,7 +636,7 @@ export function parseDefinition(
   if (typeof formatValue === "string" && format === undefined) {
     throw new SchemaError(`${name} has unknown string format: ${formatValue}`);
   }
-  const keyPatternResult = getPatternProp(table, "keypattern", name);
+  const keyPatternResult = getPatternProp(table, "keypattern", name, schemaPath);
   const minLength = getIntegerProp(table, "minlength", name);
   const maxLength = getIntegerProp(table, "maxlength", name);
   const allowedValues = getArrayProp(table, "allowedvalues", name) ?? [];
@@ -622,9 +674,9 @@ export function parseDefinition(
   }
   rejectBareCollectionReference(name, "itemtype", itemReference);
   rejectBareCollectionReferences(name, "items", items);
-  validateAlternativeReferences(name, "oneof", oneOf);
-  validateAlternativeReferences(name, "anyof", anyOf);
-  validateAlternativeReferences(name, "allof", allOf);
+  validateAlternativeReferences(name, "oneof", oneOf, schemaPath);
+  validateAlternativeReferences(name, "anyof", anyOf, schemaPath);
+  validateAlternativeReferences(name, "allof", allOf, schemaPath);
   if (typeSelector !== "" && typeName !== "collection" && normalizeReference(typeSelector) === "collection") {
     throw new SchemaError(`${name} cannot use collection as a bare type reference`);
   }
@@ -635,7 +687,10 @@ export function parseDefinition(
   if (hasAnyOf) typeSelectors++;
   if (condition !== undefined) typeSelectors++;
   if (typeSelectors > 1) {
-    throw new SchemaError(`${name} cannot define more than one of type, oneof, anyof, and if`);
+    throw new SchemaError(`${name} cannot define more than one of type, oneof, anyof, and if`, {
+      code: DiagnosticCodes.EXCLUSIVE_PROPERTIES,
+      schemaPath,
+    });
   }
 
   const children = emptyRecord<RawDefinition>();
@@ -679,7 +734,10 @@ export function parseDefinition(
       }
       children[key] = parseDefinition(`${name}.${key}`, [...path, key], value, source);
     } else if (!(DEFINITION_KEYS as readonly string[]).includes(key)) {
-      throw new SchemaError(`${name} contains unsupported property: ${key}`);
+      throw new SchemaError(`${name} contains unsupported property: ${key}`, {
+        code: DiagnosticCodes.UNRECOGNIZED_PROPERTY,
+        schemaPath: schemaPathOf([...path, key]),
+      });
     }
   }
 
@@ -720,7 +778,10 @@ export function parseDefinition(
   }
   if (items.length > 0) {
     if (itemReference !== "") {
-      throw new SchemaError(`${name} cannot define both items and itemtype`);
+      throw new SchemaError(`${name} cannot define both items and itemtype`, {
+        code: DiagnosticCodes.EXCLUSIVE_PROPERTIES,
+        schemaPath,
+      });
     }
     if (minLength !== undefined || maxLength !== undefined) {
       throw new SchemaError(`${name} cannot define minlength or maxlength together with items`);
@@ -749,7 +810,10 @@ export function parseDefinition(
     typeName !== "array" &&
     typeName !== "collection"
   ) {
-    throw new SchemaError(`${name} can only define pattern when type is string`);
+    throw new SchemaError(`${name} can only define pattern when type is string`, {
+      code: DiagnosticCodes.INAPPLICABLE_PROPERTY,
+      schemaPath: `${schemaPath}.pattern`,
+    });
   }
   if (format !== undefined && typeName !== "string" && typeName !== "array" && typeName !== "collection") {
     throw new SchemaError(`${name} can only define format when type is string`);
@@ -765,12 +829,16 @@ export function parseDefinition(
   ) {
     throw new SchemaError(
       `${name} can only define minlength or maxlength when type is string, array, or collection`,
+      {
+        code: DiagnosticCodes.INAPPLICABLE_PROPERTY,
+        schemaPath: `${schemaPath}.${minLength !== undefined ? "minlength" : "maxlength"}`,
+      },
     );
   }
   if (typeName === "collection" && itemReference === "" && allOf.length === 0) {
-    throw new SchemaError(`${name} must define itemtype when type is collection`);
+    throw new SchemaError(`${name} must define itemtype when type is collection`, { schemaPath });
   }
-  validateRangeConstraints(name, typeName, min, max);
+  validateRangeConstraints(name, typeName, min, max, schemaPath);
   validateAllowedValuesConstraints(
     name,
     typeName,
@@ -781,6 +849,7 @@ export function parseDefinition(
     max,
     minLength,
     maxLength,
+    schemaPath,
   );
   const dependentRequired = getDependentRequired(name, path, table, source);
   const mutuallyExclusive = getKeyGroups(name, path, table, "mutuallyexclusive", source);
@@ -790,7 +859,10 @@ export function parseDefinition(
   const hasDefault = source.isProperty(table, path, "default");
   const defaultValue = hasDefault ? table["default"] : undefined;
   if (condition !== undefined && hasDefault && !isTomlTable(defaultValue)) {
-    throw new SchemaError(`${name} conditional default must be a table`);
+    throw new SchemaError(`${name} conditional default must be a table`, {
+      code: DiagnosticCodes.INVALID_DEFAULT,
+      schemaPath: `${schemaPath}.default`,
+    });
   }
 
   const raw: RawDefinition = {
@@ -827,6 +899,7 @@ export function parseDefinition(
     hasDefault,
     deprecated: deprecated ?? false,
     children,
+    schemaPath,
   };
   return raw;
 }

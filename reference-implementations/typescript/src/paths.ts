@@ -11,6 +11,18 @@ export function appendPath(path: string, key: string): string {
   return `${path}.${encodePathKey(key)}`;
 }
 
+/**
+ * Builds a schema path from an ordered list of decoded schema-tree segments,
+ * e.g. `schemaPathOf(["elements", "port"])` -> `"$.elements.port"`. Each segment
+ * is encoded under the same grammar as an instance path (SPEC.md `### Schema
+ * Path`).
+ */
+export function schemaPathOf(segments: readonly string[]): string {
+  let path = "$";
+  for (const segment of segments) path += `.${encodePathKey(segment)}`;
+  return path;
+}
+
 /** Whether a TOML key can be written unquoted (used by the schema extractor). */
 export function isBareKey(key: string): boolean {
   return key !== "" && BARE_KEY_PATTERN.test(key);

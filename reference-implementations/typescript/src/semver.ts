@@ -1,3 +1,4 @@
+import { DiagnosticCodes } from "./diagnostics.js";
 import { SchemaError } from "./errors.js";
 
 // SemVer 2.0.0 MAJOR.MINOR.PATCH[-PRERELEASE][+BUILD], per semver.org's reference regex.
@@ -19,17 +20,21 @@ export function parseSemVer(value: string): SemVerParts | undefined {
 
 /** Validates that `value` is a well-formed `1.0.x` TOML Schema language version string. */
 export function validateSchemaVersion(value: unknown): asserts value is string {
+  const options = {
+    code: DiagnosticCodes.UNSUPPORTED_VERSION,
+    schemaPath: "$.toml-schema.version",
+  };
   if (typeof value !== "string") {
-    throw new SchemaError("[toml-schema].version must be a SemVer string");
+    throw new SchemaError("[toml-schema].version must be a SemVer string", options);
   }
   const parts = parseSemVer(value);
   if (!parts) {
-    throw new SchemaError("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax");
+    throw new SchemaError("[toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax", options);
   }
   if (parts.major !== "1") {
-    throw new SchemaError(`unsupported TOML Schema major version: ${value}`);
+    throw new SchemaError(`unsupported TOML Schema major version: ${value}`, options);
   }
   if (parts.minor !== "0") {
-    throw new SchemaError(`unsupported TOML Schema minor version: ${value}`);
+    throw new SchemaError(`unsupported TOML Schema minor version: ${value}`, options);
   }
 }

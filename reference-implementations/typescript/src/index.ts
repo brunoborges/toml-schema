@@ -17,7 +17,10 @@ export type {
 export { Definition } from "./definition.js";
 export type { Condition } from "./definition.js";
 
-export { SchemaError, DocumentError } from "./errors.js";
+export { SchemaError, DocumentError, DocumentParseError } from "./errors.js";
+
+export { DiagnosticCodes } from "./diagnostics.js";
+export type { DiagnosticPhase, DiagnosticCode } from "./diagnostics.js";
 
 export { parseToml, loadDocument } from "./document.js";
 

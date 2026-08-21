@@ -49,6 +49,8 @@ export interface RawDefinition {
   hasDefault: boolean;
   deprecated: boolean;
   children: Readonly<Record<string, RawDefinition>>;
+  /** Where this definition is declared in the schema value tree, e.g. `$.elements.port`. */
+  schemaPath?: string | undefined;
 }
 
 /** Creates a string-keyed record without inherited Object prototype members. */

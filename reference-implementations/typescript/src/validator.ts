@@ -6,6 +6,7 @@ import {
   type Condition,
   type RawDefinition,
 } from "./definition.js";
+import { DiagnosticCodes, type DiagnosticCode, type DiagnosticPhase } from "./diagnostics.js";
 import { SchemaError } from "./errors.js";
 import { isValidStringFormat } from "./formats.js";
 import { appendPath } from "./paths.js";
@@ -28,13 +29,20 @@ export type Severity = "error" | "warning";
 
 /** A single validation error or warning, addressed to a document path such as `$.a.b[2]`. */
 export interface ValidationError {
+  readonly phase: DiagnosticPhase;
   readonly severity: Severity;
   readonly code: string;
   readonly path: string;
+  readonly schemaPath?: string | undefined;
   readonly message: string;
 }
 
 export type Diagnostic = ValidationError;
+
+/** Builds the schema path `def.schemaPath + "." + prop`, or `undefined` when the definition has none. */
+function sp(definition: RawDefinition, prop: string): string | undefined {
+  return definition.schemaPath !== undefined ? `${definition.schemaPath}.${prop}` : undefined;
+}
 
 /**
  * The outcome of validating a document (or a single value) against a schema.
@@ -66,6 +74,23 @@ export class ValidationResult {
 
 function errorMessage(cause: unknown): string {
   return cause instanceof Error ? cause.message : String(cause);
+}
+
+/**
+ * Removes diagnostics that are identical under the SPEC.md dedup identity
+ * `(code, instance_path, schema_path)`; message text does not participate, and an
+ * absent path compares equal to an absent path.
+ */
+function dedupeDiagnostics<T extends Diagnostic>(list: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const diagnostic of list) {
+    const key = `${diagnostic.code}\u0000${diagnostic.path}\u0000${diagnostic.schemaPath ?? ""}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(diagnostic);
+  }
+  return result;
 }
 
 function conditionMatches(table: TomlTable, condition: Condition): boolean {
@@ -102,7 +127,7 @@ export class DocumentValidator {
   }
 
   toResult(): ValidationResult {
-    return new ValidationResult(this.errors, this.warnings);
+    return new ValidationResult(dedupeDiagnostics(this.errors), dedupeDiagnostics(this.warnings));
   }
 
   validateTable(path: string, table: TomlTable, definitions: Readonly<Record<string, RawDefinition>>): void {
@@ -111,13 +136,14 @@ export class DocumentValidator {
       try {
         resolved = this.resolve(definition, new Set());
       } catch (cause) {
-        this.add(appendPath(path, key), errorMessage(cause));
+        this.addCause(appendPath(path, key), cause);
         continue;
       }
       const value = table[key];
       const childPath = appendPath(path, key);
       if (value === undefined) {
-        if (!resolved.optional) this.add(childPath, "required value is missing");
+        if (!resolved.optional)
+          this.add(DiagnosticCodes.MISSING_REQUIRED, childPath, definition.schemaPath, "required value is missing");
         continue;
       }
       this.validateValue(childPath, value, resolved);
@@ -136,7 +162,7 @@ export class DocumentValidator {
     try {
       resolved = this.resolve(definition, new Set());
     } catch (cause) {
-      this.add(path, errorMessage(cause));
+      this.addCause(path, cause);
       return;
     }
     if (resolved.condition) {
@@ -149,7 +175,7 @@ export class DocumentValidator {
       this.validatePlainValue(path, value, resolved);
     }
     if (this.errors.length === 0 && resolved.deprecated) {
-      this.warn(path, "deprecated", "value is deprecated");
+      this.warn(path, DiagnosticCodes.DEPRECATED, sp(resolved, "deprecated"), "value is deprecated");
     }
   }
 
@@ -162,7 +188,7 @@ export class DocumentValidator {
     try {
       branch = this.resolveReference(reference, new Set());
     } catch (cause) {
-      this.add(path, errorMessage(cause));
+      this.addCause(path, cause);
       return;
     }
     branch = cloneDefinition(branch, { allOf: [...(branch.allOf ?? []), ...(definition.allOf ?? [])] });
@@ -171,7 +197,7 @@ export class DocumentValidator {
 
   private validatePlainValue(path: string, value: TomlValue, definition: RawDefinition): void {
     const typeName = definition.typeName ?? "any";
-    this.validateType(path, value, typeName);
+    this.validateType(path, value, typeName, sp(definition, "type"));
     if (!isType(value, typeName)) return;
     this.validateCommonConstraints(path, value, definition);
     switch (typeName) {
@@ -198,7 +224,7 @@ export class DocumentValidator {
       try {
         referenced = this.resolveReference(reference, new Set());
       } catch (cause) {
-        this.add(path, errorMessage(cause));
+        this.addCause(path, cause);
         return;
       }
       referenced = cloneDefinition(referenced, {
@@ -217,14 +243,14 @@ export class DocumentValidator {
     }
     if ((definition.oneOf?.length ?? 0) > 0) {
       if (matches !== 1) {
-        this.add(path, `expected exactly one matching type from oneof but found ${matches}`);
+        this.add(DiagnosticCodes.ONEOF, path, sp(definition, "oneof"), `expected exactly one matching type from oneof but found ${matches}`);
       } else {
         this.appendWarnings(successes[0]?.warnings ?? []);
       }
     }
     if ((definition.anyOf?.length ?? 0) > 0) {
       if (matches === 0) {
-        this.add(path, "expected at least one matching type from anyof");
+        this.add(DiagnosticCodes.ANYOF, path, sp(definition, "anyof"), "expected at least one matching type from anyof");
       } else {
         for (const candidate of successes) this.appendWarnings(candidate.warnings);
       }
@@ -237,11 +263,11 @@ export class DocumentValidator {
     try {
       ({ kind, resolved } = effectiveKind(this.#data, definition, new Set()));
     } catch (cause) {
-      this.add(path, errorMessage(cause));
+      this.addCause(path, cause);
       return;
     }
     if (!resolved) {
-      this.add(path, "allof has no determinate effective kind");
+      this.add(DiagnosticCodes.INCOMPATIBLE_COMPOSITION, path, sp(definition, "allof"), "allof has no determinate effective kind");
       return;
     }
     if (kind === "table" || kind === "collection") {
@@ -255,7 +281,7 @@ export class DocumentValidator {
       try {
         component = this.resolveReference(reference, new Set());
       } catch (cause) {
-        this.add(path, errorMessage(cause));
+        this.addCause(path, cause);
         continue;
       }
       this.validateValue(path, value, component);
@@ -310,7 +336,7 @@ export class DocumentValidator {
     try {
       parts = this.compositionParts(definition, new Set());
     } catch (cause) {
-      this.add(path, errorMessage(cause));
+      this.addCause(path, cause);
       return;
     }
     this.validateComposedParts(path, value, kind, parts, inheritedKeys);
@@ -324,7 +350,7 @@ export class DocumentValidator {
     inheritedKeys: ReadonlySet<string> | undefined,
   ): void {
     if (!isTomlTable(value)) {
-      this.validateType(path, value, kind);
+      this.validateType(path, value, kind, undefined);
       return;
     }
     const table = value;
@@ -332,7 +358,7 @@ export class DocumentValidator {
     let hasFixedStructure = (inheritedKeys?.size ?? 0) > 0;
     for (const component of parts.structural) {
       if (component.typeName !== kind) {
-        this.add(path, `expected ${kind} component but found ${component.typeName}`);
+        this.add(DiagnosticCodes.TYPE_MISMATCH, path, sp(component, "type"), `expected ${kind} component but found ${component.typeName}`);
         continue;
       }
       if (Object.keys(component.children).length > 0) hasFixedStructure = true;
@@ -350,7 +376,7 @@ export class DocumentValidator {
       try {
         alternativeKeys = this.effectiveClosureKeys(union, value, new Set());
       } catch (cause) {
-        this.add(path, errorMessage(cause));
+        this.addCause(path, cause);
         continue;
       }
       if (alternativeKeys.size > 0) hasFixedStructure = true;
@@ -366,7 +392,7 @@ export class DocumentValidator {
       try {
         branchKeys = this.effectiveClosureKeys(conditional, value, new Set());
       } catch (cause) {
-        this.add(path, errorMessage(cause));
+        this.addCause(path, cause);
         continue;
       }
       if (branchKeys.size > 0) hasFixedStructure = true;
@@ -386,11 +412,12 @@ export class DocumentValidator {
         try {
           resolved = this.resolve(child, new Set());
         } catch (cause) {
-          this.add(childPath, errorMessage(cause));
+          this.addCause(childPath, cause);
           continue;
         }
         if (!present) {
-          if (!resolved.optional) this.add(childPath, "required value is missing");
+          if (!resolved.optional)
+            this.add(DiagnosticCodes.MISSING_REQUIRED, childPath, child.schemaPath, "required value is missing");
           continue;
         }
         this.validateValue(childPath, childValue, child);
@@ -427,7 +454,7 @@ export class DocumentValidator {
     if (kind === "table") {
       if (hasFixedStructure) {
         for (const key of Object.keys(table)) {
-          if (!knownKeys.has(key)) this.add(appendPath(path, key), "unexpected key");
+          if (!knownKeys.has(key)) this.add(DiagnosticCodes.UNKNOWN_KEY, appendPath(path, key), undefined, "unexpected key");
         }
       }
     } else {
@@ -438,7 +465,7 @@ export class DocumentValidator {
           dynamicEntries++;
           const childPath = appendPath(path, key);
           if (component.keyPattern && !component.keyPattern.test(key)) {
-            this.add(childPath, `key does not match keypattern ${component.keyPatternSource}`);
+            this.add(DiagnosticCodes.KEYPATTERN, childPath, sp(component, "keypattern"), `key does not match keypattern ${component.keyPatternSource}`);
           }
           this.validateMemberValueConstraints(childPath, entry, component);
           // A composed collection may take its dynamic-entry constraint
@@ -448,7 +475,7 @@ export class DocumentValidator {
             const item = this.resolveReference(component.itemReference, new Set());
             this.validateValue(childPath, entry, item);
           } catch (cause) {
-            this.add(childPath, errorMessage(cause));
+            this.addCause(childPath, cause);
           }
         }
         this.validateLength(path, dynamicEntries, component);
@@ -456,13 +483,13 @@ export class DocumentValidator {
     }
 
     for (const component of parts.structural) {
-      if (component.deprecated) this.warn(path, "deprecated", "value is deprecated");
+      if (component.deprecated) this.warn(path, DiagnosticCodes.DEPRECATED, sp(component, "deprecated"), "value is deprecated");
     }
     for (const union of unions) {
-      if (union.deprecated) this.warn(path, "deprecated", "value is deprecated");
+      if (union.deprecated) this.warn(path, DiagnosticCodes.DEPRECATED, sp(union, "deprecated"), "value is deprecated");
     }
     for (const conditional of conditionals) {
-      if (conditional.deprecated) this.warn(path, "deprecated", "value is deprecated");
+      if (conditional.deprecated) this.warn(path, DiagnosticCodes.DEPRECATED, sp(conditional, "deprecated"), "value is deprecated");
     }
   }
 
@@ -520,19 +547,19 @@ export class DocumentValidator {
       try {
         alternative = this.resolveReference(reference, new Set());
       } catch (cause) {
-        this.add(path, errorMessage(cause));
+        this.addCause(path, cause);
         return;
       }
       const candidate = new DocumentValidator(this.#data, this.#suppressWarnings);
       try {
         const { kind: alternativeKind, resolved } = effectiveKind(this.#data, alternative, new Set());
         if (!resolved || alternativeKind !== kind) {
-          candidate.add(path, `expected ${kind} alternative but found ${alternativeKind}`);
+          candidate.add(DiagnosticCodes.TYPE_MISMATCH, path, sp(alternative, "type"), `expected ${kind} alternative but found ${alternativeKind}`);
         } else {
           candidate.validateComposedStructure(path, value, kind, alternative, knownKeys);
         }
       } catch (cause) {
-        candidate.add(path, errorMessage(cause));
+        candidate.addCause(path, cause);
       }
       if (candidate.errors.length === 0) {
         matches++;
@@ -541,14 +568,14 @@ export class DocumentValidator {
     }
     if ((definition.oneOf?.length ?? 0) > 0) {
       if (matches !== 1) {
-        this.add(path, `expected exactly one matching type from oneof but found ${matches}`);
+        this.add(DiagnosticCodes.ONEOF, path, sp(definition, "oneof"), `expected exactly one matching type from oneof but found ${matches}`);
         return;
       }
       this.appendWarnings(successes[0]?.warnings ?? []);
       return;
     }
     if (matches === 0) {
-      this.add(path, "expected at least one matching type from anyof");
+      this.add(DiagnosticCodes.ANYOF, path, sp(definition, "anyof"), "expected at least one matching type from anyof");
       return;
     }
     for (const candidate of successes) this.appendWarnings(candidate.warnings);
@@ -569,18 +596,18 @@ export class DocumentValidator {
     try {
       branch = this.resolveReference(reference, new Set());
     } catch (cause) {
-      this.add(path, errorMessage(cause));
+      this.addCause(path, cause);
       return;
     }
     try {
       const { kind: branchKind, resolved } = effectiveKind(this.#data, branch, new Set());
       if (!resolved || branchKind !== kind) {
-        this.add(path, `expected ${kind} conditional branch but found ${branchKind}`);
+        this.add(DiagnosticCodes.TYPE_MISMATCH, path, sp(branch, "type"), `expected ${kind} conditional branch but found ${branchKind}`);
         return;
       }
       this.validateComposedStructure(path, value, kind, branch, knownKeys);
     } catch (cause) {
-      this.add(path, errorMessage(cause));
+      this.addCause(path, cause);
     }
   }
 
@@ -588,7 +615,8 @@ export class DocumentValidator {
     if (Object.keys(definition.children).length === 0) return;
     this.validateTable(path, table, definition.children);
     for (const key of Object.keys(table)) {
-      if (!Object.hasOwn(definition.children, key)) this.add(appendPath(path, key), "unexpected key");
+      if (!Object.hasOwn(definition.children, key))
+        this.add(DiagnosticCodes.UNKNOWN_KEY, appendPath(path, key), definition.schemaPath, "unexpected key");
     }
     this.validateSiblingRules(path, table, definition);
   }
@@ -606,10 +634,10 @@ export class DocumentValidator {
       }
       dynamicEntries++;
       if (definition.keyPattern && !definition.keyPattern.test(key)) {
-        this.add(childPath, `key does not match keypattern ${definition.keyPatternSource}`);
+        this.add(DiagnosticCodes.KEYPATTERN, childPath, sp(definition, "keypattern"), `key does not match keypattern ${definition.keyPatternSource}`);
       }
       if (!definition.itemReference) {
-        this.add(childPath, "collection entry has no itemtype reference");
+        this.add(DiagnosticCodes.SCHEMA_MALFORMED, childPath, definition.schemaPath, "collection entry has no itemtype reference");
         continue;
       }
       try {
@@ -617,7 +645,7 @@ export class DocumentValidator {
         this.validateValue(childPath, value, referenced);
         this.validateMemberValueConstraints(childPath, value, definition);
       } catch (cause) {
-        this.add(childPath, errorMessage(cause));
+        this.addCause(childPath, cause);
       }
     }
     this.validateLength(path, dynamicEntries, definition);
@@ -626,11 +654,11 @@ export class DocumentValidator {
       try {
         resolved = this.resolve(child, new Set());
       } catch (cause) {
-        this.add(appendPath(path, key), errorMessage(cause));
+        this.addCause(appendPath(path, key), cause);
         continue;
       }
       if (!(key in table) && !resolved.optional) {
-        this.add(appendPath(path, key), "required value is missing");
+        this.add(DiagnosticCodes.MISSING_REQUIRED, appendPath(path, key), child.schemaPath, "required value is missing");
       }
     }
     this.validateSiblingRules(path, table, definition);
@@ -642,7 +670,7 @@ export class DocumentValidator {
       for (let index = 0; index < array.length; index++) {
         for (let previous = 0; previous < index; previous++) {
           if (valuesEqual(array[previous], array[index])) {
-            this.add(`${path}[${index}]`, `duplicate item equals item at index ${previous}`);
+            this.add(DiagnosticCodes.UNIQUEITEMS, `${path}[${index}]`, sp(definition, "uniqueitems"), `duplicate item equals item at index ${previous}`);
             break;
           }
         }
@@ -661,7 +689,7 @@ export class DocumentValidator {
     try {
       itemDefinition = this.resolveReference(definition.itemReference, new Set());
     } catch (cause) {
-      this.add(path, errorMessage(cause));
+      this.addCause(path, cause);
       return;
     }
     array.forEach((item, index) => {
@@ -679,20 +707,20 @@ export class DocumentValidator {
       if (!(trigger in table)) continue;
       for (const dependency of dependencies) {
         if (!(dependency in table)) {
-          this.add(appendPath(path, dependency), `required by dependentrequired triggered by sibling "${trigger}"`);
+          this.add(DiagnosticCodes.DEPENDENTREQUIRED, appendPath(path, dependency), sp(definition, "dependentrequired"), `required by dependentrequired triggered by sibling "${trigger}"`);
         }
       }
     }
     for (const group of definition.mutuallyExclusive ?? []) {
       const present = presentGroupMembers(table, group);
       if (present.length > 1) {
-        this.add(path, `mutuallyexclusive group has multiple present members: ${present.join(", ")}`);
+        this.add(DiagnosticCodes.MUTUALLYEXCLUSIVE, path, sp(definition, "mutuallyexclusive"), `mutuallyexclusive group has multiple present members: ${present.join(", ")}`);
       }
     }
     for (const group of definition.exactlyOne ?? []) {
       const present = presentGroupMembers(table, group);
       if (present.length !== 1) {
-        this.add(path, `exactlyone group requires exactly one present member from: ${group.join(", ")}`);
+        this.add(DiagnosticCodes.EXACTLYONE, path, sp(definition, "exactlyone"), `exactlyone group requires exactly one present member from: ${group.join(", ")}`);
       }
     }
   }
@@ -700,7 +728,7 @@ export class DocumentValidator {
   private validateTupleArray(path: string, array: readonly TomlValue[], definition: RawDefinition): void {
     const items = definition.items ?? [];
     if (array.length !== items.length) {
-      this.add(path, `expected array length ${items.length} but found ${array.length}`);
+      this.add(DiagnosticCodes.TUPLE_LENGTH, path, sp(definition, "items"), `expected array length ${items.length} but found ${array.length}`);
     }
     const upperBound = Math.min(array.length, items.length);
     for (let index = 0; index < upperBound; index++) {
@@ -709,16 +737,21 @@ export class DocumentValidator {
       try {
         itemDefinition = this.resolveReference(items[index] as string, new Set());
       } catch (cause) {
-        this.add(itemPath, errorMessage(cause));
+        this.addCause(itemPath, cause);
         continue;
       }
       this.validateValue(itemPath, array[index] as TomlValue, itemDefinition);
     }
   }
 
-  private validateType(path: string, value: TomlValue, typeName: SchemaType): void {
+  private validateType(
+    path: string,
+    value: TomlValue,
+    typeName: SchemaType,
+    schemaPath: string | undefined,
+  ): void {
     if (!isType(value, typeName)) {
-      this.add(path, `expected ${typeName} but found ${typeNameOf(value)}`);
+      this.add(DiagnosticCodes.TYPE_MISMATCH, path, schemaPath, `expected ${typeName} but found ${typeNameOf(value)}`);
     }
   }
 
@@ -734,10 +767,10 @@ export class DocumentValidator {
     if (typeof value === "string") {
       this.validateLength(path, scalarLength(value), definition);
       if (definition.pattern && !definition.pattern.test(value)) {
-        this.add(path, `does not match pattern ${definition.patternSource}`);
+        this.add(DiagnosticCodes.PATTERN, path, sp(definition, "pattern"), `does not match pattern ${definition.patternSource}`);
       }
       if (definition.format && !isValidStringFormat(definition.format, value)) {
-        this.add(path, `is not a valid ${definition.format}`);
+        this.add(DiagnosticCodes.FORMAT, path, sp(definition, "format"), `is not a valid ${definition.format}`);
       }
     }
   }
@@ -746,7 +779,7 @@ export class DocumentValidator {
     const allowedValues = definition.allowedValues ?? [];
     if (allowedValues.length === 0) return;
     if (allowedValues.some((allowed) => valuesEqual(allowed, value))) return;
-    this.add(path, "value is not in allowedvalues");
+    this.add(DiagnosticCodes.ALLOWEDVALUES, path, sp(definition, "allowedvalues"), "value is not in allowedvalues");
   }
 
   private validateMemberValueConstraints(path: string, value: TomlValue, definition: RawDefinition): void {
@@ -754,10 +787,10 @@ export class DocumentValidator {
     if ((definition.allowedValues?.length ?? 0) === 0) this.validateRange(path, value, definition);
     if (typeof value === "string") {
       if (definition.pattern && !definition.pattern.test(value)) {
-        this.add(path, `does not match pattern ${definition.patternSource}`);
+        this.add(DiagnosticCodes.PATTERN, path, sp(definition, "pattern"), `does not match pattern ${definition.patternSource}`);
       }
       if (definition.format && !isValidStringFormat(definition.format, value)) {
-        this.add(path, `is not a valid ${definition.format}`);
+        this.add(DiagnosticCodes.FORMAT, path, sp(definition, "format"), `is not a valid ${definition.format}`);
       }
     }
   }
@@ -765,26 +798,28 @@ export class DocumentValidator {
   private validateRange(path: string, value: TomlValue, definition: RawDefinition): void {
     if (definition.min !== undefined) {
       try {
-        if (compareValues(value, definition.min) < 0) this.add(path, "value is less than min");
+        if (compareValues(value, definition.min) < 0)
+          this.add(DiagnosticCodes.MIN, path, sp(definition, "min"), "value is less than min");
       } catch (cause) {
-        this.add(path, errorMessage(cause));
+        this.add(DiagnosticCodes.MIN, path, sp(definition, "min"), errorMessage(cause));
       }
     }
     if (definition.max !== undefined) {
       try {
-        if (compareValues(value, definition.max) > 0) this.add(path, "value is greater than max");
+        if (compareValues(value, definition.max) > 0)
+          this.add(DiagnosticCodes.MAX, path, sp(definition, "max"), "value is greater than max");
       } catch (cause) {
-        this.add(path, errorMessage(cause));
+        this.add(DiagnosticCodes.MAX, path, sp(definition, "max"), errorMessage(cause));
       }
     }
   }
 
   private validateLength(path: string, length: number, definition: RawDefinition): void {
     if (definition.minLength !== undefined && length < definition.minLength) {
-      this.add(path, "length is less than minlength");
+      this.add(DiagnosticCodes.MINLENGTH, path, sp(definition, "minlength"), "length is less than minlength");
     }
     if (definition.maxLength !== undefined && length > definition.maxLength) {
-      this.add(path, "length is greater than maxlength");
+      this.add(DiagnosticCodes.MAXLENGTH, path, sp(definition, "maxlength"), "length is greater than maxlength");
     }
   }
 
@@ -835,13 +870,43 @@ export class DocumentValidator {
     }
   }
 
-  add(path: string, message: string): void {
-    this.errors.push({ severity: "error", code: "validation-error", path, message });
+  add(code: DiagnosticCode, path: string, schemaPath: string | undefined, message: string): void {
+    this.errors.push({
+      phase: "validation",
+      severity: "error",
+      code,
+      path,
+      ...(schemaPath !== undefined ? { schemaPath } : {}),
+      message,
+    });
   }
 
-  private warn(path: string, code: string, message: string): void {
+  /**
+   * Reports a failure that surfaced as a thrown {@link SchemaError} during
+   * validation, preserving the error's structured code and schema path. Such
+   * failures denote a schema defect that escaped schema-load and are unreachable
+   * for the checked-in corpus, but must still carry a registry code.
+   */
+  private addCause(path: string, cause: unknown): void {
+    if (cause instanceof SchemaError) {
+      this.add(cause.code as DiagnosticCode, path, cause.schemaPath, cause.message);
+    } else {
+      this.add(DiagnosticCodes.SCHEMA_MALFORMED, path, undefined, errorMessage(cause));
+    }
+  }
+
+  private warn(path: string, code: DiagnosticCode, schemaPath: string | undefined, message: string): void {
     if (this.#suppressWarnings) return;
-    this.appendWarnings([{ severity: "warning", code, path, message }]);
+    this.appendWarnings([
+      {
+        phase: "validation",
+        severity: "warning",
+        code,
+        path,
+        ...(schemaPath !== undefined ? { schemaPath } : {}),
+        message,
+      },
+    ]);
   }
 
   private appendWarnings(warnings: readonly Diagnostic[]): void {
@@ -850,7 +915,7 @@ export class DocumentValidator {
         (existing) =>
           existing.code === warning.code &&
           existing.path === warning.path &&
-          existing.message === warning.message,
+          (existing.schemaPath ?? "") === (warning.schemaPath ?? ""),
       );
       if (!duplicate) this.warnings.push(warning);
     }
