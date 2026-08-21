@@ -142,7 +142,7 @@ fn canonical_binary_is_named_tosd() {
 #[test]
 fn validates_checked_in_example() {
     let schema = Schema::load(fixture("config.tosd")).expect("load config.tosd");
-    let result = schema.validate_file(fixture("config.toml"));
+    let result = schema.validate_file(fixture("config.toml")).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid document, got {:#?}",
@@ -212,7 +212,7 @@ type = "table"
     );
 
     let schema = Schema::load(schema_path).expect("load escaped-children schema");
-    let result = schema.validate_file(document_path);
+    let result = schema.validate_file(document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected escaped schema-key children to validate: {:?}",
@@ -247,7 +247,7 @@ fn loads_checked_in_examples() {
 #[test]
 fn validates_cargo_manifest_example() {
     let schema = Schema::load(fixture("examples/cargo.tosd")).expect("load cargo.tosd");
-    let result = schema.validate_file(fixture("reference-implementations/rust/Cargo.toml"));
+    let result = schema.validate_file(fixture("reference-implementations/rust/Cargo.toml")).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid Cargo.toml, got {:#?}",
@@ -300,7 +300,7 @@ extra = true
     let schema = Schema::load(&schema_path).expect("load closed-root schema");
 
     for document in [&empty_document, &metadata_only_document] {
-        let result = schema.validate_file(document);
+        let result = schema.validate_file(document).expect("document parses as TOML");
         assert!(
             result.valid(),
             "expected {} to be valid, got {:#?}",
@@ -309,7 +309,7 @@ extra = true
         );
     }
 
-    let result = schema.validate_file(&application_document);
+    let result = schema.validate_file(&application_document).expect("document parses as TOML");
     assert!(
         !result.valid() && has_path(&result, "$.extra"),
         "expected an unexpected-key error at $.extra, got {:#?}",
@@ -317,7 +317,7 @@ extra = true
     );
 
     let defined_schema = Schema::load(&defined_root_schema).expect("load defined-root schema");
-    let result = defined_schema.validate_file(&document_with_extra_key);
+    let result = defined_schema.validate_file(&document_with_extra_key).expect("document parses as TOML");
     assert!(
         !result.valid() && has_path(&result, "$.extra"),
         "expected an unexpected-key error beside a declared root key, got {:#?}",
@@ -325,7 +325,7 @@ extra = true
     );
 
     let schema_schema = Schema::load(fixture("toml-schema.tosd")).expect("load toml-schema.tosd");
-    let result = schema_schema.validate_file(&schema_path);
+    let result = schema_schema.validate_file(&schema_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected self-schema to accept empty [elements], got {:#?}",
@@ -414,7 +414,7 @@ type = "string"
 #[test]
 fn validates_self_schema_against_itself() {
     let schema = Schema::load(fixture("toml-schema.tosd")).expect("load toml-schema.tosd");
-    let result = schema.validate_file(fixture("toml-schema.tosd"));
+    let result = schema.validate_file(fixture("toml-schema.tosd")).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid document, got {:#?}",
@@ -536,14 +536,14 @@ type = "string"
         ),
     ];
     for schema_path in [invalid_property_type, unknown_property, invalid_escape] {
-        let result = schema.validate_file(&schema_path);
+        let result = schema.validate_file(&schema_path).expect("document parses as TOML");
         assert!(
             !result.valid(),
             "expected self-schema to reject {}",
             schema_path.display()
         );
     }
-    let result = schema.validate_file(&literal_children);
+    let result = schema.validate_file(&literal_children).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected self-schema to accept a literal children definition: {:?}",
@@ -551,14 +551,14 @@ type = "string"
     );
     for (name, content) in invalid_semantics {
         let schema_path = write_file(&directory, name, content);
-        let result = schema.validate_file(&schema_path);
+        let result = schema.validate_file(&schema_path).expect("document parses as TOML");
         assert!(
             !result.valid(),
             "expected self-schema to reject semantic violation in {}",
             schema_path.display()
         );
     }
-    let result = schema.validate_file(fixture("examples/database-conditional.tosd"));
+    let result = schema.validate_file(fixture("examples/database-conditional.tosd")).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected self-schema to accept conditional example: {:?}",
@@ -583,7 +583,7 @@ type = "array"
 items = [ "float", "float", "float" ]
 "#,
     );
-    let result = self_schema.validate_file(&tuple_schema);
+    let result = self_schema.validate_file(&tuple_schema).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected self-schema to allow repeated tuple items, got {:#?}",
@@ -604,7 +604,7 @@ version = "1.0.0"
 "#
             ),
         );
-        let result = self_schema.validate_file(&schema_path);
+        let result = self_schema.validate_file(&schema_path).expect("document parses as TOML");
         assert!(
             !result.valid(),
             "expected self-schema to reject duplicate {property} entries"
@@ -615,7 +615,7 @@ version = "1.0.0"
 #[test]
 fn validates_config_schema_against_self_schema() {
     let schema = Schema::load(fixture("toml-schema.tosd")).expect("load toml-schema.tosd");
-    let result = schema.validate_file(fixture("config.tosd"));
+    let result = schema.validate_file(fixture("config.tosd")).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid document, got {:#?}",
@@ -654,7 +654,7 @@ port = 70000
     );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
 
     assert!(!result.valid(), "expected validation errors");
     assert_eq!(
@@ -861,8 +861,8 @@ maxlength = 2
     let invalid_document = write_file(&directory, "invalid-allowedvalues.toml", r#"value = "ef""#);
     let schema = Schema::load(&schema_path).expect("load conforming allowedvalues schema");
 
-    assert!(schema.validate_file(valid_document).valid());
-    let result = schema.validate_file(invalid_document);
+    assert!(schema.validate_file(valid_document).expect("document parses as TOML").valid());
+    let result = schema.validate_file(invalid_document).expect("document parses as TOML");
     assert_eq!(result.errors.len(), 1);
     assert_eq!(result.errors[0].message, "value is not in allowedvalues");
 }
@@ -940,7 +940,7 @@ maxlength = 2
     );
     let schema = Schema::load(&schema_path).expect("load container with maxlength enumeration");
     let valid_document = write_file(&directory, "container-length.toml", r#"value = [ "aaaa" ]"#);
-    assert!(schema.validate_file(valid_document).valid());
+    assert!(schema.validate_file(valid_document).expect("document parses as TOML").valid());
 }
 
 #[test]
@@ -974,9 +974,9 @@ values = [ 1, 3 ]
     );
 
     let schema = Schema::load(&schema_path).expect("load array allowedvalues schema");
-    assert!(schema.validate_file(valid_document).valid());
+    assert!(schema.validate_file(valid_document).expect("document parses as TOML").valid());
 
-    let result = schema.validate_file(invalid_document);
+    let result = schema.validate_file(invalid_document).expect("document parses as TOML");
     assert_eq!(result.errors.len(), 1, "{:#?}", result.errors);
     assert_eq!(result.errors[0].path, "$.values[1]");
     assert_eq!(result.errors[0].message, "value is not in allowedvalues");
@@ -1016,13 +1016,13 @@ id = "abcdef"
 
     let schema = Schema::load(&schema_path).expect("load schema");
 
-    let match_result = schema.validate_file(&matching_path);
+    let match_result = schema.validate_file(&matching_path).expect("document parses as TOML");
     assert!(
         match_result.valid(),
         "expected unanchored pattern to accept a superstring"
     );
 
-    let no_match_result = schema.validate_file(&non_matching_path);
+    let no_match_result = schema.validate_file(&non_matching_path).expect("document parses as TOML");
     assert!(
         !no_match_result.valid(),
         "expected pattern to reject string with no matching substring"
@@ -1084,7 +1084,7 @@ entries = [
     );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
 
     assert!(
         result.valid(),
@@ -1130,14 +1130,14 @@ mixed = [1, "two", [true]]
 
     let schema = Schema::load(&schema_path).expect("load schema");
 
-    let valid_result = schema.validate_file(&valid_path);
+    let valid_result = schema.validate_file(&valid_path).expect("document parses as TOML");
     assert!(
         valid_result.valid(),
         "expected nested arrays and unconstrained mixed items to be valid, got {:#?}",
         valid_result.errors
     );
 
-    let invalid_result = schema.validate_file(&invalid_path);
+    let invalid_result = schema.validate_file(&invalid_path).expect("document parses as TOML");
     assert!(!invalid_result.valid());
     assert!(has_path(&invalid_result, "$.nested[1]"));
 }
@@ -1202,9 +1202,9 @@ alternative = [3, 6]
     );
 
     let schema = Schema::load(&schema_path).expect("load comparable array ranges");
-    assert!(schema.validate_file(&valid_path).valid());
+    assert!(schema.validate_file(&valid_path).expect("document parses as TOML").valid());
 
-    let result = schema.validate_file(&invalid_path);
+    let result = schema.validate_file(&invalid_path).expect("document parses as TOML");
     for path in [
         "$.direct[0]",
         "$.direct[1]",
@@ -1311,7 +1311,7 @@ flex = "abc"
     );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid document, got {:#?}",
@@ -1542,7 +1542,7 @@ allof = [ "types.base", "types.choice" ]
             "[value]\nid = 1\nname = \"example\"\nenabled = true\n",
         ),
     ] {
-        let result = closure.validate_file(write_file(&directory, name, body));
+        let result = closure.validate_file(write_file(&directory, name, body)).expect("document parses as TOML");
         assert!(result.valid(), "{name}: {:?}", result.errors);
     }
     for (name, body) in [
@@ -1552,7 +1552,7 @@ allof = [ "types.base", "types.choice" ]
         ),
         ("neither.toml", "[value]\nid = 1\n"),
     ] {
-        let result = closure.validate_file(write_file(&directory, name, body));
+        let result = closure.validate_file(write_file(&directory, name, body)).expect("document parses as TOML");
         assert!(
             result
                 .errors
@@ -1566,13 +1566,13 @@ allof = [ "types.base", "types.choice" ]
         &directory,
         "bogus.toml",
         "[value]\nid = 1\nname = \"example\"\nbogus = true\n",
-    ));
+    )).expect("document parses as TOML");
     assert!(has_path(&unexpected, "$.value.bogus"));
     let missing = closure.validate_file(write_file(
         &directory,
         "missing.toml",
         "[value]\nname = \"example\"\n",
-    ));
+    )).expect("document parses as TOML");
     assert!(has_path(&missing, "$.value.id"));
 
     let open_schema = write_file(
@@ -1603,13 +1603,13 @@ allof = [ "types.base", "types.choice" ]
         &directory,
         "known.toml",
         "[value]\nname = \"example\"\nknown = \"yes\"\n",
-    ));
+    )).expect("document parses as TOML");
     assert!(known.valid(), "{:?}", known.errors);
     let arbitrary = open.validate_file(write_file(
         &directory,
         "arbitrary.toml",
         "[value]\nname = \"example\"\narbitrary = true\n",
-    ));
+    )).expect("document parses as TOML");
     assert!(arbitrary.errors.iter().any(|error| {
         error.path == "$.value" && error.message.contains("found 0")
     }));
@@ -1651,12 +1651,12 @@ allof = [ "types.database" ]
         &directory,
         "conditional.toml",
         "[composed]\nid = 2\nengine = \"postgresql\"\nhost = \"db.internal\"\n",
-    ));
+    )).expect("document parses as TOML");
     assert!(selected.valid(), "{:?}", selected.errors);
 
     let self_schema =
         Schema::load(fixture("toml-schema.tosd")).expect("strict rules must load the self-schema");
-    let result = self_schema.validate_file(fixture("toml-schema.tosd"));
+    let result = self_schema.validate_file(fixture("toml-schema.tosd")).expect("document parses as TOML");
     assert!(
         result.valid(),
         "strict rules must preserve self-validation: {:#?}",
@@ -1783,7 +1783,7 @@ label = "primary"
         ),
     ] {
         let path = write_file(&directory, name, document);
-        let result = schema.validate_file(path);
+        let result = schema.validate_file(path).expect("document parses as TOML");
         assert!(
             result.valid(),
             "{name} should validate against its selected branches: {:?}",
@@ -1800,7 +1800,7 @@ engine = "sqlite"
 label = "primary"
 "#,
     );
-    let result = schema.validate_file(missing_branch_field);
+    let result = schema.validate_file(missing_branch_field).expect("document parses as TOML");
     assert!(has_path(&result, "$.database.file"), "{:?}", result.errors);
     assert!(
         !has_path(&result, "$.database.host"),
@@ -1819,7 +1819,7 @@ host = "must-not-be-accepted"
 label = "primary"
 "#,
     );
-    let result = schema.validate_file(unknown_branch_key);
+    let result = schema.validate_file(unknown_branch_key).expect("document parses as TOML");
     assert!(has_path(&result, "$.database.host"), "{:?}", result.errors);
 
     let unknown_closed_branch_key = write_file(
@@ -1832,7 +1832,7 @@ file = "app.db"
 unknown = true
 "#,
     );
-    let result = schema.validate_file(unknown_closed_branch_key);
+    let result = schema.validate_file(unknown_closed_branch_key).expect("document parses as TOML");
     assert!(
         has_path(&result, "$.undeclared.unknown"),
         "closed selected branches must still reject unrelated keys: {:?}",
@@ -1903,7 +1903,7 @@ else = true
 
     let schema = Schema::load(schema_path)
         .expect("empty discriminator and keyword-named child definitions should load");
-    let result = schema.validate_file(document_path);
+    let result = schema.validate_file(document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "empty discriminator and keyword-named children should validate: {:?}",
@@ -2106,7 +2106,7 @@ qualified = "two"
     );
 
     let schema = Schema::load(&schema_path).expect("load dotted type schema");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(result.valid(), "{:?}", result.errors);
 }
 
@@ -2174,10 +2174,10 @@ ip = "10.0.0.2"
 
     let schema = Schema::load(&schema_path).expect("load schema");
     assert!(
-        schema.validate_file(&valid_document).valid(),
+        schema.validate_file(&valid_document).expect("document parses as TOML").valid(),
         "expected matching keys to pass"
     );
-    let result = schema.validate_file(&invalid_document);
+    let result = schema.validate_file(&invalid_document).expect("document parses as TOML");
     assert!(!result.valid(), "expected non-matching key to be rejected");
     assert!(has_path(&result, "$.servers.alpha"));
     assert!(!has_path(&result, "$.servers.server_01"));
@@ -2274,7 +2274,7 @@ optional = false
     let document_path = write_file(&directory, "document.toml", "# name is optional\n");
 
     let schema = Schema::load(&schema_path).expect("expected named reference metadata to load");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected optional named reference to validate: {:?}",
@@ -2419,7 +2419,7 @@ port = 8080
     );
 
     let schema = Schema::load(&schema_path).expect("expected collection with itemtype to load");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected collection itemtype union to validate: {:?}",
@@ -2544,7 +2544,7 @@ maps = [ { one = "1", two = "2" } ]
     );
 
     let schema = Schema::load(&schema_path).expect("expected valid special references");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid special references, got {:?}",
@@ -2711,7 +2711,7 @@ value = [ [ 1.5, "Hello" ], 2.0 ]
     );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid document, got {:#?}",
@@ -2763,16 +2763,16 @@ value = [ 1.5, "Hello", true ]
     );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let wrong_order_result = schema.validate_file(&wrong_order);
+    let wrong_order_result = schema.validate_file(&wrong_order).expect("document parses as TOML");
     assert!(!wrong_order_result.valid());
     assert!(has_path(&wrong_order_result, "$.value[0]"));
     assert!(has_path(&wrong_order_result, "$.value[1]"));
 
-    let too_short_result = schema.validate_file(&too_short);
+    let too_short_result = schema.validate_file(&too_short).expect("document parses as TOML");
     assert!(!too_short_result.valid());
     assert!(has_path(&too_short_result, "$.value"));
 
-    let too_long_result = schema.validate_file(&too_long);
+    let too_long_result = schema.validate_file(&too_long).expect("document parses as TOML");
     assert!(!too_long_result.valid());
     assert!(has_path(&too_long_result, "$.value"));
 }
@@ -2889,7 +2889,7 @@ type = "npm"
     );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected valid document, got {:#?}",
@@ -2989,13 +2989,13 @@ localTime = 12:00:00.101
     );
 
     let schema = Schema::load(&schema_path).expect("load schema");
-    let valid = schema.validate_file(&valid_path);
+    let valid = schema.validate_file(&valid_path).expect("document parses as TOML");
     assert!(
         valid.valid(),
         "expected valid value semantics: {:#?}",
         valid.errors
     );
-    let invalid = schema.validate_file(&invalid_path);
+    let invalid = schema.validate_file(&invalid_path).expect("document parses as TOML");
     for path in [
         "$.precise",
         "$.mixed",
@@ -3230,7 +3230,7 @@ location = "ignored.tosd"
     );
 
     let schema = Schema::load(&extracted_schema).expect("load extracted schema");
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(
         result.valid(),
         "expected extracted schema to validate source document, got {:#?}",
@@ -3738,7 +3738,7 @@ fn emits_deprecation_warnings_only_for_successful_definitions() {
         "document.toml",
         "direct = \"x\"\nreference = \"x\"\ncomposed = \"x\"\nchoice = 1\nany = \"x\"\ncurrent = \"x\"\n",
     );
-    let result = schema.validate_file(&document_path);
+    let result = schema.validate_file(&document_path).expect("document parses as TOML");
     assert!(result.valid());
     let warning_paths: Vec<&str> = result
         .warnings()
@@ -4131,7 +4131,7 @@ fn rejects_invalid_and_non_portable_patterns_at_schema_load_time() {
             &format!("[toml-schema]\nversion = \"1.0.0\"\n[elements.value]\n{definition}\n"),
         );
         let error = Schema::load(&schema_path).expect_err("pattern must fail during schema loading");
-        assert!(error.contains(expected), "{error}");
+        assert_eq!(error.code, expected, "{error}");
     }
 
     let schema_path = directory.join("invalid.tosd");
@@ -4227,8 +4227,8 @@ type = "types.count"
     let valid = write_file(&directory, "valid.toml", "pkg = { name = \"x\", version = \"1\" }\ncount = 5\n");
     let invalid = write_file(&directory, "invalid.toml", "pkg = { name = \"x\", version = \"1\" }\ncount = 0\n");
     let schema = Schema::load(schema_path).expect("pure allof mixin must load");
-    assert!(schema.validate_file(valid).valid());
-    assert!(!schema.validate_file(invalid).valid());
+    assert!(schema.validate_file(valid).expect("document parses as TOML").valid());
+    assert!(!schema.validate_file(invalid).expect("document parses as TOML").valid());
 }
 
 #[test]
@@ -4266,8 +4266,8 @@ pattern = '^[a-z]+$'
     let valid = write_file(&directory, "valid.toml", "tags = [\"alpha\", \"beta\"]\n");
     let invalid = write_file(&directory, "invalid.toml", "tags = [\"alpha\", \"Beta\"]\n");
     let schema = Schema::load(schema_path).expect("array pattern must load");
-    assert!(schema.validate_file(valid).valid());
-    assert!(has_path(&schema.validate_file(invalid), "$.tags[1]"));
+    assert!(schema.validate_file(valid).expect("document parses as TOML").valid());
+    assert!(has_path(&schema.validate_file(invalid).expect("document parses as TOML"), "$.tags[1]"));
 }
 
 #[test]
@@ -4297,8 +4297,8 @@ format = "email"
     let valid = write_file(&directory, "valid.toml", "[ports]\nhttp = 80\n[roles]\nowner = \"admin\"\n[tags]\nrelease = \"stable@example.com\"\n[emails]\nowner = \"admin@example.com\"\n");
     let invalid = write_file(&directory, "invalid.toml", "[ports]\nlow = 0\nhigh = 70000\n[roles]\nowner = \"root\"\n[tags]\nrelease = \"Stable\"\n[emails]\nowner = \"not-an-email\"\n");
     let schema = Schema::load(schema_path).expect("collection constraints must load");
-    assert!(schema.validate_file(valid).valid());
-    let result = schema.validate_file(invalid);
+    assert!(schema.validate_file(valid).expect("document parses as TOML").valid());
+    let result = schema.validate_file(invalid).expect("document parses as TOML");
     assert!(has_path(&result, "$.ports.low"));
     assert!(has_path(&result, "$.ports.high"));
     assert!(has_path(&result, "$.roles.owner"));
@@ -4345,9 +4345,9 @@ allowedvalues = ["b", "c"]
     let inline_invalid = write_file(&directory, "inline-invalid.toml", "values = [\"a\"]\n");
     let inherited_invalid =
         write_file(&directory, "inherited-invalid.toml", "values = [\"c\"]\n");
-    assert!(schema.validate_file(valid).valid());
-    assert!(!schema.validate_file(inline_invalid).valid());
-    assert!(!schema.validate_file(inherited_invalid).valid());
+    assert!(schema.validate_file(valid).expect("document parses as TOML").valid());
+    assert!(!schema.validate_file(inline_invalid).expect("document parses as TOML").valid());
+    assert!(!schema.validate_file(inherited_invalid).expect("document parses as TOML").valid());
 }
 
 fn tempfile_dir(name: &str) -> PathBuf {
@@ -4365,4 +4365,32 @@ fn tempfile_dir(name: &str) -> PathBuf {
         ));
     fs::create_dir_all(&directory).expect("create temp directory");
     directory
+}
+
+/// Pins the path-segment encoding from SPEC.md `### Instance Path`, including the
+/// normative lowercase hex digits. The conformance corpus does not exercise control
+/// characters, so this guards the profile directly.
+#[test]
+fn encode_path_key_matches_rfc8259_profile() {
+    use toml_schema::encode_path_key;
+    let cases = [
+        ("port", "port"),
+        ("a-b_9", "a-b_9"),
+        ("", "\"\""),
+        ("google.com", "\"google.com\""),
+        ("a b", "\"a b\""),
+        ("a\"b", "\"a\\\"b\""),
+        ("a\\b", "\"a\\\\b\""),
+        ("\u{08}", "\"\\b\""),
+        ("\t", "\"\\t\""),
+        ("\n", "\"\\n\""),
+        ("\u{0c}", "\"\\f\""),
+        ("\r", "\"\\r\""),
+        ("\u{01}", "\"\\u0001\""),
+        ("\u{1f}", "\"\\u001f\""),
+        ("café", "\"café\""),
+    ];
+    for (key, want) in cases {
+        assert_eq!(encode_path_key(key), want, "encode_path_key({key:?})");
+    }
 }

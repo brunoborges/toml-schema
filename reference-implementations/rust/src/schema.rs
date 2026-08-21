@@ -123,6 +123,51 @@ pub const DEFINITION_KEYS: &[&str] = &[
 
 pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0";
 
+/// Every diagnostic `code` this implementation can emit. Each entry MUST appear
+/// in the shared registry (`conformance/codes.toml`), or match the extension
+/// pattern; `tests/conformance_corpus.rs` guards this to catch code-literal
+/// typos, mirroring the ABNF vocabulary guard.
+pub const EMITTABLE_DIAGNOSTIC_CODES: &[&str] = &[
+    // Validation codes.
+    "type-mismatch",
+    "missing-required",
+    "unknown-key",
+    "allowedvalues",
+    "pattern",
+    "format",
+    "keypattern",
+    "min",
+    "max",
+    "minlength",
+    "maxlength",
+    "uniqueitems",
+    "tuple-length",
+    "oneof",
+    "anyof",
+    "dependentrequired",
+    "mutuallyexclusive",
+    "exactlyone",
+    "deprecated",
+    // Schema-load codes.
+    "unrecognized-property",
+    "inapplicable-property",
+    "exclusive-properties",
+    "unresolved-reference",
+    "duplicate-reference",
+    "inverted-range",
+    "invalid-boundary",
+    "invalid-pattern",
+    "unsupported-pattern",
+    "cyclic-reference",
+    "incompatible-composition",
+    "invalid-default",
+    "unsupported-version",
+    "schema-malformed",
+    // Extension code for TOML documents that are not parseable at all; SPEC.md
+    // excludes a raw parse failure from the registry, so it is reported under
+    // the reserved `x-` namespace.
+];
+
 fn is_definition_key(key: &str) -> bool {
     DEFINITION_KEYS.contains(&key)
 }
@@ -170,6 +215,13 @@ pub struct Definition {
     unique_items: Option<bool>,
     default_value: Option<Value>,
     deprecated: bool,
+    /// Schema-tree path segments to this definition's table (e.g.
+    /// `["elements", "port"]`), used to build diagnostic schema paths.
+    schema_path: Vec<String>,
+    /// Schema-tree path of the table where `deprecated = true` was declared,
+    /// which is the use site for a local annotation and the referenced
+    /// definition when inherited through a `type`/`itemtype` reference.
+    deprecated_at: Option<Vec<String>>,
     children: BTreeMap<String, Definition>,
 }
 
@@ -236,14 +288,105 @@ impl Definition {
     pub fn child_definition(&self, name: &str) -> Option<&Definition> {
         self.children.get(name)
     }
+
+    /// Builds this definition's schema path (`### Schema Path`), optionally
+    /// ending at a declared property such as `min` or `type`.
+    fn schema_path(&self, property: Option<&str>) -> String {
+        schema_path_string(&self.schema_path, property)
+    }
+
+    /// Schema path of this definition's `deprecated` annotation, pointing at the
+    /// table where `deprecated = true` was declared (use site or referenced
+    /// definition).
+    fn deprecated_schema_path(&self) -> Option<String> {
+        self.deprecated_at
+            .as_ref()
+            .map(|segments| schema_path_string(segments, Some("deprecated")))
+    }
 }
 
-/// A single validation error.
+/// The phase in which a diagnostic was produced, per SPEC.md `### Phases`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticPhase {
+    Discovery,
+    SchemaLoad,
+    Validation,
+}
+
+impl DiagnosticPhase {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DiagnosticPhase::Discovery => "discovery",
+            DiagnosticPhase::SchemaLoad => "schema-load",
+            DiagnosticPhase::Validation => "validation",
+        }
+    }
+}
+
+impl fmt::Display for DiagnosticPhase {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// Severity of a diagnostic, per SPEC.md `### Severity`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Error,
+    Warning,
+}
+
+impl DiagnosticSeverity {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            DiagnosticSeverity::Error => "error",
+            DiagnosticSeverity::Warning => "warning",
+        }
+    }
+}
+
+impl fmt::Display for DiagnosticSeverity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+/// One diagnostic record, per SPEC.md `### Diagnostic Record`. The same shape is
+/// used for errors and warnings across every phase; `path` carries the instance
+/// path for validation diagnostics (empty otherwise) and `schema_path` is set
+/// when the condition is attributable to a location in a schema document.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationError {
+pub struct Diagnostic {
+    pub phase: DiagnosticPhase,
+    pub severity: DiagnosticSeverity,
+    pub code: String,
     pub path: String,
+    pub schema_path: Option<String>,
     pub message: String,
 }
+
+impl Diagnostic {
+    /// The instance path (`### Instance Path`), or `None` when the diagnostic
+    /// does not identify a document node (discovery and schema-load).
+    pub fn instance_path(&self) -> Option<&str> {
+        if self.path.is_empty() {
+            None
+        } else {
+            Some(&self.path)
+        }
+    }
+
+    /// The schema path (`### Schema Path`), when the failing rule is
+    /// attributable to a location in a schema document.
+    pub fn schema_path(&self) -> Option<&str> {
+        self.schema_path.as_deref()
+    }
+}
+
+/// A validation error is a `Diagnostic` of severity `error`, phase `validation`.
+pub type ValidationError = Diagnostic;
+/// A validation warning is a `Diagnostic` of severity `warning`.
+pub type ValidationWarning = Diagnostic;
 
 /// Result of validating a document against a schema.
 #[derive(Debug, Clone, Default)]
@@ -266,19 +409,132 @@ impl ValidationResult {
     }
 }
 
-/// Severity of a non-fatal validation diagnostic.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DiagnosticSeverity {
-    Warning,
+/// A structured schema-load (or discovery) error. Its `Display` and `Deref<str>`
+/// surface the human message so existing callers can keep formatting or
+/// substring-matching it, while `code` and `schema_path` expose the normative
+/// diagnostic fields for the [`Diagnostic`] returned by [`SchemaError::to_diagnostic`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SchemaError {
+    pub phase: DiagnosticPhase,
+    pub code: String,
+    pub schema_path: Option<String>,
+    pub message: String,
 }
 
-/// A structured non-fatal validation diagnostic.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ValidationWarning {
-    pub severity: DiagnosticSeverity,
-    pub code: String,
-    pub path: String,
-    pub message: String,
+impl SchemaError {
+    /// Builds the normative [`Diagnostic`] for this error. Returns `None` when
+    /// the failure is a parser error that SPEC.md forbids assigning a registry
+    /// code (represented by an empty `code`).
+    pub fn to_diagnostic(&self) -> Option<Diagnostic> {
+        if self.code.is_empty() {
+            return None;
+        }
+        Some(Diagnostic {
+            phase: self.phase,
+            severity: DiagnosticSeverity::Error,
+            code: self.code.clone(),
+            path: String::new(),
+            schema_path: self.schema_path.clone(),
+            message: self.message.clone(),
+        })
+    }
+}
+
+impl std::ops::Deref for SchemaError {
+    type Target = str;
+    fn deref(&self) -> &str {
+        &self.message
+    }
+}
+
+impl fmt::Display for SchemaError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl From<SchemaError> for String {
+    fn from(error: SchemaError) -> String {
+        error.message
+    }
+}
+
+/// ASCII unit separator used to smuggle a structured `(code, schema_path)`
+/// header through the `String`-typed schema-load pipeline without disturbing the
+/// human message, which is kept as the trailing substring so existing
+/// `.contains(...)` checks continue to work. Decoded once at the load boundary
+/// by [`decode_schema_error`].
+const LOAD_HEADER_SEP: char = '\u{1}';
+
+/// Encodes a structured schema-load error into the `String` channel. `message`
+/// remains a trailing substring of the result.
+fn load_error(code: &str, schema_path: Option<&str>, message: impl fmt::Display) -> String {
+    format!(
+        "{code}{sep}{path}{sep}{message}",
+        sep = LOAD_HEADER_SEP,
+        path = schema_path.unwrap_or(""),
+    )
+}
+
+/// Decodes a schema-load error `String` (which may or may not carry a structured
+/// header) into a [`SchemaError`]. Un-encoded strings map to `schema-malformed`.
+fn decode_schema_error(phase: DiagnosticPhase, raw: String) -> SchemaError {
+    if raw.starts_with(LOAD_HEADER_SEP) {
+        // Parser-error marker: leading separator with empty code.
+        let rest = &raw[LOAD_HEADER_SEP.len_utf8()..];
+        return SchemaError {
+            phase,
+            code: String::new(),
+            schema_path: None,
+            message: rest.to_string(),
+        };
+    }
+    let mut parts = raw.splitn(3, LOAD_HEADER_SEP);
+    match (parts.next(), parts.next(), parts.next()) {
+        (Some(code), Some(schema_path), Some(message)) => SchemaError {
+            phase,
+            code: code.to_string(),
+            schema_path: if schema_path.is_empty() {
+                None
+            } else {
+                Some(schema_path.to_string())
+            },
+            message: message.to_string(),
+        },
+        _ => SchemaError {
+            phase,
+            code: "schema-malformed".to_string(),
+            schema_path: None,
+            message: raw,
+        },
+    }
+}
+
+/// Marks a message as a parser error (no registry code), for TOML parse
+/// failures of the schema source that SPEC.md excludes from the registry.
+fn parser_error(message: impl fmt::Display) -> String {
+    format!("{LOAD_HEADER_SEP}{message}")
+}
+
+/// Builds a schema-path string from schema-tree segments and an optional final
+/// property name.
+fn schema_path_string(segments: &[String], property: Option<&str>) -> String {
+    let mut path = String::from("$");
+    for segment in segments {
+        path.push('.');
+        path.push_str(&encode_path_key(segment));
+    }
+    if let Some(property) = property {
+        path.push('.');
+        path.push_str(&encode_path_key(property));
+    }
+    path
+}
+
+/// Builds a schema path from a dotted definition name such as `elements.x`.
+fn schema_path_from_name(name: &str, property: Option<&str>) -> String {
+    let segments: Vec<String> = name.split('.').map(str::to_string).collect();
+    schema_path_string(&segments, property)
 }
 
 /// A loaded TOML Schema document.
@@ -373,10 +629,14 @@ impl<'a> SyntaxContext<'a> {
 
 impl Schema {
     /// Loads a TOML Schema document from a filesystem path.
-    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, String> {
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, SchemaError> {
         let path = path.as_ref();
-        let content = read_toml_source(path)
-            .map_err(|error| format!("unable to parse schema {}: {}", path.display(), error))?;
+        let content = read_toml_source(path).map_err(|error| {
+            decode_schema_error(
+                DiagnosticPhase::SchemaLoad,
+                parser_error(format!("unable to parse schema {}: {}", path.display(), error)),
+            )
+        })?;
         Self::from_source(path.to_path_buf(), &content)
     }
 
@@ -385,11 +645,16 @@ impl Schema {
     /// This is the syntax-preserving entry point: inline-table annotations such
     /// as `default = { min = 1 }` are distinguished from child definitions such
     /// as `[elements.thing.default]` using source spans.
-    pub fn from_source(source: PathBuf, text: &str) -> Result<Self, String> {
-        let parsed = parse_toml_str(&source, text)
-            .map_err(|error| format!("unable to parse schema {}: {}", source.display(), error))?;
+    pub fn from_source(source: PathBuf, text: &str) -> Result<Self, SchemaError> {
+        let parsed = parse_toml_str(&source, text).map_err(|error| {
+            decode_schema_error(
+                DiagnosticPhase::SchemaLoad,
+                parser_error(format!("unable to parse schema {}: {}", source.display(), error)),
+            )
+        })?;
         let syntax = SourceSyntax::from_source(text);
         Self::from_parts(source, parsed, &syntax)
+            .map_err(|error| decode_schema_error(DiagnosticPhase::SchemaLoad, error))
     }
 
     /// Builds a schema from an already-parsed TOML Schema root table.
@@ -398,8 +663,9 @@ impl Schema {
     /// tables and table headers, so every table-valued schema keyword is read as
     /// a child definition. Use [`Schema::from_source`] when inline-table
     /// annotations such as `default = { ... }` must be honoured.
-    pub fn from_table(source: PathBuf, table: Table) -> Result<Self, String> {
+    pub fn from_table(source: PathBuf, table: Table) -> Result<Self, SchemaError> {
         Self::from_parts(source, table, &SourceSyntax::default())
+            .map_err(|error| decode_schema_error(DiagnosticPhase::SchemaLoad, error))
     }
 
     fn from_parts(source: PathBuf, table: Table, syntax: &SourceSyntax) -> Result<Self, String> {
@@ -492,10 +758,18 @@ impl Schema {
             );
         };
         if captures.get(1).map(|major| major.as_str()) != Some("1") {
-            return Err(format!("unsupported TOML Schema major version: {version}"));
+            return Err(load_error(
+                "unsupported-version",
+                Some(&schema_path_from_name("toml-schema", Some("version"))),
+                format!("unsupported TOML Schema major version: {version}"),
+            ));
         }
         if captures.get(2).map(|minor| minor.as_str()) != Some("0") {
-            return Err(format!("unsupported TOML Schema minor version: {version}"));
+            return Err(load_error(
+                "unsupported-version",
+                Some(&schema_path_from_name("toml-schema", Some("version"))),
+                format!("unsupported TOML Schema minor version: {version}"),
+            ));
         }
         Ok(())
     }
@@ -548,25 +822,40 @@ impl Schema {
         definitions: &BTreeMap<String, Definition>,
     ) -> Result<(), String> {
         for definition in definitions.values() {
-            for reference in definition
+            let labelled = definition
                 .reference
                 .iter()
-                .chain(definition.item_reference.iter())
-                .chain(definition.items.iter())
-                .chain(definition.one_of.iter())
-                .chain(definition.any_of.iter())
+                .map(|reference| ("type", reference))
+                .chain(
+                    definition
+                        .item_reference
+                        .iter()
+                        .map(|reference| ("itemtype", reference)),
+                )
+                .chain(definition.items.iter().map(|reference| ("items", reference)))
+                .chain(definition.one_of.iter().map(|reference| ("oneof", reference)))
+                .chain(definition.any_of.iter().map(|reference| ("anyof", reference)))
                 .chain(
                     definition
                         .conditional
                         .iter()
-                        .flat_map(|selector| [&selector.then_reference, &selector.else_reference]),
+                        .flat_map(|selector| {
+                            [
+                                ("then", &selector.then_reference),
+                                ("else", &selector.else_reference),
+                            ]
+                        }),
                 )
-                .chain(definition.all_of.iter())
-            {
+                .chain(definition.all_of.iter().map(|reference| ("allof", reference)));
+            for (property, reference) in labelled {
                 if SchemaType::parse(reference).is_none() && !self.types.contains_key(reference) {
-                    return Err(format!(
-                        "{} contains unknown type reference: {reference}",
-                        definition.name
+                    return Err(load_error(
+                        "unresolved-reference",
+                        Some(&schema_path_from_name(&definition.name, Some(property))),
+                        format!(
+                            "{} contains unknown type reference: {reference}",
+                            definition.name
+                        ),
                     ));
                 }
             }
@@ -593,8 +882,10 @@ impl Schema {
             return Ok(());
         }
         if !visiting.insert(type_name.to_string()) {
-            return Err(format!(
-                "cyclic type selector reference involving types.{type_name}"
+            return Err(load_error(
+                "cyclic-reference",
+                Some(&schema_path_from_name(&format!("types.{type_name}"), None)),
+                format!("cyclic type selector reference involving types.{type_name}"),
             ));
         }
         let Some(definition) = self.types.get(type_name) else {
@@ -846,16 +1137,24 @@ impl Schema {
             for reference in &definition.all_of {
                 let component_kind = self.reference_kind(reference, seen)?;
                 if component_kind == SchemaType::Any {
-                    return Err(format!(
-                        "{} allof component {reference} has indeterminate effective type",
-                        definition.name
+                    return Err(load_error(
+                        "incompatible-composition",
+                        Some(&schema_path_from_name(&definition.name, Some("allof"))),
+                        format!(
+                            "{} allof component {reference} has indeterminate effective type",
+                            definition.name
+                        ),
                     ));
                 }
                 if let Some(base_kind) = effective {
                     if component_kind != base_kind {
-                        return Err(format!(
-                            "{} allof component {reference} has incompatible effective type",
-                            definition.name
+                        return Err(load_error(
+                            "incompatible-composition",
+                            Some(&schema_path_from_name(&definition.name, Some("allof"))),
+                            format!(
+                                "{} allof component {reference} has incompatible effective type",
+                                definition.name
+                            ),
                         ));
                     }
                 } else {
@@ -863,7 +1162,11 @@ impl Schema {
                 }
             }
             return effective.ok_or_else(|| {
-                format!("{} allof has no determinate effective type", definition.name)
+                load_error(
+                    "incompatible-composition",
+                    Some(&schema_path_from_name(&definition.name, Some("allof"))),
+                    format!("{} allof has no determinate effective type", definition.name),
+                )
             });
         }
         if matches!(base_kind, Some(SchemaType::Any)) {
@@ -1005,9 +1308,10 @@ impl Schema {
                     .map(|error| format!("{}: {}", error.path, error.message))
                     .collect::<Vec<_>>()
                     .join("; ");
-                return Err(format!(
-                    "{} has invalid effective default: {details}",
-                    definition.name
+                return Err(load_error(
+                    "invalid-default",
+                    Some(&schema_path_from_name(&definition.name, Some("default"))),
+                    format!("{} has invalid effective default: {details}", definition.name),
                 ));
             }
         }
@@ -1038,15 +1342,23 @@ impl Schema {
             if has_range || has_string_constraint {
                 let item_type = self.member_item_type(definition)?;
                 if has_string_constraint && item_type != SchemaType::String {
-                    return Err(format!(
-                        "{} can only define pattern or format when itemtype resolves to string",
-                        definition.name
+                    return Err(load_error(
+                        "inapplicable-property",
+                        Some(&schema_path_from_name(&definition.name, Some("pattern"))),
+                        format!(
+                            "{} can only define pattern or format when itemtype resolves to string",
+                            definition.name
+                        ),
                     ));
                 }
                 if has_range && !item_type.is_range_comparable() {
-                    return Err(format!(
-                        "{} can only define min or max when itemtype resolves to one comparable built-in type",
-                        definition.name
+                    return Err(load_error(
+                        "inapplicable-property",
+                        Some(&schema_path_from_name(&definition.name, Some("min"))),
+                        format!(
+                            "{} can only define min or max when itemtype resolves to one comparable built-in type",
+                            definition.name
+                        ),
                     ));
                 }
                 if has_range {
@@ -1088,9 +1400,13 @@ impl Schema {
         let mut types = HashSet::new();
         self.collect_reference_types(reference, &mut HashSet::new(), &mut types)?;
         if types.len() != 1 {
-            return Err(format!(
-                "{} cannot define min or max when itemtype has mixed alternatives",
-                definition.name
+            return Err(load_error(
+                "inapplicable-property",
+                Some(&schema_path_from_name(&definition.name, Some("min"))),
+                format!(
+                    "{} cannot define min or max when itemtype has mixed alternatives",
+                    definition.name
+                ),
             ));
         }
         let item_type = *types.iter().next().expect("one item type");
@@ -1114,9 +1430,13 @@ impl Schema {
             if present
                 && self.reference_has_constraint(reference, property, &mut HashSet::new())?
             {
-                return Err(format!(
-                    "{} defines {property} both inline and on its resolved itemtype",
-                    definition.name
+                return Err(load_error(
+                    "exclusive-properties",
+                    Some(&schema_path_from_name(&definition.name, None)),
+                    format!(
+                        "{} defines {property} both inline and on its resolved itemtype",
+                        definition.name
+                    ),
                 ));
             }
         }
@@ -1205,17 +1525,18 @@ impl Schema {
     }
 
     /// Validates the TOML document at `path` against this schema.
-    pub fn validate_file<P: AsRef<Path>>(&self, path: P) -> ValidationResult {
+    ///
+    /// A document that is not well-formed TOML never reaches the validator, so
+    /// its parse failure is returned as an `Err` rather than as a diagnostic.
+    /// `SPEC.md` (`### TOML Version Baseline`) requires that such a failure is
+    /// "a parse error rather than a validation diagnostic", that it is not
+    /// reported under any registry or extension code, and that the document is
+    /// not reported as invalid.
+    pub fn validate_file<P: AsRef<Path>>(&self, path: P) -> Result<ValidationResult, String> {
         let path = path.as_ref();
         match parse_toml_file(path) {
-            Ok(table) => self.validate(&table),
-            Err(error) => ValidationResult {
-                errors: vec![ValidationError {
-                    path: "$".to_string(),
-                    message: error,
-                }],
-                warnings: Vec::new(),
-            },
+            Ok(table) => Ok(self.validate(&table)),
+            Err(error) => Err(error),
         }
     }
 
@@ -1225,7 +1546,12 @@ impl Schema {
         validator.validate_table("$", document, &self.elements);
         for key in document.keys() {
             if !self.elements.contains_key(key) && key != "toml-schema" {
-                validator.add(&append_path("$", key), "unexpected key");
+                validator.err(
+                    &append_path("$", key),
+                    "unknown-key",
+                    Some("$.elements".to_string()),
+                    "unexpected key",
+                );
             }
         }
         ValidationResult {
@@ -1392,16 +1718,24 @@ fn parse_definitions(
     let mut definitions = BTreeMap::new();
     for (key, value) in table.iter() {
         if prefix == "types" && SchemaType::parse(key).is_some() {
-            return Err(format!("[types.{key}] uses a reserved built-in type name"));
+            return Err(load_error(
+                "schema-malformed",
+                Some(&schema_path_from_name(&format!("types.{key}"), None)),
+                format!("[types.{key}] uses a reserved built-in type name"),
+            ));
         }
         if prefix == "types" && key.starts_with("types.") {
             return Err(format!(
                 "[types.{key}] uses the reserved type-reference prefix"
             ));
         }
-        let value_map = value
-            .as_table()
-            .ok_or_else(|| format!("[{prefix}] entry must be a table: {key}"))?;
+        let value_map = value.as_table().ok_or_else(|| {
+            load_error(
+                "schema-malformed",
+                Some(&schema_path_from_name(prefix, None)),
+                format!("[{prefix}] entry must be a table: {key}"),
+            )
+        })?;
         let path = context.child_path(key);
         let definition =
             parse_definition(&format!("{prefix}.{key}"), value_map, context.child(&path))?;
@@ -1436,8 +1770,10 @@ fn parse_definition(
     let has_items = property_value(table, "items").is_some();
     let items = get_string_array_values(name, table, "items")?;
     if has_items && items.is_empty() {
-        return Err(format!(
-            "{name} items must contain at least one type reference"
+        return Err(load_error(
+            "schema-malformed",
+            Some(&schema_path_from_name(name, Some("items"))),
+            format!("{name} items must contain at least one type reference"),
         ));
     }
     let optional = get_bool(name, table, "optional")?.unwrap_or(false);
@@ -1487,7 +1823,11 @@ fn parse_definition(
             .as_ref()
             .is_some_and(|value| !matches!(value, Value::Table(_)))
     {
-        return Err(format!("{name} conditional default must be a table"));
+        return Err(load_error(
+            "invalid-default",
+            Some(&schema_path_from_name(name, Some("default"))),
+            format!("{name} conditional default must be a table"),
+        ));
     }
     if has_one_of && one_of.is_empty() {
         return Err(format!(
@@ -1523,8 +1863,10 @@ fn parse_definition(
         + usize::from(has_any_of)
         + usize::from(conditional.is_some());
     if type_selectors > 1 {
-        return Err(format!(
-            "{name} cannot define more than one of type, oneof, anyof, and if/then/else"
+        return Err(load_error(
+            "exclusive-properties",
+            Some(&schema_path_from_name(name, None)),
+            format!("{name} cannot define more than one of type, oneof, anyof, and if/then/else"),
         ));
     }
     let mut children: BTreeMap<String, Definition> = BTreeMap::new();
@@ -1582,7 +1924,11 @@ fn parse_definition(
             )?;
             children.insert(key.clone(), child);
         } else if !is_definition_key(key) {
-            return Err(format!("{name} contains unsupported property: {key}"));
+            return Err(load_error(
+                "unrecognized-property",
+                Some(&schema_path_from_name(name, Some(key))),
+                format!("{name} contains unsupported property: {key}"),
+            ));
         }
     }
     if has_one_of || has_any_of {
@@ -1646,7 +1992,11 @@ fn parse_definition(
     }
     if !items.is_empty() {
         if item_reference.is_some() {
-            return Err(format!("{name} cannot define both items and itemtype"));
+            return Err(load_error(
+                "exclusive-properties",
+                Some(&schema_path_from_name(name, None)),
+                format!("{name} cannot define both items and itemtype"),
+            ));
         }
         if min_length.is_some() || max_length.is_some() {
             return Err(format!(
@@ -1670,8 +2020,10 @@ fn parse_definition(
         }
     }
     if key_pattern.is_some() && type_name != Some(SchemaType::Collection) {
-        return Err(format!(
-            "{name} can only define keypattern when type is collection"
+        return Err(load_error(
+            "inapplicable-property",
+            Some(&schema_path_from_name(name, Some("keypattern"))),
+            format!("{name} can only define keypattern when type is collection"),
         ));
     }
     if pattern.is_some()
@@ -1680,8 +2032,10 @@ fn parse_definition(
             Some(SchemaType::String | SchemaType::Array | SchemaType::Collection)
         )
     {
-        return Err(format!(
-            "{name} can only define pattern when type is string"
+        return Err(load_error(
+            "inapplicable-property",
+            Some(&schema_path_from_name(name, Some("pattern"))),
+            format!("{name} can only define pattern when type is string"),
         ));
     }
     if string_format.is_some()
@@ -1690,13 +2044,17 @@ fn parse_definition(
             Some(SchemaType::String | SchemaType::Array | SchemaType::Collection)
         )
     {
-        return Err(format!(
-            "{name} can only define format when type is string"
+        return Err(load_error(
+            "inapplicable-property",
+            Some(&schema_path_from_name(name, Some("format"))),
+            format!("{name} can only define format when type is string"),
         ));
     }
     if has_allowed_values && type_name == Some(SchemaType::Table) {
-        return Err(format!(
-            "{name} can only define allowedvalues for scalar, unconstrained, or array types"
+        return Err(load_error(
+            "inapplicable-property",
+            Some(&schema_path_from_name(name, Some("allowedvalues"))),
+            format!("{name} can only define allowedvalues for scalar, unconstrained, or array types"),
         ));
     }
     if (min_length.is_some() || max_length.is_some())
@@ -1705,13 +2063,20 @@ fn parse_definition(
             Some(SchemaType::String | SchemaType::Array | SchemaType::Collection)
         )
     {
-        return Err(format!(
-            "{name} can only define minlength or maxlength when type is string, array, or collection"
+        let property = if min_length.is_some() { "minlength" } else { "maxlength" };
+        return Err(load_error(
+            "inapplicable-property",
+            Some(&schema_path_from_name(name, Some(property))),
+            format!(
+                "{name} can only define minlength or maxlength when type is string, array, or collection"
+            ),
         ));
     }
     if type_name == Some(SchemaType::Collection) && item_reference.is_none() && all_of.is_empty() {
-        return Err(format!(
-            "{name} must define itemtype when type is collection"
+        return Err(load_error(
+            "schema-malformed",
+            Some(&schema_path_from_name(name, None)),
+            format!("{name} must define itemtype when type is collection"),
         ));
     }
     if let (Some(min), Some(max)) = (min_length, max_length) {
@@ -1761,6 +2126,12 @@ fn parse_definition(
         unique_items,
         default_value,
         deprecated,
+        schema_path: context.path.to_vec(),
+        deprecated_at: if deprecated {
+            Some(context.path.to_vec())
+        } else {
+            None
+        },
         children,
     })
 }
@@ -1862,8 +2233,12 @@ fn validate_alternative_references(
             return Err(format!("{name} cannot use any directly in {property}"));
         }
         if let Some(first) = seen.insert(normalized.clone(), reference) {
-            return Err(format!(
-                "{name} {property} contains duplicate type references {first:?} and {reference:?}; both resolve to {normalized}"
+            return Err(load_error(
+                "duplicate-reference",
+                Some(&schema_path_from_name(name, Some(property))),
+                format!(
+                    "{name} {property} contains duplicate type references {first:?} and {reference:?}; both resolve to {normalized}"
+                ),
             ));
         }
     }
@@ -1980,10 +2355,18 @@ fn validate_range_constraints(
     validate_range_boundary(name, "min", min)?;
     validate_range_boundary(name, "max", max)?;
     if is_nan(min) {
-        return Err(format!("{name} cannot use NaN as min"));
+        return Err(load_error(
+            "invalid-boundary",
+            Some(&schema_path_from_name(name, Some("min"))),
+            format!("{name} cannot use NaN as min"),
+        ));
     }
     if is_nan(max) {
-        return Err(format!("{name} cannot use NaN as max"));
+        return Err(load_error(
+            "invalid-boundary",
+            Some(&schema_path_from_name(name, Some("max"))),
+            format!("{name} cannot use NaN as max"),
+        ));
     }
     if type_name == Some(SchemaType::Any) {
         return Err(format!("{name} cannot define min or max when type is any"));
@@ -2016,15 +2399,21 @@ fn validate_ordered_range(
     if comparable_kind == SchemaType::Integer {
         for (key, boundary) in [("min", min), ("max", max)] {
             if matches!(boundary, Some(Value::Float(value)) if value.is_infinite()) {
-                return Err(format!(
-                    "{name} cannot use infinity as {key} when comparable kind is integer"
+                return Err(load_error(
+                    "invalid-boundary",
+                    Some(&schema_path_from_name(name, Some(key))),
+                    format!("{name} cannot use infinity as {key} when comparable kind is integer"),
                 ));
             }
         }
     }
     if let (Some(min), Some(max)) = (min, max) {
         if compare(min, max)? == std::cmp::Ordering::Greater {
-            return Err(format!("{name} min must not be greater than max"));
+            return Err(load_error(
+                "inverted-range",
+                Some(&schema_path_from_name(name, None)),
+                format!("{name} min must not be greater than max"),
+            ));
         }
     }
     Ok(())
@@ -2085,6 +2474,38 @@ fn boundary_matches_type(value: &Value, type_name: SchemaType) -> bool {
 
 #[allow(clippy::too_many_arguments)]
 fn validate_allowed_values_constraints(
+    name: &str,
+    type_name: Option<SchemaType>,
+    allowed_values: &[Value],
+    pattern: Option<&Regex>,
+    string_format: Option<StringFormat>,
+    min: Option<&Value>,
+    max: Option<&Value>,
+    min_length: Option<i64>,
+    max_length: Option<i64>,
+) -> Result<(), String> {
+    validate_allowed_values_constraints_inner(
+        name,
+        type_name,
+        allowed_values,
+        pattern,
+        string_format,
+        min,
+        max,
+        min_length,
+        max_length,
+    )
+    .map_err(|message| {
+        load_error(
+            "schema-malformed",
+            Some(&schema_path_from_name(name, Some("allowedvalues"))),
+            message,
+        )
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_allowed_values_constraints_inner(
     name: &str,
     type_name: Option<SchemaType>,
     allowed_values: &[Value],
@@ -2191,7 +2612,12 @@ impl<'schema> Validator<'schema> {
                 Some(value) => self.validate_value(&child_path, value, &resolved),
                 None => {
                     if !resolved.optional {
-                        self.add(&child_path, "required value is missing");
+                        self.err(
+                            &child_path,
+                            "missing-required",
+                            Some(resolved.schema_path(None)),
+                            "required value is missing",
+                        );
                     }
                 }
             }
@@ -2266,18 +2692,21 @@ impl<'schema> Validator<'schema> {
             conditional.type_name = Some(selected_kind);
             components.push(conditional);
 
-            let Value::Table(table) = value else {
-                self.validate_component_set(path, value, components);
-                return;
+            // A scalar (non-table) value can never satisfy the predicate, which
+            // requires a table key, so the `else` branch is selected. Validating
+            // against the selected branch attributes the resulting type-mismatch
+            // to where the branch's type is declared (its referenced definition).
+            let condition_matches = match value {
+                Value::Table(table) => table
+                    .get(&selector.key)
+                    .is_some_and(|actual| match &selector.predicate {
+                        ConditionPredicate::Equals(expected) => values_equal(actual, expected),
+                        ConditionPredicate::In(expected) => expected
+                            .iter()
+                            .any(|candidate| values_equal(actual, candidate)),
+                    }),
+                _ => false,
             };
-            let condition_matches = table
-                .get(&selector.key)
-                .is_some_and(|actual| match &selector.predicate {
-                    ConditionPredicate::Equals(expected) => values_equal(actual, expected),
-                    ConditionPredicate::In(expected) => expected
-                        .iter()
-                        .any(|candidate| values_equal(actual, candidate)),
-                });
             let reference = if condition_matches {
                 &selector.then_reference
             } else {
@@ -2355,9 +2784,11 @@ impl<'schema> Validator<'schema> {
             }
             let success = if !union.one_of.is_empty() {
                 if successful.len() != 1 {
-                    self.add(
+                    self.err(
                         path,
-                        &format!(
+                        "oneof",
+                        Some(union.schema_path(Some("oneof"))),
+                        format!(
                             "expected exactly one matching type from oneof but found {}",
                             successful.len()
                         ),
@@ -2381,7 +2812,12 @@ impl<'schema> Validator<'schema> {
                     true
                 }
             } else if successful.is_empty() {
-                self.add(path, "expected at least one matching type from anyof");
+                self.err(
+                    path,
+                    "anyof",
+                    Some(union.schema_path(Some("anyof"))),
+                    "expected at least one matching type from anyof",
+                );
                 false
             } else {
                 true
@@ -2391,7 +2827,7 @@ impl<'schema> Validator<'schema> {
                     self.merge_warnings(candidate.warnings);
                 }
                 if union.deprecated {
-                    self.add_deprecation(path);
+                    self.add_deprecation(path, union.deprecated_schema_path());
                 }
             }
             return;
@@ -2404,7 +2840,12 @@ impl<'schema> Validator<'schema> {
         };
         for component in &components {
             let component_type = component.type_name.unwrap_or(SchemaType::Any);
-            self.validate_type(path, value, component_type);
+            self.validate_type(
+                path,
+                value,
+                component_type,
+                Some(component.schema_path(Some("type"))),
+            );
         }
         if self.errors.len() != error_start {
             return;
@@ -2432,10 +2873,10 @@ impl<'schema> Validator<'schema> {
             }
             _ => {}
         }
-        if self.errors.len() == error_start
-            && components.iter().any(|component| component.deprecated)
-        {
-            self.add_deprecation(path);
+        if self.errors.len() == error_start {
+            if let Some(component) = components.iter().find(|component| component.deprecated) {
+                self.add_deprecation(path, component.deprecated_schema_path());
+            }
         }
     }
 
@@ -2450,7 +2891,7 @@ impl<'schema> Validator<'schema> {
         };
         for key in table.keys() {
             if !candidate_closure_names.contains(key) {
-                self.add(&append_path(path, key), "unexpected key");
+                self.err(&append_path(path, key), "unknown-key", None, "unexpected key");
             }
         }
     }
@@ -2461,9 +2902,15 @@ impl<'schema> Validator<'schema> {
             return;
         }
         self.validate_fixed_children(path, table, &children);
+        let table_schema_path = components.first().map(|component| component.schema_path(None));
         for key in table.keys() {
             if !children.contains_key(key) {
-                self.add(&append_path(path, key), "unexpected key");
+                self.err(
+                    &append_path(path, key),
+                    "unknown-key",
+                    table_schema_path.clone(),
+                    "unexpected key",
+                );
             }
         }
         self.validate_sibling_rules(path, table, components);
@@ -2482,9 +2929,11 @@ impl<'schema> Validator<'schema> {
             for definition in components {
                 if let Some(key_pattern) = &definition.key_pattern {
                     if !matches_pattern(key_pattern, key) {
-                        self.add(
+                        self.err(
                             &child_path,
-                            &format!("key does not match keypattern {}", key_pattern.as_str()),
+                            "keypattern",
+                            Some(definition.schema_path(Some("keypattern"))),
+                            format!("key does not match keypattern {}", key_pattern.as_str()),
                         );
                     }
                 }
@@ -2522,8 +2971,10 @@ impl<'schema> Validator<'schema> {
         if definition.unique_items == Some(true) {
             for right in 1..array.len() {
                 if (0..right).any(|left| values_equal(&array[left], &array[right])) {
-                    self.add(
+                    self.err(
                         &format!("{path}[{right}]"),
+                        "uniqueitems",
+                        Some(definition.schema_path(Some("uniqueitems"))),
                         "array item duplicates an earlier item while uniqueitems is true",
                     );
                 }
@@ -2557,9 +3008,11 @@ impl<'schema> Validator<'schema> {
 
     fn validate_tuple_array(&mut self, path: &str, array: &[Value], definition: &Definition) {
         if array.len() != definition.items.len() {
-            self.add(
+            self.err(
                 path,
-                &format!(
+                "tuple-length",
+                Some(definition.schema_path(Some("items"))),
+                format!(
                     "expected array length {} but found {}",
                     definition.items.len(),
                     array.len()
@@ -2581,15 +3034,19 @@ impl<'schema> Validator<'schema> {
         }
     }
 
-    fn validate_type(&mut self, path: &str, value: &Value, type_name: SchemaType) {
+    fn validate_type(
+        &mut self,
+        path: &str,
+        value: &Value,
+        type_name: SchemaType,
+        schema_path: Option<String>,
+    ) {
         if !value_matches_type(value, type_name) {
-            self.add(
+            self.err(
                 path,
-                &format!(
-                    "expected {} but found {}",
-                    type_name,
-                    type_name_of_value(value)
-                ),
+                "type-mismatch",
+                schema_path,
+                format!("expected {} but found {}", type_name, type_name_of_value(value)),
             );
         }
     }
@@ -2613,17 +3070,21 @@ impl<'schema> Validator<'schema> {
             self.validate_length(path, string_value.chars().count(), definition);
             if let Some(pattern) = &definition.pattern {
                 if !matches_pattern(pattern, string_value) {
-                    self.add(
+                    self.err(
                         path,
-                        &format!("does not match pattern {}", pattern.as_str()),
+                        "pattern",
+                        Some(definition.schema_path(Some("pattern"))),
+                        format!("does not match pattern {}", pattern.as_str()),
                     );
                 }
             }
             if let Some(string_format) = definition.string_format {
                 if !string_format.matches(string_value) {
-                    self.add(
+                    self.err(
                         path,
-                        &format!("does not satisfy format {}", string_format.name()),
+                        "format",
+                        Some(definition.schema_path(Some("format"))),
+                        format!("does not satisfy format {}", string_format.name()),
                     );
                 }
             }
@@ -2643,14 +3104,21 @@ impl<'schema> Validator<'schema> {
         if let Value::String(string_value) = value {
             if let Some(pattern) = &definition.pattern {
                 if !matches_pattern(pattern, string_value) {
-                    self.add(path, &format!("does not match pattern {}", pattern.as_str()));
+                    self.err(
+                        path,
+                        "pattern",
+                        Some(definition.schema_path(Some("pattern"))),
+                        format!("does not match pattern {}", pattern.as_str()),
+                    );
                 }
             }
             if let Some(string_format) = definition.string_format {
                 if !string_format.matches(string_value) {
-                    self.add(
+                    self.err(
                         path,
-                        &format!("does not satisfy format {}", string_format.name()),
+                        "format",
+                        Some(definition.schema_path(Some("format"))),
+                        format!("does not satisfy format {}", string_format.name()),
                     );
                 }
             }
@@ -2666,20 +3134,35 @@ impl<'schema> Validator<'schema> {
                 return;
             }
         }
-        self.add(path, "value is not in allowedvalues");
+        self.err(
+            path,
+            "allowedvalues",
+            Some(definition.schema_path(Some("allowedvalues"))),
+            "value is not in allowedvalues",
+        );
     }
 
     fn validate_range(&mut self, path: &str, value: &Value, definition: &Definition) {
         if let Some(min) = &definition.min {
             match compare(value, min) {
-                Ok(std::cmp::Ordering::Less) => self.add(path, "value is less than min"),
+                Ok(std::cmp::Ordering::Less) => self.err(
+                    path,
+                    "min",
+                    Some(definition.schema_path(Some("min"))),
+                    "value is less than min",
+                ),
                 Err(error) => self.add(path, &error),
                 _ => {}
             }
         }
         if let Some(max) = &definition.max {
             match compare(value, max) {
-                Ok(std::cmp::Ordering::Greater) => self.add(path, "value is greater than max"),
+                Ok(std::cmp::Ordering::Greater) => self.err(
+                    path,
+                    "max",
+                    Some(definition.schema_path(Some("max"))),
+                    "value is greater than max",
+                ),
                 Err(error) => self.add(path, &error),
                 _ => {}
             }
@@ -2690,12 +3173,22 @@ impl<'schema> Validator<'schema> {
         let length = length as i64;
         if let Some(min_length) = definition.min_length {
             if length < min_length {
-                self.add(path, "length is less than minlength");
+                self.err(
+                    path,
+                    "minlength",
+                    Some(definition.schema_path(Some("minlength"))),
+                    "length is less than minlength",
+                );
             }
         }
         if let Some(max_length) = definition.max_length {
             if length > max_length {
-                self.add(path, "length is greater than maxlength");
+                self.err(
+                    path,
+                    "maxlength",
+                    Some(definition.schema_path(Some("maxlength"))),
+                    "length is greater than maxlength",
+                );
             }
         }
     }
@@ -2738,6 +3231,11 @@ impl<'schema> Validator<'schema> {
         };
         resolved.default_value = definition.default_value.clone().or(resolved.default_value);
         resolved.deprecated = definition.deprecated || resolved.deprecated;
+        resolved.deprecated_at = if definition.deprecated {
+            definition.deprecated_at.clone()
+        } else {
+            resolved.deprecated_at
+        };
         Ok(resolved)
     }
 
@@ -2765,11 +3263,37 @@ impl<'schema> Validator<'schema> {
         result
     }
 
+    /// Records a validation error with the generic `schema-malformed` code and
+    /// no schema path. Used for internal resolution failures that a loaded
+    /// schema should have already rejected.
     fn add(&mut self, path: &str, message: &str) {
-        self.errors.push(ValidationError {
+        self.err(path, "schema-malformed", None, message);
+    }
+
+    /// Records a validation error with an explicit registry code and optional
+    /// schema path, deduplicating on `(code, instance_path, schema_path)`.
+    fn err(
+        &mut self,
+        path: &str,
+        code: &str,
+        schema_path: Option<String>,
+        message: impl Into<String>,
+    ) {
+        let diagnostic = Diagnostic {
+            phase: DiagnosticPhase::Validation,
+            severity: DiagnosticSeverity::Error,
+            code: code.to_string(),
             path: path.to_string(),
-            message: message.to_string(),
-        });
+            schema_path,
+            message: message.into(),
+        };
+        if !self.errors.iter().any(|existing| {
+            existing.code == diagnostic.code
+                && existing.path == diagnostic.path
+                && existing.schema_path == diagnostic.schema_path
+        }) {
+            self.errors.push(diagnostic);
+        }
     }
 
     fn validate_definitions(&mut self, path: &str, value: &Value, definitions: &[Definition]) {
@@ -2816,7 +3340,15 @@ impl<'schema> Validator<'schema> {
                     .unwrap_or(true)
             });
             if required {
-                self.add(&append_path(path, key), "required value is missing");
+                let schema_path = definitions
+                    .first()
+                    .map(|definition| definition.schema_path(None));
+                self.err(
+                    &append_path(path, key),
+                    "missing-required",
+                    schema_path,
+                    "required value is missing",
+                );
             }
         }
     }
@@ -2829,9 +3361,11 @@ impl<'schema> Validator<'schema> {
                 }
                 for child in required {
                     if !table.contains_key(child) {
-                        self.add(
+                        self.err(
                             &append_path(path, child),
-                            &format!("required because sibling {trigger} is present"),
+                            "dependentrequired",
+                            Some(definition.schema_path(Some("dependentrequired"))),
+                            format!("required because sibling {trigger} is present"),
                         );
                     }
                 }
@@ -2843,9 +3377,11 @@ impl<'schema> Validator<'schema> {
                     .map(String::as_str)
                     .collect();
                 if present.len() > 1 {
-                    self.add(
+                    self.err(
                         path,
-                        &format!(
+                        "mutuallyexclusive",
+                        Some(definition.schema_path(Some("mutuallyexclusive"))),
+                        format!(
                             "mutuallyexclusive group has multiple present children: {}",
                             present.join(", ")
                         ),
@@ -2859,9 +3395,11 @@ impl<'schema> Validator<'schema> {
                     .map(String::as_str)
                     .collect();
                 if present.len() != 1 {
-                    self.add(
+                    self.err(
                         path,
-                        &format!(
+                        "exactlyone",
+                        Some(definition.schema_path(Some("exactlyone"))),
+                        format!(
                             "exactlyone group requires one present child but found {}",
                             present.len()
                         ),
@@ -2871,17 +3409,23 @@ impl<'schema> Validator<'schema> {
         }
     }
 
-    fn add_deprecation(&mut self, path: &str) {
+    fn add_deprecation(&mut self, path: &str, schema_path: Option<String>) {
         if !self.emit_deprecations {
             return;
         }
         let warning = ValidationWarning {
+            phase: DiagnosticPhase::Validation,
             severity: DiagnosticSeverity::Warning,
             code: "deprecated".to_string(),
             path: path.to_string(),
+            schema_path,
             message: "value is deprecated".to_string(),
         };
-        if !self.warnings.contains(&warning) {
+        if !self.warnings.iter().any(|existing| {
+            existing.code == warning.code
+                && existing.path == warning.path
+                && existing.schema_path == warning.schema_path
+        }) {
             self.warnings.push(warning);
         }
     }
@@ -3376,7 +3920,7 @@ pub fn encode_path_key(key: &str) -> String {
             '\u{0c}' => encoded.push_str("\\f"),
             '\r' => encoded.push_str("\\r"),
             character if (character as u32) < 0x20 => {
-                encoded.push_str(&format!("\\u{:04X}", character as u32))
+                encoded.push_str(&format!("\\u{:04x}", character as u32))
             }
             character => encoded.push(character),
         }
@@ -3451,12 +3995,23 @@ fn get_pattern_key(name: &str, table: &Table, key: &str) -> Result<Option<Regex>
         return Ok(None);
     };
     validate_portable_pattern(name, key, &pattern)?;
-    Regex::new(&pattern)
-        .map(Some)
-        .map_err(|error| format!("invalid-pattern: {name} has invalid {key}: {error}"))
+    Regex::new(&pattern).map(Some).map_err(|error| {
+        load_error(
+            "invalid-pattern",
+            Some(&schema_path_from_name(name, Some(key))),
+            format!("{name} has invalid {key}: {error}"),
+        )
+    })
 }
 
 fn validate_portable_pattern(name: &str, key: &str, pattern: &str) -> Result<(), String> {
+    let unsupported = |message: String| {
+        load_error(
+            "unsupported-pattern",
+            Some(&schema_path_from_name(name, Some(key))),
+            message,
+        )
+    };
     let chars: Vec<char> = pattern.chars().collect();
     let mut index = 0;
     let mut in_character_class = false;
@@ -3468,9 +4023,9 @@ fn validate_portable_pattern(name: &str, key: &str, pattern: &str) -> Result<(),
                     '\\' | '.' | '^' | '$' | '*' | '+' | '?' | '(' | ')' | '[' | ']' | '{'
                         | '}' | '|' | '-' | 't' | 'n' | 'r' | 'f' | 'v' | 'a'
                 ) {
-                    return Err(format!(
-                        "unsupported-pattern: {name} {key} uses non-portable escape \\{escaped}"
-                    ));
+                    return Err(unsupported(format!(
+                        "{name} {key} uses non-portable escape \\{escaped}"
+                    )));
                 }
                 index += 2;
                 continue;
@@ -3484,17 +4039,17 @@ fn validate_portable_pattern(name: &str, key: &str, pattern: &str) -> Result<(),
             && chars.get(index + 1) == Some(&'?')
         {
             if chars.get(index + 2) != Some(&':') {
-                return Err(format!(
-                    "unsupported-pattern: {name} {key} uses non-portable group syntax"
-                ));
+                return Err(unsupported(format!(
+                    "{name} {key} uses non-portable group syntax"
+                )));
             }
         } else if !in_character_class
             && matches!(chars[index], '?' | '*' | '+' | '}')
             && matches!(chars.get(index + 1), Some('?' | '+'))
         {
-            return Err(format!(
-                "unsupported-pattern: {name} {key} uses a non-greedy or possessive quantifier"
-            ));
+            return Err(unsupported(format!(
+                "{name} {key} uses a non-greedy or possessive quantifier"
+            )));
         }
         index += 1;
     }

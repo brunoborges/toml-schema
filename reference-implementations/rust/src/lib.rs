@@ -9,6 +9,6 @@ pub mod extract;
 pub mod schema;
 
 pub use schema::{
-    Definition, DiagnosticSeverity, Schema, SchemaType, ValidationError, ValidationResult,
-    ValidationWarning, DEFINITION_KEYS,
+    encode_path_key, Definition, Diagnostic, DiagnosticPhase, DiagnosticSeverity, Schema,
+    SchemaError, SchemaType, ValidationError, ValidationResult, ValidationWarning, DEFINITION_KEYS,
 };

@@ -44,8 +44,9 @@ type = "string"
         );
 
         let error = Schema::load(schema_path).expect_err("duplicate reference must fail to load");
+        assert_eq!(error.code, "duplicate-reference");
         assert_eq!(
-            error,
+            error.message,
             format!(
                 "elements.value {property} contains duplicate type references \"types.foo\" and \"foo\"; both resolve to foo"
             )
@@ -73,6 +74,6 @@ items = ["types.coordinate", "types.coordinate"]
     let document_path = write(&directory, "tuple.toml", "point = [1.0, 2.0]\n");
 
     let schema = Schema::load(schema_path).expect("repeated tuple items must load");
-    let result = schema.validate_file(document_path);
+    let result = schema.validate_file(document_path).expect("document parses as TOML");
     assert!(result.valid(), "{:?}", result.errors);
 }

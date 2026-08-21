@@ -68,7 +68,13 @@ fn validate_explicit(
     err: &mut dyn Write,
 ) -> u8 {
     match Schema::load(schema_path) {
-        Ok(schema) => report(schema.validate_file(document_path), document_path, out, err),
+        Ok(schema) => match schema.validate_file(document_path) {
+            Ok(result) => report(result, document_path, out, err),
+            Err(error) => {
+                let _ = writeln!(err, "{error}");
+                2
+            }
+        },
         Err(error) => {
             let _ = writeln!(err, "{error}");
             2
@@ -120,7 +126,7 @@ fn report(
     }
     let _ = writeln!(err, "{document_path} is invalid:");
     for error in &result.errors {
-        let _ = writeln!(err, "  - {}: {}", error.path, error.message);
+        let _ = writeln!(err, "  - [{}] {}: {}", error.code, error.path, error.message);
     }
     1
 }
