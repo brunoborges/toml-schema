@@ -10,6 +10,13 @@ spec = "#### Allowed Values - `allowedvalues`"
 origin = "grok C1"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "type-mismatch"
+  instance_path = "$.port"
+  schema_path = "$.elements.port.type"
+
 [[case]]
 id = "c01-allowedvalues-kind-match-valid"
 expect = "valid"
@@ -34,6 +41,12 @@ spec = "#### Alternative Types - `oneof` and `anyof`"
 origin = "grok C3"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "duplicate-reference"
+  schema_path = "$.elements.x.oneof"
+
 [[case]]
 id = "c04-types-prefix-on-builtin-valid"
 expect = "valid"
@@ -49,6 +62,13 @@ summary = "conditional node whose document value is a scalar cannot satisfy eith
 spec = "#### Conditional Selection - `if`, `then`, and `else`"
 origin = "grok C5"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "type-mismatch"
+  instance_path = "$.db"
+  schema_path = "$.types.b.type"
 
 [[case]]
 id = "c06-recursion-through-consuming-edge-valid"
@@ -66,6 +86,11 @@ spec = "##### The Discriminator Key and Closed Branches"
 origin = "grok C7"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+
 [[case]]
 id = "c08-pure-mixin-valid"
 expect = "valid"
@@ -82,6 +107,12 @@ spec = "#### Minimum Value / Maximum Value - `min` and `max`"
 origin = "grok C9"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "inverted-range"
+  schema_path = "$.elements.x"
+
 [[case]]
 id = "c09-integer-infinite-boundary-error"
 expect = "schema-load-error"
@@ -89,6 +120,12 @@ summary = "inf is not a valid boundary on an integer definition"
 spec = "#### Minimum Value / Maximum Value - `min` and `max`"
 origin = "grok C9"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "invalid-boundary"
+  schema_path = "$.elements.x.max"
 
 [[case]]
 id = "c10-itemtype-builtin-table-valid"
@@ -106,6 +143,12 @@ spec = "#### Pattern - `pattern`"
 origin = "grok C11"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "invalid-pattern"
+  schema_path = "$.elements.x.pattern"
+
 [[case]]
 id = "c11-pattern-nonportable-error"
 expect = "schema-load-error"
@@ -113,6 +156,12 @@ summary = "pattern = \"\\d+\" uses a non-portable shorthand outside the RE2 prof
 spec = "#### Pattern - `pattern`"
 origin = "grok C11"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unsupported-pattern"
+  schema_path = "$.elements.x.pattern"
 
 [[case]]
 id = "c12-root-elements-as-definition-error"
@@ -122,6 +171,12 @@ spec = "**No open or dynamically keyed root.**"
 origin = "grok C12"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements"
+
 [[case]]
 id = "c13-deprecated-itemtype-still-valid"
 expect = "valid"
@@ -129,6 +184,20 @@ summary = "a deprecated array itemtype produces warnings per item but the docume
 spec = "**Attachment.**"
 origin = "grok C13"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "warning"
+  code = "deprecated"
+  instance_path = "$.list[0]"
+  schema_path = "$.types.item.deprecated"
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "warning"
+  code = "deprecated"
+  instance_path = "$.list[1]"
+  schema_path = "$.types.item.deprecated"
 
 [[case]]
 id = "c34-conditional-nontable-default-error"
@@ -138,6 +207,12 @@ spec = "#### Conditional Selection - `if`, `then`, and `else`"
 origin = "grok C34"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "invalid-default"
+  schema_path = "$.elements.db.default"
+
 [[case]]
 id = "c35-dotted-type-name-unresolved-error"
 expect = "schema-load-error"
@@ -145,6 +220,12 @@ summary = "unquoted [types.network.endpoint] creates type \"network\"; reference
 spec = "#### Resolution Algorithm"
 origin = "grok C35"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unresolved-reference"
+  schema_path = "$.elements.x.type"
 
 [[case]]
 id = "c14-conditional-absent-key-selects-else-valid"
@@ -162,6 +243,12 @@ spec = "#### Cycle Legality"
 origin = "grok C15"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "cyclic-reference"
+  schema_path = "$.types.a"
+
 [[case]]
 id = "c16-unresolved-reference-on-optional-error"
 expect = "schema-load-error"
@@ -170,6 +257,12 @@ spec = "#### Type Reference Restrictions"
 origin = "grok C16"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unresolved-reference"
+  schema_path = "$.elements.x.type"
+
 [[case]]
 id = "c17-reserved-builtin-type-name-error"
 expect = "schema-load-error"
@@ -177,6 +270,12 @@ summary = "a reusable definition may not take the reserved built-in name string"
 spec = "#### Built-in Names Are Reserved"
 origin = "grok C17"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.types.string"
 
 [[case]]
 id = "c18-collection-fixed-child-skips-keypattern-valid"
@@ -194,6 +293,12 @@ spec = "##### Tuple / Positional Array Validation - `items`"
 origin = "grok C19"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "exclusive-properties"
+  schema_path = "$.elements.x"
+
 [[case]]
 id = "c20-items-arity-mismatch-fail"
 expect = "validation-failure"
@@ -201,6 +306,13 @@ summary = "an items tuple requires exactly the declared number of positions"
 spec = "##### Tuple / Positional Array Validation - `items`"
 origin = "grok C20"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "tuple-length"
+  instance_path = "$.pair"
+  schema_path = "$.elements.pair.items"
 
 [[case]]
 id = "c20-empty-items-error"
@@ -210,6 +322,12 @@ spec = "##### Tuple / Positional Array Validation - `items`"
 origin = "grok C20"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.x.items"
+
 [[case]]
 id = "c21-uniqueitems-int-float-equal-fail"
 expect = "validation-failure"
@@ -217,6 +335,13 @@ summary = "uniqueitems treats 1 and 1.0 as equal under Parsed Value Equality"
 spec = "### Parsed Value Equality"
 origin = "grok C21"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "uniqueitems"
+  instance_path = "$.x[1]"
+  schema_path = "$.elements.x.uniqueitems"
 
 [[case]]
 id = "c21-uniqueitems-nan-equal-fail"
@@ -226,6 +351,13 @@ spec = "### Parsed Value Equality"
 origin = "grok C21"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "uniqueitems"
+  instance_path = "$.x[1]"
+  schema_path = "$.elements.x.uniqueitems"
+
 [[case]]
 id = "c22-permember-min-multikind-itemtype-error"
 expect = "schema-load-error"
@@ -233,6 +365,12 @@ summary = "min on an array whose oneof itemtype spans integer and float has no s
 spec = "#### Per-Member Value Constraints"
 origin = "grok C22"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "inapplicable-property"
+  schema_path = "$.elements.x.min"
 
 [[case]]
 id = "c23-minlength-on-integer-error"
@@ -242,6 +380,12 @@ spec = "#### Length - `minlength` and `maxlength`"
 origin = "grok C23"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "inapplicable-property"
+  schema_path = "$.elements.x.minlength"
+
 [[case]]
 id = "c23-pattern-on-nonstring-member-error"
 expect = "schema-load-error"
@@ -249,6 +393,12 @@ summary = "pattern on an array whose member type is integer has no string member
 spec = "#### Per-Member Value Constraints"
 origin = "grok C23"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "inapplicable-property"
+  schema_path = "$.elements.x.pattern"
 
 [[case]]
 id = "c23-pattern-contradicting-allowedvalues-error"
@@ -258,6 +408,12 @@ spec = "#### Allowed Values - `allowedvalues`"
 origin = "grok C23"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.x.allowedvalues"
+
 [[case]]
 id = "c24-default-wrong-kind-error"
 expect = "schema-load-error"
@@ -266,6 +422,12 @@ spec = "#### Default - `default`"
 origin = "grok C24"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "invalid-default"
+  schema_path = "$.elements.x.default"
+
 [[case]]
 id = "c24-default-does-not-satisfy-required-fail"
 expect = "validation-failure"
@@ -273,6 +435,13 @@ summary = "a default on a required node does not insert and does not satisfy req
 spec = "#### Default - `default`"
 origin = "grok C24"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "missing-required"
+  instance_path = "$.x"
+  schema_path = "$.elements.x"
 
 [[case]]
 id = "c25-oneof-alternative-defaults-no-conflict-valid"
@@ -322,6 +491,13 @@ spec = "#### Alternative Types - `oneof` and `anyof`"
 origin = "grok C32"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "warning"
+  code = "deprecated"
+  instance_path = "$.v"
+  schema_path = "$.elements.v.deprecated"
+
 [[case]]
 id = "c33-conditional-plus-type-selector-error"
 expect = "schema-load-error"
@@ -329,6 +505,12 @@ summary = "combining a type selector with a conditional triple declares two sele
 spec = "### Selectors"
 origin = "grok C33"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "exclusive-properties"
+  schema_path = "$.elements.db"
 
 [[case]]
 id = "keyword-unknown-property-error"
@@ -338,6 +520,12 @@ spec = "### Schema Definition Properties"
 origin = "phase decision"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unrecognized-property"
+  schema_path = "$.elements.x.patttern"
+
 [[case]]
 id = "minmax-nan-boundary-error"
 expect = "schema-load-error"
@@ -345,6 +533,12 @@ summary = "nan is not a valid min/max boundary because NaN is unordered"
 spec = "#### Minimum Value / Maximum Value - `min` and `max`"
 origin = "phase decision"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "invalid-boundary"
+  schema_path = "$.elements.x.min"
 
 [[case]]
 id = "minmax-float-inf-boundary-valid"
@@ -362,6 +556,12 @@ spec = "#### Composition Supplying the Local Skeleton"
 origin = "phase decision"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "incompatible-composition"
+  schema_path = "$.types.bad.allof"
+
 [[case]]
 id = "allof-duplicate-component-error"
 expect = "schema-load-error"
@@ -369,6 +569,12 @@ summary = "allof = [\"types.a\",\"a\"] lists the same component twice"
 spec = "#### The Effective Definition"
 origin = "phase decision"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "duplicate-reference"
+  schema_path = "$.elements.x.allof"
 
 [[case]]
 id = "allof-intersection-valid"
@@ -386,6 +592,13 @@ spec = "#### Merging by TOML Kind"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "allowedvalues"
+  instance_path = "$.x"
+  schema_path = "$.types.bc.allowedvalues"
+
 [[case]]
 id = "permember-inline-valid"
 expect = "valid"
@@ -402,6 +615,13 @@ spec = "#### Per-Member Value Constraints"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "min"
+  instance_path = "$.ports[0]"
+  schema_path = "$.elements.ports.min"
+
 [[case]]
 id = "permember-double-declare-error"
 expect = "schema-load-error"
@@ -409,6 +629,12 @@ summary = "the same constraint declared inline and on the resolved itemtype is e
 spec = "#### Per-Member Value Constraints"
 origin = "phase decision"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "exclusive-properties"
+  schema_path = "$.elements.ports"
 
 [[case]]
 id = "permember-split-conjunctive-valid"
@@ -442,6 +668,13 @@ spec = "#### Per-Member Value Constraints"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "pattern"
+  instance_path = "$.tags[0]"
+  schema_path = "$.elements.tags.pattern"
+
 [[case]]
 id = "permember-pair-itemtype-valid"
 expect = "valid"
@@ -458,6 +691,13 @@ spec = "#### Per-Member Value Constraints"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "pattern"
+  instance_path = "$.tags[0]"
+  schema_path = "$.types.tag.pattern"
+
 [[case]]
 id = "length-container-count-fail"
 expect = "validation-failure"
@@ -466,6 +706,13 @@ spec = "#### Length - `minlength` and `maxlength`"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "minlength"
+  instance_path = "$.tags"
+  schema_path = "$.elements.tags.minlength"
+
 [[case]]
 id = "allowedvalues-string-minlength-consistency-error"
 expect = "schema-load-error"
@@ -473,6 +720,12 @@ summary = "on a string, minlength participates in the allowedvalues per-entry co
 spec = "#### Allowed Values - `allowedvalues`"
 origin = "phase decision"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.code.allowedvalues"
 
 [[case]]
 id = "allowedvalues-container-minlength-exempt-valid"
@@ -490,6 +743,12 @@ spec = "#### Allowed Values - `allowedvalues`"
 origin = "phase decision"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.ports.allowedvalues"
+
 [[case]]
 id = "pattern-anchored-fail"
 expect = "validation-failure"
@@ -498,6 +757,13 @@ spec = "#### Pattern - `pattern`"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "pattern"
+  instance_path = "$.x"
+  schema_path = "$.elements.x.pattern"
+
 [[case]]
 id = "keypattern-nonportable-error"
 expect = "schema-load-error"
@@ -505,6 +771,12 @@ summary = "keypattern obeys the same portable RE2 profile as pattern"
 spec = "#### Key Pattern - `keypattern`"
 origin = "phase decision"
 document = false
+
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unsupported-pattern"
+  schema_path = "$.elements.s.keypattern"
 
 [[case]]
 id = "conditional-then-branch-valid"
@@ -522,6 +794,13 @@ spec = "#### Tables"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "missing-required"
+  instance_path = "$.db.path"
+  schema_path = "$.types.sqlite.path"
+
 [[case]]
 id = "oneof-exactly-one-two-matches-fail"
 expect = "validation-failure"
@@ -529,6 +808,13 @@ summary = "oneof requires exactly one alternative to match; two overlapping matc
 spec = "#### Alternative Types - `oneof` and `anyof`"
 origin = "phase decision"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "oneof"
+  instance_path = "$.v"
+  schema_path = "$.elements.v.oneof"
 
 [[case]]
 id = "anyof-two-matches-valid"
@@ -546,6 +832,12 @@ spec = "#### Collection of Elements for Dynamic Keys"
 origin = "phase decision"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "schema-malformed"
+  schema_path = "$.elements.s"
+
 [[case]]
 id = "collection-itemtype-from-allof-valid"
 expect = "valid"
@@ -561,6 +853,13 @@ summary = "a closed table rejects an undeclared key"
 spec = "#### Tables"
 origin = "phase decision"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "unknown-key"
+  instance_path = "$.t.extra"
+  schema_path = "$.elements.t"
 
 [[case]]
 id = "table-open-accepts-anything-valid"
@@ -578,6 +877,12 @@ spec = "### Schema Versioning"
 origin = "phase decision"
 document = false
 
+  [[case.diagnostics]]
+  phase = "schema-load"
+  severity = "error"
+  code = "unsupported-version"
+  schema_path = "$.toml-schema.version"
+
 [[case]]
 id = "dependentrequired-fail"
 expect = "validation-failure"
@@ -585,6 +890,13 @@ summary = "when a dependentrequired trigger is present its dependents must also 
 spec = "##### Dependencies - `dependentrequired`"
 origin = "phase decision"
 document = true
+
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "dependentrequired"
+  instance_path = "$.dep.git"
+  schema_path = "$.elements.dep.dependentrequired"
 
 [[case]]
 id = "exactlyone-none-fail"
@@ -594,6 +906,13 @@ spec = "##### Exactly One - `exactlyone`"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "exactlyone"
+  instance_path = "$.r"
+  schema_path = "$.elements.r.exactlyone"
+
 [[case]]
 id = "mutuallyexclusive-fail"
 expect = "validation-failure"
@@ -602,3 +921,18 @@ spec = "##### Mutual Exclusion - `mutuallyexclusive`"
 origin = "phase decision"
 document = true
 
+  [[case.diagnostics]]
+  phase = "validation"
+  severity = "error"
+  code = "mutuallyexclusive"
+  instance_path = "$.s"
+  schema_path = "$.elements.s.mutuallyexclusive"
+
+
+[[case]]
+id = "document-not-well-formed-toml"
+expect = "document-parse-error"
+summary = "a document that is not well-formed TOML never reaches the validator and yields no diagnostics"
+spec = "a document that is not well-formed TOML never reaches a validator, and its parse failure is a parse error rather than a validation diagnostic"
+origin = "issue #169 diagnostics review"
+document = true

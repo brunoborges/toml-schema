@@ -1,0 +1,217 @@
+# Machine-readable form of the `### Code Registry` tables in SPEC.md.
+#
+# GENERATED FILE - do not hand-edit.
+# Regenerate: python3 conformance/tools/gen_codes.py
+# Verify:     python3 conformance/tools/gen_codes.py --check
+#
+# SPEC.md: "Implementations MUST NOT emit an unprefixed code that is not
+# in this registry." Conformance runners use this file for that check.
+
+# Implementation-specific codes are not listed individually; they are
+# matched by this pattern instead.
+extension_pattern = "^x-[a-z][a-z0-9]*-[a-z0-9-]+$"
+
+[[code]]
+name = "discovery-missing-location"
+severity = "error"
+phases = ["discovery"]
+
+[[code]]
+name = "discovery-invalid-metadata"
+severity = "error"
+phases = ["discovery"]
+
+[[code]]
+name = "discovery-unresolved-location"
+severity = "error"
+phases = ["discovery"]
+
+[[code]]
+name = "schema-retrieval-refused"
+severity = "error"
+phases = ["discovery"]
+
+[[code]]
+name = "schema-retrieval-failed"
+severity = "error"
+phases = ["discovery"]
+
+[[code]]
+name = "version-mismatch"
+severity = "warning"
+phases = ["discovery"]
+
+[[code]]
+name = "unsupported-version"
+severity = "error"
+phases = ["discovery", "schema-load"]
+
+[[code]]
+name = "resource-limit-exceeded"
+severity = "error"
+phases = ["discovery", "schema-load", "validation"]
+
+[[code]]
+name = "unrecognized-property"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "inapplicable-property"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "exclusive-properties"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "unresolved-reference"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "duplicate-reference"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "inverted-range"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "invalid-boundary"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "indeterminate-operand"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "invalid-pattern"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "unsupported-pattern"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "cyclic-reference"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "incompatible-composition"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "invalid-default"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "schema-malformed"
+severity = "error"
+phases = ["schema-load"]
+
+[[code]]
+name = "unknown-key"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "missing-required"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "type-mismatch"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "allowedvalues"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "pattern"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "format"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "min"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "max"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "minlength"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "maxlength"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "uniqueitems"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "tuple-length"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "keypattern"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "oneof"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "anyof"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "dependentrequired"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "mutuallyexclusive"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "exactlyone"
+severity = "error"
+phases = ["validation"]
+
+[[code]]
+name = "deprecated"
+severity = "warning"
+phases = ["validation"]
