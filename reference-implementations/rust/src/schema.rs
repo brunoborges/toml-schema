@@ -123,6 +123,13 @@ pub const DEFINITION_KEYS: &[&str] = &[
 
 pub const CURRENT_TOML_SCHEMA_VERSION: &str = "1.0.0";
 
+pub const DISCOVERY_MISSING_LOCATION: &str = "discovery-missing-location";
+pub const DISCOVERY_INVALID_METADATA: &str = "discovery-invalid-metadata";
+pub const DISCOVERY_UNRESOLVED_LOCATION: &str = "discovery-unresolved-location";
+pub const SCHEMA_RETRIEVAL_FAILED: &str = "schema-retrieval-failed";
+pub const SCHEMA_RETRIEVAL_REFUSED: &str = "schema-retrieval-refused";
+pub const VERSION_MISMATCH: &str = "version-mismatch";
+
 /// Every diagnostic `code` this implementation can emit. Each entry MUST appear
 /// in the shared registry (`conformance/codes.toml`), or match the extension
 /// pattern; `tests/conformance_corpus.rs` guards this to catch code-literal
@@ -164,6 +171,13 @@ pub const EMITTABLE_DIAGNOSTIC_CODES: &[&str] = &[
     "indeterminate-operand",
     "unsupported-version",
     "schema-malformed",
+    // Discovery codes.
+    DISCOVERY_MISSING_LOCATION,
+    DISCOVERY_INVALID_METADATA,
+    DISCOVERY_UNRESOLVED_LOCATION,
+    SCHEMA_RETRIEVAL_FAILED,
+    SCHEMA_RETRIEVAL_REFUSED,
+    VERSION_MISMATCH,
     // Extension code for TOML documents that are not parseable at all; SPEC.md
     // excludes a raw parse failure from the registry, so it is reported under
     // the reserved `x-` namespace.
@@ -544,6 +558,7 @@ pub struct Schema {
     source: PathBuf,
     version: String,
     warnings: Vec<String>,
+    discovery_diagnostics: Vec<Diagnostic>,
     types: BTreeMap<String, Definition>,
     elements: BTreeMap<String, Definition>,
 }
@@ -714,6 +729,7 @@ impl Schema {
             source,
             version,
             warnings: Vec::new(),
+            discovery_diagnostics: Vec::new(),
             types,
             elements,
         };
@@ -735,6 +751,11 @@ impl Schema {
     /// Returns non-fatal warnings produced while discovering this schema.
     pub fn warnings(&self) -> &[String] {
         &self.warnings
+    }
+
+    /// Returns structured, non-fatal diagnostics produced during discovery.
+    pub fn discovery_diagnostics(&self) -> &[Diagnostic] {
+        &self.discovery_diagnostics
     }
 
     /// Returns a root element definition.
@@ -1578,12 +1599,31 @@ impl Schema {
 /// `[toml-schema].location` and returns the schema together with the parsed
 /// document.
 pub fn schema_from_document<P: AsRef<Path>>(document_path: P) -> Result<(Schema, Table), String> {
+    discover_schema_from_document(document_path).map_err(String::from)
+}
+
+/// Discovers and loads the schema referenced by a document while preserving
+/// structured discovery and schema-load diagnostics.
+pub fn discover_schema_from_document<P: AsRef<Path>>(
+    document_path: P,
+) -> Result<(Schema, Table), SchemaError> {
     let document_path = document_path.as_ref();
-    let document = parse_toml_file(document_path)?;
-    let metadata = document
-        .get("toml-schema")
-        .and_then(Value::as_table)
-        .ok_or_else(|| "document does not contain [toml-schema].location".to_string())?;
+    let document = parse_toml_file(document_path).map_err(|message| SchemaError {
+        phase: DiagnosticPhase::Discovery,
+        code: String::new(),
+        schema_path: None,
+        message,
+    })?;
+    let metadata_value = document.get("toml-schema").ok_or_else(|| discovery_error(
+            DISCOVERY_MISSING_LOCATION,
+            None,
+            "document does not contain [toml-schema].location",
+        ))?;
+    let metadata = metadata_value.as_table().ok_or_else(|| discovery_error(
+        DISCOVERY_INVALID_METADATA,
+        Some("$.toml-schema"),
+        "document [toml-schema] metadata must be a table",
+    ))?;
     for (key, value) in metadata {
         if !matches!(
             value,
@@ -1593,58 +1633,128 @@ pub fn schema_from_document<P: AsRef<Path>>(document_path: P) -> Result<(Schema,
                 | Value::Boolean(_)
                 | Value::Datetime(_)
         ) {
-            return Err(format!(
-                "document [toml-schema].{key} must be a scalar value"
+            return Err(discovery_error(
+                DISCOVERY_INVALID_METADATA,
+                Some(&format!("$.toml-schema.{}", encode_path_key(key))),
+                format!("document [toml-schema].{key} must be a scalar value"),
             ));
         }
     }
-    let location = metadata
-        .get("location")
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|location| !location.is_empty())
-        .ok_or_else(|| "document does not contain [toml-schema].location".to_string())?;
+    let location_value = metadata.get("location").ok_or_else(|| discovery_error(
+        DISCOVERY_MISSING_LOCATION,
+        None,
+        "document does not contain [toml-schema].location",
+    ))?;
+    let location = location_value.as_str().ok_or_else(|| discovery_error(
+        DISCOVERY_INVALID_METADATA,
+        Some("$.toml-schema.location"),
+        "document [toml-schema].location must be a string",
+    ))?;
+    let location = location.trim();
+    if location.is_empty() {
+        return Err(discovery_error(
+            DISCOVERY_MISSING_LOCATION,
+            None,
+            "document does not contain [toml-schema].location",
+        ));
+    }
     let schema_path = resolve_schema_location(document_path, location)?;
-    let mut schema = Schema::load(&schema_path)?;
+    let source = fs::read_to_string(&schema_path).map_err(|error| discovery_error(
+        SCHEMA_RETRIEVAL_FAILED,
+        Some("$.toml-schema.location"),
+        format!("unable to retrieve schema {}: {error}", schema_path.display()),
+    ))?;
+    let mut schema = Schema::from_source(schema_path, &source)?;
     if let Some(expected_version) = metadata.get("version") {
-        if let Some(warning) = compare_document_schema_version(expected_version, &schema.version)? {
-            schema.warnings.push(warning);
+        let warning = compare_document_schema_version(expected_version, &schema.version)
+            .map_err(|message| {
+                let code = if message.starts_with("document expects TOML Schema major version") {
+                    "unsupported-version"
+                } else {
+                    DISCOVERY_INVALID_METADATA
+                };
+                discovery_error(code, Some("$.toml-schema.version"), message)
+            })?;
+        if let Some(warning) = warning {
+            schema.warnings.push(warning.clone());
+            schema.discovery_diagnostics.push(Diagnostic {
+                phase: DiagnosticPhase::Discovery,
+                severity: DiagnosticSeverity::Warning,
+                code: VERSION_MISMATCH.to_string(),
+                path: String::new(),
+                schema_path: Some("$.toml-schema.version".to_string()),
+                message: warning,
+            });
         }
     }
     Ok((schema, document))
 }
 
-fn resolve_schema_location(document_path: &Path, location: &str) -> Result<PathBuf, String> {
+fn discovery_error(code: &str, schema_path: Option<&str>, message: impl Into<String>) -> SchemaError {
+    SchemaError {
+        phase: DiagnosticPhase::Discovery,
+        code: code.to_string(),
+        schema_path: schema_path.map(str::to_string),
+        message: message.into(),
+    }
+}
+
+fn resolve_schema_location(document_path: &Path, location: &str) -> Result<PathBuf, SchemaError> {
     if has_non_hierarchical_file_scheme(location) {
-        return Err(format!("invalid file schema location: {location}"));
+        return Err(discovery_error(
+            DISCOVERY_UNRESOLVED_LOCATION,
+            Some("$.toml-schema.location"),
+            format!("invalid file schema location: {location}"),
+        ));
     }
     let absolute_document_path = if document_path.is_absolute() {
         document_path.to_path_buf()
     } else {
         std::env::current_dir()
-            .map_err(|error| format!("invalid current directory: {error}"))?
+            .map_err(|error| discovery_error(
+                DISCOVERY_UNRESOLVED_LOCATION,
+                Some("$.toml-schema.location"),
+                format!("invalid current directory: {error}"),
+            ))?
             .join(document_path)
     };
     let base = Url::from_file_path(&absolute_document_path)
-        .map_err(|_| format!("invalid document path: {}", document_path.display()))?;
+        .map_err(|_| discovery_error(
+            DISCOVERY_UNRESOLVED_LOCATION,
+            Some("$.toml-schema.location"),
+            format!("invalid document path: {}", document_path.display()),
+        ))?;
     let resolved = base
         .join(location)
-        .map_err(|error| format!("invalid [toml-schema].location URI: {location}: {error}"))?;
+        .map_err(|error| discovery_error(
+            DISCOVERY_UNRESOLVED_LOCATION,
+            Some("$.toml-schema.location"),
+            format!("invalid [toml-schema].location URI: {location}: {error}"),
+        ))?;
     if resolved.scheme() != "file" {
-        return Err(format!(
-            "unsupported schema location URI scheme: {}",
-            resolved.scheme()
+        return Err(discovery_error(
+            SCHEMA_RETRIEVAL_REFUSED,
+            Some("$.toml-schema.location"),
+            format!("unsupported schema location URI scheme: {}", resolved.scheme()),
         ));
     }
     if resolved.query().is_some()
         || resolved.fragment().is_some()
         || contains_percent_encoded_separator(resolved.path())
     {
-        return Err(format!("invalid file schema location: {location}"));
+        return Err(discovery_error(
+            DISCOVERY_UNRESOLVED_LOCATION,
+            Some("$.toml-schema.location"),
+            format!("invalid file schema location: {location}"),
+        ));
     }
     resolved
         .to_file_path()
-        .map_err(|_| format!("invalid file schema location: {location}"))
+        .map_err(|_| discovery_error(
+            DISCOVERY_UNRESOLVED_LOCATION,
+            Some("$.toml-schema.location"),
+            format!("invalid file schema location: {location}"),
+        ))
 }
 
 fn has_non_hierarchical_file_scheme(reference: &str) -> bool {

@@ -27,17 +27,20 @@ import {
 
 export type Severity = "error" | "warning";
 
-/** A single validation error or warning, addressed to a document path such as `$.a.b[2]`. */
-export interface ValidationError {
+/** A diagnostic produced during discovery, schema loading, or validation. */
+export interface Diagnostic {
   readonly phase: DiagnosticPhase;
   readonly severity: Severity;
   readonly code: string;
-  readonly path: string;
+  readonly path?: string | undefined;
   readonly schemaPath?: string | undefined;
   readonly message: string;
 }
 
-export type Diagnostic = ValidationError;
+/** A validation error, always addressed to a document path such as `$.a.b[2]`. */
+export interface ValidationError extends Diagnostic {
+  readonly path: string;
+}
 
 /** Builds the schema path `def.schemaPath + "." + prop`, or `undefined` when the definition has none. */
 function sp(definition: RawDefinition, prop: string): string | undefined {

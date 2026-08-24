@@ -43,15 +43,15 @@ public final class SchemaException extends RuntimeException {
         this.schemaPath = schemaPath;
     }
 
-    DiagnosticPhase phase() {
+    public DiagnosticPhase phase() {
         return phase;
     }
 
-    String code() {
+    public String code() {
         return code;
     }
 
-    String schemaPath() {
+    public String schemaPath() {
         return schemaPath;
     }
 
@@ -61,7 +61,7 @@ public final class SchemaException extends RuntimeException {
      *
      * @return the structured diagnostic for this failure
      */
-    ValidationDiagnostic toDiagnostic() {
+    public ValidationDiagnostic toDiagnostic() {
         return new ValidationDiagnostic(phase, DiagnosticSeverity.ERROR, code, null, schemaPath, getMessage());
     }
 }

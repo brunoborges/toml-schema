@@ -4,11 +4,11 @@ import { pathToFileURL, fileURLToPath } from "node:url";
 import { TomlDate } from "smol-toml";
 import { DocumentError, SchemaError } from "./errors.js";
 import { DiagnosticCodes } from "./diagnostics.js";
-import { loadSchema, Schema } from "./schema.js";
+import { loadSchemaFromSource, Schema } from "./schema.js";
 import { parseSemVer } from "./semver.js";
 import { parseToml } from "./document.js";
 import { isTomlTable, type TomlTable } from "./values.js";
-import { ValidationResult } from "./validator.js";
+import { ValidationResult, type Diagnostic, type ValidationError } from "./validator.js";
 
 /** The result of resolving a schema from a document's `[toml-schema]` metadata. */
 export interface DiscoveryResult {
@@ -37,19 +37,27 @@ function hasInvalidURIReferenceCharacter(reference: string): boolean {
   return false;
 }
 
+const LOCATION_SCHEMA_PATH = "$.toml-schema.location";
+const VERSION_SCHEMA_PATH = "$.toml-schema.version";
+const discoveryOptions = (code: string, schemaPath = LOCATION_SCHEMA_PATH) => ({
+  phase: "discovery" as const,
+  code,
+  schemaPath,
+});
+
 function localPathFromFileURL(url: URL): string {
   if (url.search !== "" || url.hash !== "" || url.username !== "" || url.password !== "") {
-    throw new SchemaError("file URI contains unsupported components");
+    throw new SchemaError("file URI contains unsupported components", discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION));
   }
   if (url.hostname !== "" && url.hostname.toLowerCase() !== "localhost") {
-    throw new SchemaError("file URI has a non-local host");
+    throw new SchemaError("file URI has a non-local host", discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION));
   }
   const escapedPath = url.pathname.toLowerCase();
   if (escapedPath.includes("%2f") || escapedPath.includes("%5c")) {
-    throw new SchemaError("file URI contains an encoded path separator");
+    throw new SchemaError("file URI contains an encoded path separator", discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION));
   }
   if (url.pathname === "" || url.pathname.includes("\0")) {
-    throw new SchemaError("file URI does not contain a safe path");
+    throw new SchemaError("file URI does not contain a safe path", discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION));
   }
   let localPath: string;
   try {
@@ -57,10 +65,11 @@ function localPathFromFileURL(url: URL): string {
   } catch (cause) {
     throw new SchemaError(
       `invalid file schema location: ${cause instanceof Error ? cause.message : String(cause)}`,
+      discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION),
     );
   }
   if (!path.isAbsolute(localPath)) {
-    throw new SchemaError("file URI path is not absolute");
+    throw new SchemaError("file URI path is not absolute", discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION));
   }
   return localPath;
 }
@@ -75,7 +84,15 @@ export function resolveSchemaLocation(documentPath: string, location: string): s
     return path.normalize(location);
   }
   if (hasInvalidURIReferenceCharacter(location)) {
-    throw new SchemaError(`invalid [toml-schema].location URI: ${location}`);
+    throw new SchemaError(`invalid [toml-schema].location URI: ${location}`, discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION));
+  }
+  // WHATWG URL resolution treats `file:schema.tosd` as relative to a file base,
+  // but RFC 3986 classifies it as an opaque absolute URI, which is not retrievable.
+  if (/^file:[^/]/i.test(location)) {
+    throw new SchemaError(
+      `invalid file schema location: ${location}: file URI contains unsupported components`,
+      discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION),
+    );
   }
   const absoluteDocumentPath = path.resolve(documentPath);
   const base = pathToFileURL(absoluteDocumentPath);
@@ -85,29 +102,33 @@ export function resolveSchemaLocation(documentPath: string, location: string): s
   } catch (cause) {
     throw new SchemaError(
       `invalid [toml-schema].location URI: ${location}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      discoveryOptions(DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION),
     );
   }
   if (resolved.protocol.toLowerCase() !== "file:") {
-    throw new SchemaError(`unsupported schema location URI scheme: ${resolved.protocol.replace(/:$/, "")}`);
+    throw new SchemaError(
+      `schema retrieval is not permitted for URI scheme: ${resolved.protocol.replace(/:$/, "")}`,
+      discoveryOptions(DiagnosticCodes.SCHEMA_RETRIEVAL_REFUSED),
+    );
   }
   const localPath = localPathFromFileURL(resolved);
   return path.normalize(localPath);
 }
 
 /** Compares a document's expected schema version against the resolved schema's actual version. */
-export function compareDocumentSchemaVersion(expected: unknown, actual: string): string | undefined {
-  const discovery = { phase: "discovery" as const, schemaPath: "$.toml-schema.version" };
+export function compareDocumentSchemaVersion(expected: unknown, actual: string): Diagnostic | undefined {
+  const discovery = { phase: "discovery" as const, schemaPath: VERSION_SCHEMA_PATH };
   if (typeof expected !== "string") {
     throw new SchemaError("document [toml-schema].version must be a SemVer string", {
       ...discovery,
-      code: DiagnosticCodes.UNSUPPORTED_VERSION,
+      code: DiagnosticCodes.DISCOVERY_INVALID_METADATA,
     });
   }
   const expectedParts = parseSemVer(expected);
   if (!expectedParts) {
     throw new SchemaError("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax", {
       ...discovery,
-      code: DiagnosticCodes.UNSUPPORTED_VERSION,
+      code: DiagnosticCodes.DISCOVERY_INVALID_METADATA,
     });
   }
   const actualParts = parseSemVer(actual);
@@ -118,7 +139,13 @@ export function compareDocumentSchemaVersion(expected: unknown, actual: string):
     );
   }
   if (expected !== actual) {
-    return `Warning: document expects TOML Schema version ${expected}, but resolved schema uses ${actual}`;
+    return {
+      phase: "discovery",
+      severity: "warning",
+      code: DiagnosticCodes.VERSION_MISMATCH,
+      schemaPath: VERSION_SCHEMA_PATH,
+      message: `document expects TOML Schema version ${expected}, but resolved schema uses ${actual}`,
+    };
   }
   return undefined;
 }
@@ -140,20 +167,47 @@ export async function schemaFromDocument(documentPath: string): Promise<Discover
   }
   const document = parseToml(source);
   const metadata = document["toml-schema"];
+  if (metadata === undefined) {
+    throw new SchemaError("document does not contain [toml-schema].location", discoveryOptions(DiagnosticCodes.DISCOVERY_MISSING_LOCATION));
+  }
   if (!isTomlTable(metadata)) {
-    throw new SchemaError("document does not contain [toml-schema].location");
+    throw new SchemaError(
+      "document [toml-schema] metadata must be a table",
+      discoveryOptions(DiagnosticCodes.DISCOVERY_INVALID_METADATA, "$.toml-schema"),
+    );
   }
   for (const [key, value] of Object.entries(metadata)) {
     if (!isSchemaReferenceScalar(value)) {
-      throw new SchemaError(`document [toml-schema].${key} must be a scalar value`);
+      throw new SchemaError(
+        `document [toml-schema].${key} must be a scalar value`,
+        discoveryOptions(DiagnosticCodes.DISCOVERY_INVALID_METADATA, `$.toml-schema.${key}`),
+      );
     }
   }
   const location = metadata["location"];
-  if (typeof location !== "string" || location.trim() === "") {
-    throw new SchemaError("document does not contain [toml-schema].location");
+  if (location === undefined || location === null || location === "") {
+    throw new SchemaError("document does not contain [toml-schema].location", discoveryOptions(DiagnosticCodes.DISCOVERY_MISSING_LOCATION));
+  }
+  if (typeof location !== "string") {
+    throw new SchemaError(
+      "document [toml-schema].location must be a string",
+      discoveryOptions(DiagnosticCodes.DISCOVERY_INVALID_METADATA),
+    );
+  }
+  if (location.trim() === "") {
+    throw new SchemaError("document does not contain [toml-schema].location", discoveryOptions(DiagnosticCodes.DISCOVERY_MISSING_LOCATION));
   }
   const schemaPath = resolveSchemaLocation(documentPath, location);
-  const schema = await loadSchema(schemaPath);
+  let schemaSource: string;
+  try {
+    schemaSource = await readFile(schemaPath, "utf-8");
+  } catch (cause) {
+    throw new SchemaError(
+      `unable to retrieve schema ${schemaPath}: ${cause instanceof Error ? cause.message : String(cause)}`,
+      discoveryOptions(DiagnosticCodes.SCHEMA_RETRIEVAL_FAILED),
+    );
+  }
+  const schema = loadSchemaFromSource(schemaPath, schemaSource);
   if ("version" in metadata) {
     const warning = compareDocumentSchemaVersion(metadata["version"], schema.version);
     if (warning !== undefined) schema.addWarning(warning);
@@ -167,6 +221,19 @@ export async function schemaFromDocument(documentPath: string): Promise<Discover
  * against it.
  */
 export async function validateDocument(documentPath: string): Promise<ValidationResult> {
-  const { schema, document } = await schemaFromDocument(documentPath);
-  return schema.validate(document);
+  try {
+    const { schema, document } = await schemaFromDocument(documentPath);
+    return schema.validate(document);
+  } catch (cause) {
+    if (!(cause instanceof SchemaError)) throw cause;
+    const diagnostic: ValidationError = {
+      phase: cause.phase,
+      severity: "error",
+      code: cause.code,
+      path: "",
+      schemaPath: cause.schemaPath,
+      message: cause.message,
+    };
+    return new ValidationResult([diagnostic], []);
+  }
 }

@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 import {
   loadSchema,
+  validateDocument,
   parseToml,
   SchemaError,
   DocumentParseError,
@@ -71,6 +72,7 @@ interface Case {
   id: string;
   expect: string;
   diagnostics?: ExpectedDiagnostic[];
+  mode?: "explicit" | "discovery";
 }
 
 interface RegistryEntry {
@@ -255,12 +257,32 @@ test("conformance corpus", async (t) => {
     await t.test(`${id} (${expect})`, async () => {
       const caseDir = path.join(CONFORMANCE, "cases", id);
       const schemaPath = path.join(caseDir, "schema.tosd");
+      const documentPath = path.join(caseDir, "document.toml");
 
       // Collected diagnostics, alongside a parallel array of the instance path each
       // one carries (undefined for schema-load/discovery diagnostics, whose synthetic
       // record uses a sentinel `path`).
       const actual: Diagnostic[] = [];
       const instancePaths: (string | undefined)[] = [];
+
+      if ((testCase.mode ?? "explicit") === "discovery") {
+        const result = await validateDocument(documentPath);
+        for (const diagnostic of result.diagnostics) {
+          actual.push(diagnostic);
+          instancePaths.push(diagnostic.phase === "validation" ? diagnostic.path : undefined);
+        }
+        if (expect === "discovery-error") {
+          assert.equal(result.valid, false, `${id}: expected a discovery error`);
+          assert.ok(result.errors.some((d) => d.phase === "discovery"), `${id}: no discovery error produced`);
+        } else if (expect === "valid") {
+          assert.equal(result.valid, true, `${id}: expected valid: ${JSON.stringify(result.errors)}`);
+        } else {
+          assert.fail(`${id}: unsupported discovery expectation ${expect}`);
+        }
+        checkUniversal(testCase, actual, instancePaths);
+        assertExpectedPresent(testCase, actual, instancePaths);
+        return;
+      }
 
       let schema: Awaited<ReturnType<typeof loadSchema>> | undefined;
       let loadError: SchemaError | undefined;
@@ -289,7 +311,6 @@ test("conformance corpus", async (t) => {
 
       assert.notEqual(expect, "schema-load-error", `${id}: expected schema-load-error but the schema loaded successfully`);
 
-      const documentPath = path.join(caseDir, "document.toml");
       let result: Awaited<ReturnType<NonNullable<typeof schema>["validateFile"]>>;
       try {
         result = await schema!.validateFile(documentPath);

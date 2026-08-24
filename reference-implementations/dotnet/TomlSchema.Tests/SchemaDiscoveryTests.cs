@@ -140,7 +140,8 @@ public class SchemaDiscoveryTests
             version = "1.0.0"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
+        AssertDiscoveryError(exception, DiagnosticCodes.DiscoveryMissingLocation, null);
         Assert.Contains("does not contain [toml-schema].location", exception.Message);
     }
 
@@ -153,7 +154,7 @@ public class SchemaDiscoveryTests
             location = "   "
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("does not contain [toml-schema].location", exception.Message);
     }
 
@@ -165,7 +166,7 @@ public class SchemaDiscoveryTests
             title = "Example"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("does not contain [toml-schema].location", exception.Message);
     }
 
@@ -178,8 +179,15 @@ public class SchemaDiscoveryTests
             location = ["schema.tosd"]
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
+        AssertDiscoveryError(exception, DiagnosticCodes.DiscoveryInvalidMetadata, "$.toml-schema.location");
         Assert.Contains("must be a scalar value", exception.Message);
+
+        var nonTablePath = Write(dir, "non-table.toml", """
+            toml-schema = "not metadata"
+            """);
+        var nonTableException = Assert.Throws<SchemaException>(() => TomlSchema.Discover(nonTablePath));
+        AssertDiscoveryError(nonTableException, DiagnosticCodes.DiscoveryInvalidMetadata, "$.toml-schema");
     }
 
     [Fact]
@@ -197,7 +205,7 @@ public class SchemaDiscoveryTests
             name = "b"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("must be a scalar value", exception.Message);
     }
 
@@ -211,7 +219,7 @@ public class SchemaDiscoveryTests
             meta = { author = "me" }
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("must be a scalar value", exception.Message);
     }
 
@@ -237,9 +245,13 @@ public class SchemaDiscoveryTests
         var discovered = TomlSchema.Discover(documentPath);
 
         Assert.Single(discovered.Warnings);
+        Assert.Equal(DiagnosticCodes.VersionMismatch, discovered.Warnings[0].Code);
+        Assert.Equal("$.toml-schema.version", discovered.Warnings[0].SchemaPath);
         Assert.Contains("1.0.0", discovered.Warnings[0].Message);
         Assert.Contains("1.0.1", discovered.Warnings[0].Message);
-        Assert.True(discovered.Validate().IsValid);
+        var result = discovered.Validate();
+        Assert.True(result.IsValid);
+        Assert.Equal(discovered.Warnings, result.Warnings);
     }
 
     [Fact]
@@ -261,7 +273,7 @@ public class SchemaDiscoveryTests
             location = "schema.tosd"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("major version", exception.Message);
     }
 
@@ -274,8 +286,9 @@ public class SchemaDiscoveryTests
             location = "https://example.com/schema.tosd"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
-        Assert.Contains("unsupported schema location URI scheme: https", exception.Message);
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
+        AssertDiscoveryError(exception, DiagnosticCodes.SchemaRetrievalRefused, "$.toml-schema.location");
+        Assert.Contains("retrieval is not permitted", exception.Message);
     }
 
     [Fact]
@@ -287,8 +300,37 @@ public class SchemaDiscoveryTests
             location = "file:schema.tosd"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
+        AssertDiscoveryError(exception, DiagnosticCodes.DiscoveryUnresolvedLocation, "$.toml-schema.location");
         Assert.Contains("invalid file schema location", exception.Message);
+    }
+
+    [Fact]
+    public void ReportsMissingLocalSchemaAsRetrievalFailure()
+    {
+        var dir = CreateTestDirectory();
+        var documentPath = Write(dir, "document.toml", """
+            [toml-schema]
+            location = "missing-schema.tosd"
+            """);
+
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
+        AssertDiscoveryError(exception, DiagnosticCodes.SchemaRetrievalFailed, "$.toml-schema.location");
+    }
+
+    [Fact]
+    public void MalformedRetrievedSchemaRemainsSchemaLoadFailure()
+    {
+        var dir = CreateTestDirectory();
+        Write(dir, "schema.tosd", "[toml-schema\n");
+        var documentPath = Write(dir, "document.toml", """
+            [toml-schema]
+            location = "schema.tosd"
+            """);
+
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
+        Assert.Equal(DiagnosticPhase.SchemaLoad, exception.Phase);
+        Assert.Equal(DiagnosticCodes.SchemaMalformed, exception.Code);
     }
 
     [Fact]
@@ -300,7 +342,7 @@ public class SchemaDiscoveryTests
             location = "file:///schema.tosd?version=1"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("invalid file schema location", exception.Message);
     }
 
@@ -313,7 +355,7 @@ public class SchemaDiscoveryTests
             location = "file:///schema.tosd#fragment"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("invalid file schema location", exception.Message);
     }
 
@@ -326,7 +368,7 @@ public class SchemaDiscoveryTests
             location = "file://example.com/schema.tosd"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("non-local host", exception.Message);
     }
 
@@ -363,7 +405,7 @@ public class SchemaDiscoveryTests
             location = "file:///tmp%2Fschema.tosd"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("encoded path separator", exception.Message);
     }
 
@@ -376,7 +418,7 @@ public class SchemaDiscoveryTests
             location = "sche ma.tosd"
             """);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => TomlSchema.Discover(documentPath));
+        var exception = Assert.Throws<SchemaException>(() => TomlSchema.Discover(documentPath));
         Assert.Contains("invalid [toml-schema].location URI", exception.Message);
     }
 
@@ -446,5 +488,13 @@ public class SchemaDiscoveryTests
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, content);
         return path;
+    }
+
+    private static void AssertDiscoveryError(
+        SchemaException exception, string code, string? schemaPath)
+    {
+        Assert.Equal(DiagnosticPhase.Discovery, exception.Phase);
+        Assert.Equal(code, exception.Code);
+        Assert.Equal(schemaPath, exception.SchemaPath);
     }
 }

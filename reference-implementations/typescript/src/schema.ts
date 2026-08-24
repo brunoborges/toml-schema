@@ -7,7 +7,7 @@ import { parseToml } from "./document.js";
 import { SchemaError, DocumentError, DocumentParseError } from "./errors.js";
 import { DiagnosticCodes } from "./diagnostics.js";
 import { validateSchemaVersion } from "./semver.js";
-import { DocumentValidator, ValidationResult } from "./validator.js";
+import { DocumentValidator, ValidationResult, type Diagnostic } from "./validator.js";
 import { isTomlTable, type TomlTable, type TomlValue } from "./values.js";
 import { appendPath, schemaPathOf } from "./paths.js";
 
@@ -23,10 +23,10 @@ const TOML_SCHEMA_KEYS = new Set(["version", "meta"]);
 export class Schema {
   readonly #data: SchemaData;
   readonly #version: string;
-  readonly #warnings: string[];
+  readonly #warnings: Diagnostic[];
 
   /** @internal */
-  constructor(data: SchemaData, version: string, warnings: string[] = []) {
+  constructor(data: SchemaData, version: string, warnings: Diagnostic[] = []) {
     this.#data = data;
     this.#version = version;
     this.#warnings = warnings;
@@ -43,12 +43,12 @@ export class Schema {
   }
 
   /** Non-fatal warnings produced while discovering this schema (e.g. a version mismatch). */
-  get warnings(): readonly string[] {
+  get warnings(): readonly Diagnostic[] {
     return this.#warnings;
   }
 
   /** @internal */
-  addWarning(warning: string): void {
+  addWarning(warning: Diagnostic): void {
     this.#warnings.push(warning);
   }
 
@@ -83,7 +83,8 @@ export class Schema {
         validator.add(DiagnosticCodes.UNKNOWN_KEY, appendPath("$", key), "$.elements", "unexpected key");
       }
     }
-    return validator.toResult();
+    const result = validator.toResult();
+    return new ValidationResult(result.errors, [...this.#warnings, ...result.warnings]);
   }
 
   /**

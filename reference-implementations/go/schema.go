@@ -61,6 +61,15 @@ var conditionalKeys = map[string]bool{
 // schema-language features are developed against ahead of that release.
 const currentTomlSchemaVersion = "1.0.0"
 
+const (
+	DiscoveryMissingLocation    = "discovery-missing-location"
+	DiscoveryInvalidMetadata    = "discovery-invalid-metadata"
+	DiscoveryUnresolvedLocation = "discovery-unresolved-location"
+	SchemaRetrievalFailed       = "schema-retrieval-failed"
+	SchemaRetrievalRefused      = "schema-retrieval-refused"
+	VersionMismatch             = "version-mismatch"
+)
+
 var semverPattern = regexp.MustCompile(`^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
 
 func parseSchemaType(value string) (SchemaType, bool) {
@@ -95,11 +104,12 @@ func parseSchemaType(value string) (SchemaType, bool) {
 }
 
 type Schema struct {
-	source   string
-	version  string
-	warnings []string
-	types    map[string]Definition
-	elements map[string]Definition
+	source               string
+	version              string
+	warnings             []string
+	discoveryDiagnostics []Diagnostic
+	types                map[string]Definition
+	elements             map[string]Definition
 }
 
 type Definition struct {
@@ -278,6 +288,9 @@ var EmittableDiagnosticCodes = []string{
 	"invalid-boundary", "invalid-pattern", "unsupported-pattern",
 	"cyclic-reference", "incompatible-composition", "invalid-default",
 	"unsupported-version", "indeterminate-operand", "schema-malformed",
+	// Discovery codes.
+	DiscoveryMissingLocation, DiscoveryInvalidMetadata, DiscoveryUnresolvedLocation,
+	SchemaRetrievalFailed, SchemaRetrievalRefused, VersionMismatch,
 }
 
 func LoadSchema(path string) (*Schema, error) {
@@ -350,6 +363,11 @@ func LoadSchema(path string) (*Schema, error) {
 // Warnings returns non-fatal warnings produced while discovering this schema.
 func (s *Schema) Warnings() []string {
 	return append([]string(nil), s.warnings...)
+}
+
+// DiscoveryDiagnostics returns structured warnings produced during discovery.
+func (s *Schema) DiscoveryDiagnostics() []Diagnostic {
+	return append([]Diagnostic(nil), s.discoveryDiagnostics...)
 }
 
 func LoadDocument(path string) (map[string]any, error) {
@@ -2757,25 +2775,39 @@ func (v *validator) appendWarnings(warnings []Diagnostic) {
 func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
 	document, err := parseTOMLFile(documentPath)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, &DocumentParseError{Path: documentPath, Message: err.Error()}
 	}
-	metadata, ok := asMap(document["toml-schema"])
+	metadataValue, present := document["toml-schema"]
+	if !present {
+		return nil, nil, discoveryErr(DiscoveryMissingLocation, "", "document does not contain [toml-schema].location")
+	}
+	metadata, ok := asMap(metadataValue)
 	if !ok {
-		return nil, nil, fmt.Errorf("document does not contain [toml-schema].location")
+		return nil, nil, discoveryErr(DiscoveryInvalidMetadata, "$.toml-schema", "document [toml-schema] metadata must be a table")
 	}
 	for key, value := range metadata {
 		if !isSchemaReferenceScalar(value) {
-			return nil, nil, fmt.Errorf("document [toml-schema].%s must be a scalar value", key)
+			return nil, nil, discoveryErr(DiscoveryInvalidMetadata, schemaPathString([]string{"toml-schema", key}, ""), fmt.Sprintf("document [toml-schema].%s must be a scalar value", key))
 		}
 	}
-	location, ok := metadata["location"].(string)
-	if !ok || strings.TrimSpace(location) == "" {
-		return nil, nil, fmt.Errorf("document does not contain [toml-schema].location")
+	locationValue, present := metadata["location"]
+	if !present {
+		return nil, nil, discoveryErr(DiscoveryMissingLocation, "", "document does not contain [toml-schema].location")
+	}
+	location, ok := locationValue.(string)
+	if !ok {
+		return nil, nil, discoveryErr(DiscoveryInvalidMetadata, "$.toml-schema.location", "document [toml-schema].location must be a string")
+	}
+	if strings.TrimSpace(location) == "" {
+		return nil, nil, discoveryErr(DiscoveryMissingLocation, "", "document does not contain [toml-schema].location")
 	}
 
 	schemaPath, err := resolveSchemaLocation(documentPath, location)
 	if err != nil {
 		return nil, nil, err
+	}
+	if _, err := os.ReadFile(schemaPath); err != nil {
+		return nil, nil, discoveryErr(SchemaRetrievalFailed, "$.toml-schema.location", fmt.Sprintf("unable to retrieve schema %s: %v", schemaPath, err))
 	}
 	schema, err := LoadSchema(schemaPath)
 	if err != nil {
@@ -2788,9 +2820,17 @@ func SchemaFromDocument(documentPath string) (*Schema, map[string]any, error) {
 		}
 		if warning != "" {
 			schema.warnings = append(schema.warnings, warning)
+			schema.discoveryDiagnostics = append(schema.discoveryDiagnostics, Diagnostic{
+				Phase: PhaseDiscovery, Severity: SeverityWarning, Code: VersionMismatch,
+				SchemaPath: "$.toml-schema.version", Message: warning,
+			})
 		}
 	}
 	return schema, document, nil
+}
+
+func discoveryErr(code, schemaPath, message string) error {
+	return &SchemaError{Phase: PhaseDiscovery, Code: code, SchemaPath: schemaPath, Message: message}
 }
 
 func isSchemaReferenceScalar(value any) bool {
@@ -2807,24 +2847,24 @@ func resolveSchemaLocation(documentPath, location string) (string, error) {
 		return filepath.Clean(location), nil
 	}
 	if hasInvalidURIReferenceCharacter(location) {
-		return "", fmt.Errorf("invalid [toml-schema].location URI: %s", location)
+		return "", discoveryErr(DiscoveryUnresolvedLocation, "$.toml-schema.location", fmt.Sprintf("invalid [toml-schema].location URI: %s", location))
 	}
 	reference, err := url.Parse(location)
 	if err != nil {
-		return "", fmt.Errorf("invalid [toml-schema].location URI: %s: %w", location, err)
+		return "", discoveryErr(DiscoveryUnresolvedLocation, "$.toml-schema.location", fmt.Sprintf("invalid [toml-schema].location URI: %s: %v", location, err))
 	}
 	absoluteDocumentPath, err := filepath.Abs(documentPath)
 	if err != nil {
-		return "", fmt.Errorf("invalid document path: %w", err)
+		return "", discoveryErr(DiscoveryUnresolvedLocation, "$.toml-schema.location", fmt.Sprintf("invalid document path: %v", err))
 	}
 	base := &url.URL{Scheme: "file", Path: filepath.ToSlash(absoluteDocumentPath)}
 	resolved := base.ResolveReference(reference)
 	if !strings.EqualFold(resolved.Scheme, "file") {
-		return "", fmt.Errorf("unsupported schema location URI scheme: %s", resolved.Scheme)
+		return "", discoveryErr(SchemaRetrievalRefused, "$.toml-schema.location", fmt.Sprintf("unsupported schema location URI scheme: %s", resolved.Scheme))
 	}
 	path, err := localPathFromFileURI(resolved)
 	if err != nil {
-		return "", fmt.Errorf("invalid file schema location: %s: %w", location, err)
+		return "", discoveryErr(DiscoveryUnresolvedLocation, "$.toml-schema.location", fmt.Sprintf("invalid file schema location: %s: %v", location, err))
 	}
 	return filepath.Clean(path), nil
 }
@@ -2870,17 +2910,18 @@ func localPathFromFileURI(uri *url.URL) (string, error) {
 func compareDocumentSchemaVersion(value any, actual string) (string, error) {
 	expected, ok := value.(string)
 	if !ok {
-		return "", fmt.Errorf("document [toml-schema].version must be a SemVer string")
+		return "", discoveryErr(DiscoveryInvalidMetadata, "$.toml-schema.version", "document [toml-schema].version must be a SemVer string")
 	}
 	expectedParts := semverPattern.FindStringSubmatch(expected)
 	if expectedParts == nil {
-		return "", fmt.Errorf("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
+		return "", discoveryErr(DiscoveryInvalidMetadata, "$.toml-schema.version", "document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax")
 	}
 	actualParts := semverPattern.FindStringSubmatch(actual)
 	if expectedParts[1] != actualParts[1] {
 		return "", &SchemaError{
-			Phase: PhaseDiscovery,
-			Code:  "unsupported-version",
+			Phase:      PhaseDiscovery,
+			Code:       "unsupported-version",
+			SchemaPath: "$.toml-schema.version",
 			Message: fmt.Sprintf(
 				"document expects TOML Schema major version %s, but resolved schema uses %s",
 				expected,

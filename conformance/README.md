@@ -11,7 +11,8 @@ implementation's test suite is a separate task.
 
 Each case lives in `cases/<case-id>/` and contains:
 
-- `schema.tosd` — the TOML Schema document under test (always present);
+- `schema.tosd` — the TOML Schema document under test (present for explicit
+  cases and discovery cases that reach schema loading);
 - `document.toml` — the TOML document to validate against it (present only when
   the expected outcome involves a document).
 
@@ -26,6 +27,7 @@ CLI exit code, which is the contract (see SPEC.md, *Command-Line Exit Status*):
 | `expect`             | Meaning                                                                 | Exit | Document |
 | -------------------- | ----------------------------------------------------------------------- | ---- | -------- |
 | `schema-load-error`  | the schema itself is malformed; loading MUST fail before any document   | 2    | absent   |
+| `discovery-error`    | document-driven schema discovery or retrieval MUST fail                 | 2    | required |
 | `document-parse-error` | the schema loads, but the document is not well-formed TOML            | 2    | required |
 | `validation-failure` | the schema loads, but the document violates it                          | 1    | required |
 | `valid`              | the schema loads and the document satisfies it (warnings permitted)     | 0    | required |
@@ -37,6 +39,14 @@ validator, and its parse failure is a parse error rather than a validation
 diagnostic", and that an implementation "MUST NOT report the document as
 invalid". Such a case is therefore asserted by its exit status and by the
 *absence* of diagnostics.
+
+## The `mode` vocabulary
+
+`mode = "explicit"` is the default and preserves the two-argument
+`tosd validate <schema.tosd> <document.toml>` behavior. `mode = "discovery"`
+drives the single-argument `tosd validate <document.toml>` behavior, resolving
+the schema from `[toml-schema].location`. Discovery fixtures are confined to
+their own case directory, and runners must not enable network retrieval.
 
 A case with no `document.toml` is always `schema-load-error`. A `valid` case
 always supplies a document, so it proves the schema loads *and* accepts a value,
@@ -67,25 +77,13 @@ and MUST NOT compare themselves, by message text."
 The corpus tracks how much of the diagnostic registry it actually exercises,
 because a code that no case asserts is a code every implementation could get
 wrong — or omit entirely — while the suite stayed green. Of the 41 codes in
-[`codes.toml`](codes.toml), **34 are asserted by at least one case**.
+[`codes.toml`](codes.toml), **40 are asserted by at least one case**.
 
-The remaining seven are **intentionally unasserted**, and are not a backlog item
-for case authors:
+The remaining code is intentionally unasserted:
 
 | Code | Why it is not asserted |
 | --- | --- |
-| `discovery-missing-location` | Every runner invokes the two-argument form (explicit schema plus document), so the discovery phase never runs. |
-| `discovery-invalid-metadata` | Same: requires the one-argument discovery form. |
-| `discovery-unresolved-location` | Same: requires the one-argument discovery form. |
-| `schema-retrieval-failed` | Requires a retrieval backend and a controlled failure; out of scope for a file-based corpus. |
-| `schema-retrieval-refused` | Requires a retrieval policy decision, which `SPEC.md` leaves implementation-defined. |
-| `version-mismatch` | A discovery-phase warning, so it needs the discovery form as above. |
 | `resource-limit-exceeded` | Limits are explicitly implementation-defined, so no portable input can force this deterministically. |
-
-Six of the seven would become assertable if the runners were extended to drive
-the single-argument discovery form against a fixture directory. That is a
-runner-contract change affecting all six implementations, and is tracked
-separately rather than worked around by faking coverage here.
 
 ## How expectations are decided
 
@@ -101,11 +99,13 @@ implementation, not a reason to edit the case.
 1. Read the relevant part of `SPEC.md` and decide what the specification
    **requires** for the situation.
 2. Create `cases/<case-id>/schema.tosd` (and `document.toml` unless the case is
-   `schema-load-error`). Keep the fixture **minimal**: the smallest schema that
-   isolates the one rule.
+   `schema-load-error`). A discovery case that fails before schema loading does
+   not need `schema.tosd`. Keep the fixture **minimal**: the smallest files that
+   isolate the one rule.
 3. Add a `[[case]]` entry to `manifest.toml` with `id`, `expect`, a one-line
    `summary`, the `spec` citation (a section heading or a quoted sentence), the
-   `origin` (provenance), and `document` (`true`/`false`).
+   `origin` (provenance), `document` (`true`/`false`), and `mode` when it is
+   `"discovery"`.
 4. Every `schema.tosd` MUST declare `[toml-schema]` with `version = "1.0.0"`.
    TOML Schema 1.0.0 is not yet released; never write a higher version anywhere.
 5. Every fixture MUST be valid TOML *syntax*, even when it is a semantically
@@ -195,7 +195,7 @@ apply to every diagnostic of every case and do constrain the whole output.
    starting `$`, then `.` plus either a bare segment of `[A-Za-z0-9_-]+` or an
    RFC 8259 JSON string, or `[` plus an index with no sign and no leading zeros.
 6. A `valid` case MUST produce no `error`-severity diagnostic; a
-   `validation-failure` case MUST produce at least one.
+   `validation-failure` or `discovery-error` case MUST produce at least one.
 
 ### Deriving expectations
 

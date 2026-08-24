@@ -57,6 +57,16 @@ location = ["schema.tosd"]
             with self.assertRaisesRegex(DiscoveryError, "must be a scalar value"):
                 schema_from_document(document_path)
 
+            scalar_location = helpers.write_file(
+                tmp,
+                "scalar-location.toml",
+                "[toml-schema]\nlocation = 42\n",
+            )
+            with self.assertRaises(DiscoveryError) as raised:
+                schema_from_document(scalar_location)
+            self.assertEqual(raised.exception.code, "discovery-invalid-metadata")
+            self.assertEqual(raised.exception.schema_path, "$.toml-schema.location")
+
     def test_locates_schema_using_absolute_path_location(self):
         with tempfile.TemporaryDirectory() as tmp:
             schema_path = helpers.write_file(
@@ -145,8 +155,10 @@ location = "schema.tosd"
             )
             schema, document = schema_from_document(document_path)
             self.assertEqual(len(schema.warnings), 1)
-            self.assertIn("1.0.1", schema.warnings[0])
-            self.assertIn("1.0.0", schema.warnings[0])
+            self.assertEqual(schema.warnings[0].code, "version-mismatch")
+            self.assertEqual(schema.warnings[0].schema_path, "$.toml-schema.version")
+            result = schema.validate(document)
+            self.assertEqual(result.warnings, schema.warnings)
 
     def test_rejects_incompatible_major_document_schema_version(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -206,7 +218,7 @@ location = "schema.tosd"
 
         with tempfile.TemporaryDirectory() as tmp:
             document_path = helpers.write_file(tmp, "document.toml", "")
-            with self.assertRaisesRegex(DiscoveryError, "unsupported schema location URI scheme"):
+            with self.assertRaisesRegex(DiscoveryError, "retrieval is not permitted"):
                 resolve_schema_location(document_path, "http://example.com/schema.tosd")
 
     def test_resolves_absolute_hierarchical_file_uri_location(self):
@@ -283,6 +295,23 @@ location = "schema.tosd"
             self.assertIsNone(result.errors[0].instance_path)
             self.assertEqual(result.errors[0].phase, Phase.DISCOVERY)
             self.assertEqual(result.errors[0].code, "discovery-missing-location")
+
+    def test_validate_document_returns_structured_version_warning(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            helpers.write_file(
+                tmp,
+                "schema.tosd",
+                '[toml-schema]\nversion = "1.0.0"\n\n[elements]\n',
+            )
+            document_path = helpers.write_file(
+                tmp,
+                "document.toml",
+                '[toml-schema]\nversion = "1.0.0-rc.1"\nlocation = "schema.tosd"\n',
+            )
+            result = validate_document(document_path)
+            self.assertTrue(result.valid)
+            self.assertEqual(result.warnings[0].code, "version-mismatch")
+            self.assertEqual(result.warnings[0].schema_path, "$.toml-schema.version")
 
     def test_validate_document_using_checked_in_config_example(self):
         result = validate_document(helpers.repo_path("config.toml"))

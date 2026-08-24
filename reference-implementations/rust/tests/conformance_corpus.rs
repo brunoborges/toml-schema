@@ -22,7 +22,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use toml::Value;
-use toml_schema::schema::{Diagnostic, Schema, EMITTABLE_DIAGNOSTIC_CODES};
+use toml_schema::schema::{
+    discover_schema_from_document, Diagnostic, DiagnosticPhase, Schema,
+    EMITTABLE_DIAGNOSTIC_CODES,
+};
 
 fn repository_root() -> PathBuf {
     // Walk up from this crate's directory until we find `conformance/`.
@@ -105,7 +108,37 @@ struct CaseRun {
     diagnostics: Vec<Diagnostic>,
 }
 
-fn run_case(case_dir: &Path, has_document: bool) -> CaseRun {
+fn run_case(case_dir: &Path, has_document: bool, mode: &str) -> CaseRun {
+    if mode == "discovery" {
+        let document_path = case_dir.join("document.toml");
+        let (schema, document) = match discover_schema_from_document(&document_path) {
+            Ok(discovered) => discovered,
+            Err(error) => {
+                let outcome = if error.code.is_empty() {
+                    "document-parse-error"
+                } else if error.phase == DiagnosticPhase::Discovery {
+                    "discovery-error"
+                } else {
+                    "schema-load-error"
+                };
+                return CaseRun {
+                    outcome: outcome.to_string(),
+                    detail: error.message.clone(),
+                    diagnostics: error.to_diagnostic().into_iter().collect(),
+                };
+            }
+        };
+        let mut diagnostics = schema.discovery_diagnostics().to_vec();
+        let result = schema.validate(&document);
+        diagnostics.extend(result.errors().iter().cloned());
+        diagnostics.extend(result.warnings().iter().cloned());
+        return CaseRun {
+            outcome: if result.valid() { "valid" } else { "validation-failure" }.to_string(),
+            detail: String::new(),
+            diagnostics,
+        };
+    }
+
     let schema_path = case_dir.join("schema.tosd");
     let schema = match Schema::load(&schema_path) {
         Ok(schema) => schema,
@@ -405,10 +438,14 @@ fn conformance_corpus() {
             .get("document")
             .and_then(Value::as_bool)
             .unwrap_or(false);
+        let mode = case
+            .get("mode")
+            .and_then(Value::as_str)
+            .unwrap_or("explicit");
 
         total += 1;
         let case_dir = conformance.join("cases").join(id);
-        let run = run_case(&case_dir, has_document);
+        let run = run_case(&case_dir, has_document, mode);
 
         // Coarse outcome, keeping load-vs-validation strictly distinguished.
         if run.outcome != expect {
@@ -440,6 +477,11 @@ fn conformance_corpus() {
         if expect == "validation-failure" && error_count == 0 {
             failures.push(format!(
                 "  {id}: universal-check: validation-failure emitted no error diagnostic"
+            ));
+        }
+        if expect == "discovery-error" && error_count == 0 {
+            failures.push(format!(
+                "  {id}: universal-check: discovery-error emitted no error diagnostic"
             ));
         }
 

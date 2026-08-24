@@ -7,7 +7,12 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use toml_schema::cli::run;
-use toml_schema::schema::{schema_from_document, Schema, ValidationResult};
+use toml_schema::schema::{
+    discover_schema_from_document, schema_from_document, DiagnosticPhase, Schema,
+    ValidationResult, DISCOVERY_INVALID_METADATA, DISCOVERY_MISSING_LOCATION,
+    DISCOVERY_UNRESOLVED_LOCATION, SCHEMA_RETRIEVAL_FAILED, SCHEMA_RETRIEVAL_REFUSED,
+    VERSION_MISMATCH,
+};
 use url::Url;
 
 fn repository_root() -> PathBuf {
@@ -3086,6 +3091,55 @@ location = ["schema.tosd"]
     let error = schema_from_document(&document_path)
         .expect_err("expected non-scalar schema-reference metadata error");
     assert!(error.contains("must be a scalar value"), "{error}");
+    let error = discover_schema_from_document(&document_path)
+        .expect_err("expected structured discovery error");
+    assert_eq!(error.phase, DiagnosticPhase::Discovery);
+    assert_eq!(error.code, DISCOVERY_INVALID_METADATA);
+    assert_eq!(error.schema_path.as_deref(), Some("$.toml-schema.location"));
+
+    let non_table = write_file(
+        &directory,
+        "non-table.toml",
+        r#"toml-schema = "not metadata""#,
+    );
+    let error = discover_schema_from_document(non_table)
+        .expect_err("expected non-table metadata error");
+    assert_eq!(error.code, DISCOVERY_INVALID_METADATA);
+    assert_eq!(error.schema_path.as_deref(), Some("$.toml-schema"));
+}
+
+#[test]
+fn emits_structured_discovery_diagnostics() {
+    let directory = tempfile_dir("structured-discovery-diagnostics");
+    let missing = write_file(&directory, "missing.toml", "name = \"example\"");
+    let opaque = write_file(&directory, "opaque.toml", "[toml-schema]\nlocation = \"file:schema.tosd\"\n");
+    let absent = write_file(&directory, "absent.toml", "[toml-schema]\nlocation = \"absent.tosd\"\n");
+    let refused = write_file(&directory, "refused.toml", "[toml-schema]\nlocation = \"http://example.invalid/schema.tosd\"\n");
+    for (path, code, schema_path) in [
+        (&missing, DISCOVERY_MISSING_LOCATION, None),
+        (&opaque, DISCOVERY_UNRESOLVED_LOCATION, Some("$.toml-schema.location")),
+        (&absent, SCHEMA_RETRIEVAL_FAILED, Some("$.toml-schema.location")),
+        (&refused, SCHEMA_RETRIEVAL_REFUSED, Some("$.toml-schema.location")),
+    ] {
+        let error = discover_schema_from_document(path).expect_err("discovery must fail");
+        assert_eq!(error.phase, DiagnosticPhase::Discovery);
+        assert_eq!(error.code, code);
+        assert_eq!(error.schema_path.as_deref(), schema_path);
+    }
+
+    write_file(&directory, "malformed.tosd", "this is not TOML =");
+    let malformed = write_file(&directory, "malformed.toml", "[toml-schema]\nlocation = \"malformed.tosd\"\n");
+    let malformed_error = discover_schema_from_document(malformed).expect_err("malformed schema must fail");
+    assert_eq!(malformed_error.phase, DiagnosticPhase::SchemaLoad);
+    assert_ne!(malformed_error.code, SCHEMA_RETRIEVAL_FAILED);
+
+    write_file(&directory, "schema.tosd", "[toml-schema]\nversion = \"1.0.0\"\n\n[elements]\n");
+    let versioned = write_file(&directory, "versioned.toml", "[toml-schema]\nversion = \"1.0.0-rc.1\"\nlocation = \"schema.tosd\"\n");
+    let (schema, document) = discover_schema_from_document(versioned).expect("compatible mismatch discovers");
+    assert!(schema.validate(&document).valid());
+    let warning = schema.discovery_diagnostics().first().expect("version mismatch warning");
+    assert_eq!(warning.code, VERSION_MISMATCH);
+    assert_eq!(warning.schema_path(), Some("$.toml-schema.version"));
 }
 
 #[test]
