@@ -31,6 +31,7 @@ from ._codes import (
     EXCLUSIVE_PROPERTIES,
     INAPPLICABLE_PROPERTY,
     INCOMPATIBLE_COMPOSITION,
+    INDETERMINATE_OPERAND,
     INVALID_BOUNDARY,
     INVALID_DEFAULT,
     INVALID_PATTERN,
@@ -399,20 +400,33 @@ def _get_key_groups(
 ) -> Tuple[Tuple[str, ...], ...]:
     if not source.is_property(table, path, key):
         return ()
+    property_path = schema_path_of(path + (key,))
     groups = table.get(key)
     if not isinstance(groups, list) or len(groups) == 0:
-        raise SchemaError(f"{name} {key} must be a non-empty array")
+        raise SchemaError(
+            f"{name} {key} must be a non-empty array",
+            schema_path=property_path,
+        )
     result: List[Tuple[str, ...]] = []
     for index, raw_group in enumerate(groups):
         if not isinstance(raw_group, list) or len(raw_group) < 2:
-            raise SchemaError(f"{name} {key}[{index}] must contain at least two strings")
+            raise SchemaError(
+                f"{name} {key}[{index}] must contain at least two strings",
+                schema_path=property_path,
+            )
         seen: Set[str] = set()
         converted: List[str] = []
         for raw_name in raw_group:
             if not isinstance(raw_name, str):
-                raise SchemaError(f"{name} {key}[{index}] must contain only strings")
+                raise SchemaError(
+                    f"{name} {key}[{index}] must contain only strings",
+                    schema_path=property_path,
+                )
             if raw_name in seen:
-                raise SchemaError(f"{name} {key}[{index}] contains duplicate {raw_name!r}")
+                raise SchemaError(
+                    f"{name} {key}[{index}] contains duplicate {raw_name!r}",
+                    schema_path=property_path,
+                )
             seen.add(raw_name)
             converted.append(raw_name)
         result.append(tuple(converted))
@@ -1440,7 +1454,9 @@ class Schema:
             def check_name(property_name: str, operand: str) -> None:
                 if operand not in fixed:
                     raise SchemaError(
-                        f"{definition.name} {property_name} contains unknown fixed child {operand!r}"
+                        f"{definition.name} {property_name} contains unknown fixed child {operand!r}",
+                        code=INDETERMINATE_OPERAND,
+                        schema_path=f"{definition.schema_path}.{_encode_segment(property_name)}",
                     )
 
             for trigger, dependencies in definition.dependent_required.items():
@@ -1715,7 +1731,10 @@ def load_schema(path: str) -> Schema:
     if not isinstance(metadata, dict):
         raise SchemaError("schema must contain a [toml-schema] table")
     if not isinstance(parsed.get("elements"), dict):
-        raise SchemaError("schema must contain an [elements] table")
+        raise SchemaError(
+            "schema must contain an [elements] table",
+            schema_path=schema_path_of(("elements",)),
+        )
     for key in parsed:
         if key not in ("toml-schema", "types", "elements"):
             raise SchemaError(f"unsupported top-level schema key: {key}")
@@ -1725,7 +1744,10 @@ def load_schema(path: str) -> Schema:
     validate_schema_version(version)
     for key in metadata:
         if key not in ("version", "meta"):
-            raise SchemaError(f"unsupported [toml-schema] key: {key}")
+            raise SchemaError(
+                f"unsupported [toml-schema] key: {key}",
+                schema_path=schema_path_of(("toml-schema", key)),
+            )
 
     types = parse_definitions("types", parsed.get("types"), False, source)
     elements = parse_definitions("elements", parsed.get("elements"), True, source)

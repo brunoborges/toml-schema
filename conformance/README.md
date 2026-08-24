@@ -62,6 +62,31 @@ It deliberately does **not** assert message text, and never compares
 diagnostics by message: `SPEC.md` states implementations "MUST NOT be compared,
 and MUST NOT compare themselves, by message text."
 
+### Registry code coverage
+
+The corpus tracks how much of the diagnostic registry it actually exercises,
+because a code that no case asserts is a code every implementation could get
+wrong — or omit entirely — while the suite stayed green. Of the 41 codes in
+[`codes.toml`](codes.toml), **34 are asserted by at least one case**.
+
+The remaining seven are **intentionally unasserted**, and are not a backlog item
+for case authors:
+
+| Code | Why it is not asserted |
+| --- | --- |
+| `discovery-missing-location` | Every runner invokes the two-argument form (explicit schema plus document), so the discovery phase never runs. |
+| `discovery-invalid-metadata` | Same: requires the one-argument discovery form. |
+| `discovery-unresolved-location` | Same: requires the one-argument discovery form. |
+| `schema-retrieval-failed` | Requires a retrieval backend and a controlled failure; out of scope for a file-based corpus. |
+| `schema-retrieval-refused` | Requires a retrieval policy decision, which `SPEC.md` leaves implementation-defined. |
+| `version-mismatch` | A discovery-phase warning, so it needs the discovery form as above. |
+| `resource-limit-exceeded` | Limits are explicitly implementation-defined, so no portable input can force this deterministically. |
+
+Six of the seven would become assertable if the runners were extended to drive
+the single-argument discovery form against a fixture directory. That is a
+runner-contract change affecting all six implementations, and is tracked
+separately rather than worked around by faking coverage here.
+
 ## How expectations are decided
 
 **Every expected outcome is derived from `SPEC.md`, and each case cites the

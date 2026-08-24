@@ -277,7 +277,7 @@ var EmittableDiagnosticCodes = []string{
 	"unresolved-reference", "duplicate-reference", "inverted-range",
 	"invalid-boundary", "invalid-pattern", "unsupported-pattern",
 	"cyclic-reference", "incompatible-composition", "invalid-default",
-	"unsupported-version", "schema-malformed",
+	"unsupported-version", "indeterminate-operand", "schema-malformed",
 }
 
 func LoadSchema(path string) (*Schema, error) {
@@ -294,7 +294,7 @@ func LoadSchema(path string) (*Schema, error) {
 		return nil, fmt.Errorf("schema must contain a [toml-schema] table")
 	}
 	if _, ok := asMap(parsed["elements"]); !ok {
-		return nil, fmt.Errorf("schema must contain an [elements] table")
+		return nil, loadErr("schema-malformed", schemaPathString([]string{"elements"}, ""), "schema must contain an [elements] table")
 	}
 	for key := range parsed {
 		if key != "toml-schema" && key != "types" && key != "elements" {
@@ -311,7 +311,7 @@ func LoadSchema(path string) (*Schema, error) {
 	}
 	for key := range metadata {
 		if key != "version" && key != "meta" {
-			return nil, fmt.Errorf("unsupported [toml-schema] key: %s", key)
+			return nil, loadErr("schema-malformed", schemaPathString([]string{"toml-schema", key}, ""), fmt.Sprintf("unsupported [toml-schema] key: %s", key))
 		}
 	}
 	types, err := parseDefinitions("types", mapValue(parsed["types"]), false, source)
@@ -406,7 +406,8 @@ func (s *Schema) validateDefinitionSemantics(definition Definition) error {
 		}
 		checkName := func(property, operand string) error {
 			if !fixed[operand] {
-				return fmt.Errorf("%s %s contains unknown fixed child %q", definition.name, property, operand)
+				return loadErr("indeterminate-operand", definition.schemaPathFor(property),
+					fmt.Sprintf("%s %s contains unknown fixed child %q", definition.name, property, operand))
 			}
 			return nil
 		}
@@ -3049,23 +3050,23 @@ func getKeyGroups(name string, path []string, table map[string]any, key string, 
 	}
 	groups, ok := table[key].([]any)
 	if !ok || len(groups) == 0 {
-		return nil, fmt.Errorf("%s %s must be a non-empty array", name, key)
+		return nil, loadErr("schema-malformed", schemaPathString(path, key), fmt.Sprintf("%s %s must be a non-empty array", name, key))
 	}
 	result := make([][]string, 0, len(groups))
 	for index, rawGroup := range groups {
 		group, ok := rawGroup.([]any)
 		if !ok || len(group) < 2 {
-			return nil, fmt.Errorf("%s %s[%d] must contain at least two strings", name, key, index)
+			return nil, loadErr("schema-malformed", schemaPathString(path, key), fmt.Sprintf("%s %s[%d] must contain at least two strings", name, key, index))
 		}
 		seen := map[string]bool{}
 		converted := make([]string, 0, len(group))
 		for _, rawName := range group {
 			operand, ok := rawName.(string)
 			if !ok {
-				return nil, fmt.Errorf("%s %s[%d] must contain only strings", name, key, index)
+				return nil, loadErr("schema-malformed", schemaPathString(path, key), fmt.Sprintf("%s %s[%d] must contain only strings", name, key, index))
 			}
 			if seen[operand] {
-				return nil, fmt.Errorf("%s %s[%d] contains duplicate %q", name, key, index, operand)
+				return nil, loadErr("schema-malformed", schemaPathString(path, key), fmt.Sprintf("%s %s[%d] contains duplicate %q", name, key, index, operand))
 			}
 			seen[operand] = true
 			converted = append(converted, operand)

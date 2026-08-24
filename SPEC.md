@@ -108,9 +108,10 @@ the other.
   [The Reference Graph](#the-reference-graph).
 
 - **Use site**. The location at which a named definition is referenced, as
-  opposed to the named definition itself. A **use-site** annotation (`optional`,
-  `default`) is one written at the reference rather than on the referenced
-  definition; the interaction of use-site and referenced annotations is defined
+  opposed to the named definition itself. A property written at the reference
+  rather than on the referenced definition is a **use-site** declaration;
+  `optional` and `default` are the properties for which that distinction carries
+  meaning. The interaction of use-site and referenced declarations is defined
   under [Type Reference](#type-reference),
   [Optionality](#optionality---optional), and [Default](#default---default).
 
@@ -510,11 +511,13 @@ pinned TOML version.
 
 ## Schema Structure Reference
 
-A TOML Schema file has the following structure:
+A TOML Schema file has the following structure, where `[toml-schema]` carries at
+least the required `version` key:
 
 ```toml
 # Metadata
 [toml-schema]
+version = "1.0.0"
 
 # Types
 [types]
@@ -538,7 +541,10 @@ Any other top-level table or key-value pair MUST NOT appear in a TOML Schema doc
 
 This table is reserved for metadata regarding the TOML Schema itself.
 
-```toml
+The block below is a shape sketch, not a valid schema: `<any>` and `<value>` are
+placeholders and `...` marks omitted entries.
+
+```text
 [toml-schema]
 version = "1.0.0"
 # custom = "value" # *NOT allowed
@@ -938,7 +944,12 @@ therefore an implicit table. Schema loaders MUST reject child definitions attach
 a scalar, `array`, named type reference, `oneof`, `anyof`, or conditional node rather than
 silently ignoring them.
 
-```toml
+The skeleton below is a **menu of every property a definition may carry**, not a
+valid definition: it is pseudocode in which `<...>` marks a placeholder, and it
+deliberately shows the mutually exclusive selectors (`type`, `oneof`, `anyof`,
+`if`) side by side even though a real definition declares exactly one of them.
+
+```text
 [types]
 
 [types.<typename>]
@@ -1624,7 +1635,8 @@ value does not exist in the TOML document. In every other case, the validator
 MUST validate the value against the definition.
 
 This section is the single authority for how `optional` interacts with
-references, composition, alternatives, and conditional branches.
+references, composition, alternatives, conditional branches, and member
+definitions reached through `itemtype` or `items`.
 
 For a named `type` reference, optionality is inherited: the referencing slot is
 optional if either the use site or any definition in the reference chain
@@ -1640,6 +1652,18 @@ no alternative is selected when the slot is absent. Optionality likewise belongs
 to a conditional definition rather than to its branches: an `optional`
 annotation inside a `then` or `else` branch does not make the conditional slot
 optional, because no branch is selected when the slot is absent.
+
+Optionality governs named slots, so it has nothing to govern on a member
+definition. A member of an `array` or a `collection` is an occurrence produced by
+the document rather than a slot the schema names, and how many occurrences exist
+is already governed by the container's own `optional`, `minlength`, and
+`maxlength`. An `optional` declared on a definition reached through `itemtype` or
+`items` therefore has no effect: validators MUST validate every member that the
+document presents against that definition, and MUST NOT treat `optional = true`
+there as permitting a member to be skipped, absent, or null. Authors who intend
+"this array may be absent entirely" declare `optional` on the array or collection
+itself, and authors who intend "this member may take one of several shapes"
+declare `oneof` on the member definition.
 
 #### Minimum Value / Maximum Value - `min` and `max`
 
@@ -2329,9 +2353,10 @@ permits non-array and array items to be mixed in the outer array.
 position. Use a
 built-in reference such as `itemtype = "string"` for a homogeneous scalar
 array, or a reusable schema definition when members require constraints or
-structure. A reusable table definition is required for TOML arrays of tables
-and arrays of inline tables because both parse as arrays whose items are table
-values. The same keyword selects the type of each dynamic value in a
+structure. Use a named table definition for TOML arrays of tables and arrays of
+inline tables whenever member structure matters, because both parse as arrays
+whose items are table values; `itemtype = "table"` alone is legal but accepts any
+table shape. The same keyword selects the type of each dynamic value in a
 `collection`.
 
 Example with TOML arrays of tables:
@@ -2536,11 +2561,11 @@ TOML Schema:
 
     [types.dnsType]
     type = "string"
-    pattern = "<ip-regex-pattern>"
+    format = "ipv4"
 
     [types.hostnameType]
     type = "string"
-    pattern = "<valid-hostname-regex-pattern>"
+    format = "hostname"
 
     [types.dnsValue]
     anyof = [ "types.dnsType", "types.hostnameType" ]
@@ -3149,7 +3174,9 @@ is defined over parsed TOML values:
 - strings and booleans compare by value, without Unicode normalization;
 - numeric values compare by mathematical value, so integer `1` equals float
   `1.0`, positive and negative zero are equal, and NaN equals NaN only for this
-  equality relation;
+  equality relation; every NaN spelling TOML admits — `nan`, `+nan`, and `-nan` —
+  belongs to that single equality class, because this relation distinguishes
+  neither NaN sign nor NaN payload;
 - integer comparison remains exact across the full TOML signed 64-bit range,
   including comparison with a float, and implementations MUST NOT first round
   the integer to the float's binary format;
@@ -3168,6 +3195,15 @@ In particular, offset date-times that identify the same instant compare equal
 for a range boundary but remain unequal here when their retained local fields
 or offsets differ. Implementations MUST NOT reuse instant ordering as
 `allowedvalues`, `uniqueitems`, or default-comparison equality.
+
+Because this relation compares numbers by mathematical value while `type`
+selects a TOML kind, the two disagree by design, and the disagreement is
+observable wherever a definition does not pin the kind. Under `type = "any"`,
+`allowedvalues = [ 1 ]` accepts the float `1.0`, and `uniqueitems` rejects
+`[ 1, 1.0 ]` as containing duplicates, even though `1` and `1.0` are values of
+different TOML kinds. A definition that must distinguish the two declares
+`type = "integer"` or `type = "float"`, which excludes the other kind before
+equality is ever consulted.
 
 ### Expressiveness and Validation Scope
 

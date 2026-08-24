@@ -1,0 +1,6 @@
+[toml-schema]
+version = "1.0.0"
+custom = "not allowed directly under toml-schema"
+
+[elements.name]
+type = "string"

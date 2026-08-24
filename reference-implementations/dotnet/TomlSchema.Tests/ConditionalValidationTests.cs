@@ -14,7 +14,7 @@ public class ConditionalValidationTests : TestBase
 
             [elements.config]
             type = "table"
-            mutuallyexclusive = ["option_a", "option_b"]
+            mutuallyexclusive = [["option_a", "option_b"]]
 
                 [elements.config.option_a]
                 type = "string"
@@ -125,7 +125,7 @@ public class ConditionalValidationTests : TestBase
 
             [elements.config]
             type = "table"
-            exactlyone = ["env_file", "env_inline"]
+            exactlyone = [["env_file", "env_inline"]]
 
                 [elements.config.env_file]
                 type = "string"

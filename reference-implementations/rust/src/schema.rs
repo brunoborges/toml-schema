@@ -161,6 +161,7 @@ pub const EMITTABLE_DIAGNOSTIC_CODES: &[&str] = &[
     "cyclic-reference",
     "incompatible-composition",
     "invalid-default",
+    "indeterminate-operand",
     "unsupported-version",
     "schema-malformed",
     // Extension code for TOML documents that are not parseable at all; SPEC.md
@@ -673,7 +674,11 @@ impl Schema {
             return Err("schema must contain a [toml-schema] table".to_string());
         }
         if !matches!(table.get("elements"), Some(Value::Table(_))) {
-            return Err("schema must contain an [elements] table".to_string());
+            return Err(load_error(
+                "schema-malformed",
+                Some(&schema_path_from_name("elements", None)),
+                "schema must contain an [elements] table",
+            ));
         }
         for key in table.keys() {
             if key != "toml-schema" && key != "types" && key != "elements" {
@@ -694,7 +699,11 @@ impl Schema {
             .to_string();
         for key in metadata.keys() {
             if key != "version" && key != "meta" {
-                return Err(format!("unsupported [toml-schema] key: {key}"));
+                return Err(load_error(
+                    "schema-malformed",
+                    Some(&schema_path_from_name("toml-schema", Some(key))),
+                    format!("unsupported [toml-schema] key: {key}"),
+                ));
             }
         }
         let types_table = table.get("types").and_then(Value::as_table);
@@ -984,9 +993,13 @@ impl Schema {
                 for group in groups {
                     for child in group {
                         if !children.contains(child) {
-                            return Err(format!(
-                                "{} {property} references unknown fixed child {child}",
-                                definition.name
+                            return Err(load_error(
+                                "indeterminate-operand",
+                                Some(&schema_path_from_name(&definition.name, Some(property))),
+                                format!(
+                                    "{} {property} references unknown fixed child {child}",
+                                    definition.name
+                                ),
                             ));
                         }
                     }
@@ -2309,31 +2322,52 @@ fn get_name_groups(name: &str, table: &Table, key: &str) -> Result<Vec<Vec<Strin
     let Some(value) = property_value(table, key) else {
         return Ok(Vec::new());
     };
-    let groups = value
-        .as_array()
-        .ok_or_else(|| format!("{name}.{key} must be an array of child-name groups"))?;
+    let schema_path = schema_path_from_name(name, Some(key));
+    let groups = value.as_array().ok_or_else(|| {
+        load_error(
+            "schema-malformed",
+            Some(&schema_path),
+            format!("{name}.{key} must be an array of child-name groups"),
+        )
+    })?;
     if groups.is_empty() {
-        return Err(format!("{name}.{key} must contain at least one group"));
+        return Err(load_error(
+            "schema-malformed",
+            Some(&schema_path),
+            format!("{name}.{key} must contain at least one group"),
+        ));
     }
     let mut result = Vec::with_capacity(groups.len());
     for (index, group) in groups.iter().enumerate() {
-        let group = group
-            .as_array()
-            .ok_or_else(|| format!("{name}.{key}[{index}] must be an array"))?;
+        let group = group.as_array().ok_or_else(|| {
+            load_error(
+                "schema-malformed",
+                Some(&schema_path),
+                format!("{name}.{key}[{index}] must be an array"),
+            )
+        })?;
         if group.len() < 2 {
-            return Err(format!(
-                "{name}.{key}[{index}] must contain at least two child names"
+            return Err(load_error(
+                "schema-malformed",
+                Some(&schema_path),
+                format!("{name}.{key}[{index}] must contain at least two child names"),
             ));
         }
         let mut names = Vec::with_capacity(group.len());
         let mut unique = HashSet::new();
         for value in group {
-            let child = value
-                .as_str()
-                .ok_or_else(|| format!("{name}.{key}[{index}] must contain only strings"))?;
+            let child = value.as_str().ok_or_else(|| {
+                load_error(
+                    "schema-malformed",
+                    Some(&schema_path),
+                    format!("{name}.{key}[{index}] must contain only strings"),
+                )
+            })?;
             if !unique.insert(child.to_string()) {
-                return Err(format!(
-                    "{name}.{key}[{index}] contains duplicate child {child}"
+                return Err(load_error(
+                    "schema-malformed",
+                    Some(&schema_path),
+                    format!("{name}.{key}[{index}] contains duplicate child {child}"),
                 ));
             }
             names.push(child.to_string());

@@ -514,23 +514,31 @@ function getKeyGroups(
   source: SchemaSource,
 ): string[][] | undefined {
   if (!source.isProperty(table, path, key)) return undefined;
+  const groupsSchemaPath = schemaPathOf([...path, key]);
   const groups = table[key];
   if (!isTomlArray(groups) || groups.length === 0) {
-    throw new SchemaError(`${name} ${key} must be a non-empty array`);
+    throw new SchemaError(`${name} ${key} must be a non-empty array`, {
+      schemaPath: groupsSchemaPath,
+    });
   }
   return groups.map((rawGroup, index) => {
     if (!isTomlArray(rawGroup) || rawGroup.length < 2) {
-      throw new SchemaError(`${name} ${key}[${index}] must contain at least two strings`);
+      throw new SchemaError(`${name} ${key}[${index}] must contain at least two strings`, {
+        schemaPath: groupsSchemaPath,
+      });
     }
     const seen = new Set<string>();
     const converted: string[] = [];
     for (const rawName of rawGroup) {
       if (typeof rawName !== "string") {
-        throw new SchemaError(`${name} ${key}[${index}] must contain only strings`);
+        throw new SchemaError(`${name} ${key}[${index}] must contain only strings`, {
+          schemaPath: groupsSchemaPath,
+        });
       }
       if (seen.has(rawName)) {
         throw new SchemaError(
           `${name} ${key}[${index}] contains duplicate ${JSON.stringify(rawName)}`,
+          { schemaPath: groupsSchemaPath },
         );
       }
       seen.add(rawName);

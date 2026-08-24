@@ -73,7 +73,8 @@ final class SchemaLoader {
             throw new SchemaException("Schema must contain a [toml-schema] table");
         }
         if (!schema.isTable("elements")) {
-            throw new SchemaException("Schema must contain an [elements] table");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, "$.elements",
+                    "Schema must contain an [elements] table");
         }
         for (String key : schema.keySet()) {
             if (!TOP_LEVEL_KEYS.contains(key)) {
@@ -87,7 +88,9 @@ final class SchemaLoader {
         String version = TomlSchemaVersion.validate(metadata.get("version")).value();
         for (String key : metadata.keySet()) {
             if (!key.equals("version") && !key.equals("meta")) {
-                throw new SchemaException("Unsupported [toml-schema] key: " + key);
+                throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED,
+                        "$.toml-schema." + PathEncoding.encodeKey(key),
+                        "Unsupported [toml-schema] key: " + key);
             }
         }
         return version;
@@ -174,8 +177,8 @@ final class SchemaLoader {
         }
         validateAlternativeReferences(name, schemaPath, "allof", allOf);
         Map<String, List<String>> dependentRequired = getDependentRequired(name, table);
-        List<List<String>> mutuallyExclusive = getNameGroups(name, table, "mutuallyexclusive");
-        List<List<String>> exactlyOne = getNameGroups(name, table, "exactlyone");
+        List<List<String>> mutuallyExclusive = getNameGroups(name, schemaPath, table, "mutuallyexclusive");
+        List<List<String>> exactlyOne = getNameGroups(name, schemaPath, table, "exactlyone");
         Boolean uniqueItems = getBoolean(table, "uniqueitems");
         boolean hasDefault = isProperty(table, "default");
         Object defaultValue = hasDefault ? table.get(List.of("default")) : null;
@@ -583,28 +586,36 @@ final class SchemaLoader {
     return result;
     }
 
-    private List<List<String>> getNameGroups(String name, TomlTable table, String key) {
+    private List<List<String>> getNameGroups(String name, String schemaPath, TomlTable table, String key) {
     if (!isProperty(table, key)) {
         return List.of();
     }
+    String propertyPath = schemaPath + "." + key;
     Object value = table.get(List.of(key));
     if (!(value instanceof TomlArray groups)) {
-        throw new SchemaException(name + " " + key + " must be an array");
+        throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, propertyPath,
+                name + " " + key + " must be an array");
     }
     if (groups.isEmpty()) {
-        throw new SchemaException(name + " " + key + " must not be empty");
+        throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, propertyPath,
+                name + " " + key + " must not be empty");
     }
     List<List<String>> result = new ArrayList<>();
     for (int i = 0; i < groups.size(); i++) {
         Object groupValue = groups.get(i);
         if (!(groupValue instanceof TomlArray groupArray)) {
-            throw new SchemaException(name + " " + key + "[" + i + "] must be an array");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, propertyPath,
+                    name + " " + key + "[" + i + "] must be an array");
         }
         List<String> group = stringValues(name + " " + key + "[" + i + "]", groupArray);
         if (group.size() < 2) {
-            throw new SchemaException(name + " " + key + "[" + i + "] must contain at least two names");
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, propertyPath,
+                    name + " " + key + "[" + i + "] must contain at least two names");
         }
-        rejectDuplicates(name + " " + key + "[" + i + "]", group);
+        if (new HashSet<>(group).size() != group.size()) {
+            throw new SchemaException(DiagnosticCodes.SCHEMA_MALFORMED, propertyPath,
+                    name + " " + key + "[" + i + "] must contain unique names");
+        }
         result.add(group);
     }
     return result;

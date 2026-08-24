@@ -1,0 +1,14 @@
+[toml-schema]
+version = "1.0.0"
+
+[elements.tbl]
+type = "table"
+mutuallyexclusive = [ "a", "b" ]
+
+  [elements.tbl.a]
+  type = "string"
+  optional = true
+
+  [elements.tbl.b]
+  type = "string"
+  optional = true
