@@ -141,6 +141,7 @@ class SchemaDiscoveryTest {
                 """);
 
         SchemaException exception = assertThrows(SchemaException.class, () -> TomlSchema.discover(document));
+        assertDiscoveryError(exception, DiagnosticCodes.DISCOVERY_MISSING_LOCATION, null);
         assertTrue(exception.getMessage().contains("does not contain [toml-schema].location"),
                 exception.getMessage());
     }
@@ -176,7 +177,17 @@ class SchemaDiscoveryTest {
                 """);
 
         SchemaException exception = assertThrows(SchemaException.class, () -> TomlSchema.discover(document));
+        assertDiscoveryError(exception, DiagnosticCodes.DISCOVERY_INVALID_METADATA,
+                "$.toml-schema.location");
         assertTrue(exception.getMessage().contains("must be a scalar value"), exception.getMessage());
+
+        Path nonTable = write("non-table.toml", """
+                toml-schema = "not metadata"
+                """);
+        SchemaException nonTableException = assertThrows(
+                SchemaException.class, () -> TomlSchema.discover(nonTable));
+        assertDiscoveryError(nonTableException, DiagnosticCodes.DISCOVERY_INVALID_METADATA,
+                "$.toml-schema");
     }
 
     @Test
@@ -228,9 +239,13 @@ class SchemaDiscoveryTest {
         DiscoveredSchema discovered = TomlSchema.discover(document);
 
         assertEquals(1, discovered.warnings().size());
+        assertEquals(DiagnosticCodes.VERSION_MISMATCH, discovered.warnings().get(0).code());
+        assertEquals("$.toml-schema.version", discovered.warnings().get(0).schemaPath());
         assertTrue(discovered.warnings().get(0).message().contains("1.0.0"));
         assertTrue(discovered.warnings().get(0).message().contains("1.0.1"));
-        assertTrue(discovered.validate().isValid());
+        ValidationResult result = discovered.validate();
+        assertTrue(result.isValid());
+        assertEquals(discovered.warnings(), result.warnings());
     }
 
     @Test
@@ -262,7 +277,9 @@ class SchemaDiscoveryTest {
                 """);
 
         SchemaException exception = assertThrows(SchemaException.class, () -> TomlSchema.discover(document));
-        assertTrue(exception.getMessage().contains("unsupported schema location URI scheme: https"),
+        assertDiscoveryError(exception, DiagnosticCodes.SCHEMA_RETRIEVAL_REFUSED,
+                "$.toml-schema.location");
+        assertTrue(exception.getMessage().contains("retrieval is not permitted"),
                 exception.getMessage());
     }
 
@@ -274,7 +291,34 @@ class SchemaDiscoveryTest {
                 """);
 
         SchemaException exception = assertThrows(SchemaException.class, () -> TomlSchema.discover(document));
+        assertDiscoveryError(exception, DiagnosticCodes.DISCOVERY_UNRESOLVED_LOCATION,
+                "$.toml-schema.location");
         assertTrue(exception.getMessage().contains("invalid file schema location"), exception.getMessage());
+    }
+
+    @Test
+    void reportsMissingLocalSchemaAsRetrievalFailure() throws IOException {
+        Path document = write("document.toml", """
+                [toml-schema]
+                location = "missing-schema.tosd"
+                """);
+
+        SchemaException exception = assertThrows(SchemaException.class, () -> TomlSchema.discover(document));
+        assertDiscoveryError(exception, DiagnosticCodes.SCHEMA_RETRIEVAL_FAILED,
+                "$.toml-schema.location");
+    }
+
+    @Test
+    void malformedRetrievedSchemaRemainsSchemaLoadFailure() throws IOException {
+        write("schema.tosd", "[toml-schema\n");
+        Path document = write("document.toml", """
+                [toml-schema]
+                location = "schema.tosd"
+                """);
+
+        SchemaException exception = assertThrows(SchemaException.class, () -> TomlSchema.discover(document));
+        assertEquals(DiagnosticPhase.SCHEMA_LOAD, exception.phase());
+        assertEquals(DiagnosticCodes.SCHEMA_MALFORMED, exception.code());
     }
 
     @Test
@@ -408,5 +452,12 @@ class SchemaDiscoveryTest {
         Files.createDirectories(path.getParent());
         Files.writeString(path, content, StandardCharsets.UTF_8);
         return path;
+    }
+
+    private static void assertDiscoveryError(
+            SchemaException exception, String code, String schemaPath) {
+        assertEquals(DiagnosticPhase.DISCOVERY, exception.phase());
+        assertEquals(code, exception.code());
+        assertEquals(schemaPath, exception.schemaPath());
     }
 }

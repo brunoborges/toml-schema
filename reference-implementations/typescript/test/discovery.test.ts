@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { schemaFromDocument, validateDocument } from "../src/index.js";
+import { SchemaError, schemaFromDocument, validateDocument } from "../src/index.js";
 import { tempDir, writeFixture } from "./helpers.js";
 
 test("schemaFromDocument discovers a schema via a relative [toml-schema].location", async () => {
@@ -91,8 +91,8 @@ version = "1.0.5"
 
   const { schema } = await schemaFromDocument(documentPath);
   assert.equal(schema.warnings.length, 1);
-  assert.match(schema.warnings[0] ?? "", /1\.0\.5/);
-  assert.match(schema.warnings[0] ?? "", /1\.0\.0/);
+  assert.equal(schema.warnings[0]?.code, "version-mismatch");
+  assert.equal(schema.warnings[0]?.schemaPath, "$.toml-schema.version");
 });
 
 test("schemaFromDocument rejects a major-version mismatch", async () => {
@@ -141,6 +141,19 @@ extra = { nested = true }
 `,
   );
   await assert.rejects(() => schemaFromDocument(documentPath), /scalar value/);
+
+  const scalarLocationPath = await writeFixture(
+    dir,
+    "scalar-location.toml",
+    `[toml-schema]\nlocation = 42\n`,
+  );
+  await assert.rejects(
+    () => schemaFromDocument(scalarLocationPath),
+    (error: unknown) =>
+      error instanceof SchemaError &&
+      error.code === "discovery-invalid-metadata" &&
+      error.schemaPath === "$.toml-schema.location",
+  );
 });
 
 test("validateDocument is a one-shot discover + validate convenience helper", async () => {
@@ -170,4 +183,32 @@ version = "1.0.0"
 
   const result = await validateDocument(documentPath);
   assert.equal(result.valid, true, JSON.stringify(result.errors));
+});
+
+test("validateDocument returns discovery warnings in its final result", async () => {
+  const dir = await tempDir();
+  await writeFixture(dir, "schema.tosd", `[toml-schema]\nversion = "1.0.0"\n\n[elements]\n`);
+  const documentPath = await writeFixture(
+    dir,
+    "document.toml",
+    `[toml-schema]\nversion = "1.0.0-rc.1"\nlocation = "schema.tosd"\n`,
+  );
+
+  const result = await validateDocument(documentPath);
+  assert.equal(result.valid, true);
+  assert.equal(result.warnings[0]?.code, "version-mismatch");
+  assert.equal(result.warnings[0]?.schemaPath, "$.toml-schema.version");
+});
+
+test("validateDocument refuses HTTP discovery without attempting retrieval", async () => {
+  const dir = await tempDir();
+  const documentPath = await writeFixture(
+    dir,
+    "document.toml",
+    `[toml-schema]\nlocation = "http://127.0.0.1:1/schema.tosd"\n`,
+  );
+
+  const result = await validateDocument(documentPath);
+  assert.equal(result.errors[0]?.code, "schema-retrieval-refused");
+  assert.equal(result.errors[0]?.schemaPath, "$.toml-schema.location");
 });

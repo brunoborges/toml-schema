@@ -1,0 +1,3 @@
+[toml-schema]
+version = "1.0.0"
+location = "file:schema.tosd"

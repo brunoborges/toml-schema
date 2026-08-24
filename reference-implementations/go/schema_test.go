@@ -1,6 +1,7 @@
 package tomlschema
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -1785,6 +1786,69 @@ location = ["schema.tosd"]
 
 	if _, _, err := SchemaFromDocument(documentPath); err == nil || !strings.Contains(err.Error(), "must be a scalar value") {
 		t.Fatalf("expected non-scalar metadata error, got %v", err)
+	}
+	_, _, err := SchemaFromDocument(documentPath)
+	var schemaErr *SchemaError
+	if !errors.As(err, &schemaErr) || schemaErr.Code != DiscoveryInvalidMetadata ||
+		schemaErr.SchemaPath != "$.toml-schema.location" {
+		t.Fatalf("expected structured invalid-metadata diagnostic, got %#v", err)
+	}
+
+	nonTablePath := write(t, dir, "non-table.toml", `toml-schema = "not metadata"`)
+	_, _, err = SchemaFromDocument(nonTablePath)
+	if !errors.As(err, &schemaErr) || schemaErr.Code != DiscoveryInvalidMetadata ||
+		schemaErr.SchemaPath != "$.toml-schema" {
+		t.Fatalf("expected non-table invalid-metadata diagnostic, got %#v", err)
+	}
+}
+
+func TestEmitsStructuredDiscoveryDiagnostics(t *testing.T) {
+	dir := t.TempDir()
+	cases := []struct {
+		name, content, code, schemaPath string
+	}{
+		{"missing", `name = "example"`, DiscoveryMissingLocation, ""},
+		{"opaque", "[toml-schema]\nlocation = \"file:schema.tosd\"\n", DiscoveryUnresolvedLocation, "$.toml-schema.location"},
+		{"absent", "[toml-schema]\nlocation = \"absent.tosd\"\n", SchemaRetrievalFailed, "$.toml-schema.location"},
+		{"refused", "[toml-schema]\nlocation = \"http://example.invalid/schema.tosd\"\n", SchemaRetrievalRefused, "$.toml-schema.location"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := write(t, dir, tc.name+".toml", tc.content)
+			_, _, err := SchemaFromDocument(path)
+			var schemaErr *SchemaError
+			if !errors.As(err, &schemaErr) || schemaErr.Phase != PhaseDiscovery ||
+				schemaErr.Code != tc.code || schemaErr.SchemaPath != tc.schemaPath {
+				t.Fatalf("unexpected discovery error: %#v", err)
+			}
+		})
+	}
+
+	write(t, dir, "malformed.tosd", "this is not TOML =")
+	malformedDocument := write(t, dir, "malformed.toml", "[toml-schema]\nlocation = \"malformed.tosd\"\n")
+	_, _, malformedErr := SchemaFromDocument(malformedDocument)
+	var malformedSchemaErr *SchemaError
+	if errors.As(malformedErr, &malformedSchemaErr) && malformedSchemaErr.Code == SchemaRetrievalFailed {
+		t.Fatalf("malformed retrieved schema was reported as retrieval failure: %#v", malformedErr)
+	}
+	var parseErr *DocumentParseError
+	if errors.As(malformedErr, &parseErr) || schemaLoadDiagnostic(malformedErr).Phase != PhaseSchemaLoad {
+		t.Fatalf("malformed retrieved schema was not a schema-load failure: %#v", malformedErr)
+	}
+
+	write(t, dir, "schema.tosd", "[toml-schema]\nversion = \"1.0.0\"\n\n[elements]\n")
+	documentPath := write(t, dir, "versioned.toml", "[toml-schema]\nversion = \"1.0.0-rc.1\"\nlocation = \"schema.tosd\"\n")
+	schema, document, err := SchemaFromDocument(documentPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := schema.Validate(document); !result.Valid() {
+		t.Fatalf("expected validation success, got %#v", result.Errors)
+	}
+	diagnostics := schema.DiscoveryDiagnostics()
+	if len(diagnostics) != 1 || diagnostics[0].Code != VersionMismatch ||
+		diagnostics[0].SchemaPath != "$.toml-schema.version" {
+		t.Fatalf("unexpected discovery warnings: %#v", diagnostics)
 	}
 }
 

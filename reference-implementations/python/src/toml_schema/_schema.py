@@ -1033,7 +1033,7 @@ class Schema:
     ) -> None:
         self.source = source
         self.version = version
-        self.warnings: List[str] = []
+        self.warnings: List[Diagnostic] = []
         self.types = types
         self.elements = elements
 
@@ -1064,7 +1064,10 @@ class Schema:
                     "$.elements",
                     "unexpected key",
                 )
-        return ValidationResult(errors=validator.errors, warnings=validator.warnings)
+        return ValidationResult(
+            errors=validator.errors,
+            warnings=[*self.warnings, *validator.warnings],
+        )
 
     def validate_file(self, path: str) -> ValidationResult:
         try:

@@ -88,7 +88,37 @@ type caseRun struct {
 	diagnostics []Diagnostic
 }
 
-func runCase(caseDir string, hasDocument bool) caseRun {
+func runCase(caseDir string, hasDocument bool, mode string) caseRun {
+	if mode == "discovery" {
+		schema, document, err := SchemaFromDocument(filepath.Join(caseDir, "document.toml"))
+		if err != nil {
+			var schemaErr *SchemaError
+			if errors.As(err, &schemaErr) {
+				outcome := "schema-load-error"
+				if schemaErr.Phase == PhaseDiscovery {
+					outcome = "discovery-error"
+				}
+				return caseRun{outcome: outcome, detail: err.Error(), diagnostics: []Diagnostic{schemaErr.Diagnostic()}}
+			}
+			var parseErr *DocumentParseError
+			if errors.As(err, &parseErr) {
+				return caseRun{outcome: "document-parse-error", detail: err.Error()}
+			}
+			return caseRun{
+				outcome: "schema-load-error", detail: err.Error(),
+				diagnostics: []Diagnostic{schemaLoadDiagnostic(err)},
+			}
+		}
+		result := schema.Validate(document)
+		diagnostics := schema.DiscoveryDiagnostics()
+		diagnostics = append(diagnostics, result.Errors...)
+		diagnostics = append(diagnostics, result.Warnings...)
+		if result.Valid() {
+			return caseRun{outcome: "valid", diagnostics: diagnostics}
+		}
+		return caseRun{outcome: "validation-failure", diagnostics: diagnostics}
+	}
+
 	schema, err := LoadSchema(filepath.Join(caseDir, "schema.tosd"))
 	if err != nil {
 		return caseRun{outcome: "schema-load-error", detail: err.Error(), diagnostics: []Diagnostic{schemaLoadDiagnostic(err)}}
@@ -280,6 +310,7 @@ func universalCheckViolations(d Diagnostic, reg registry) []string {
 
 type manifestCase struct {
 	ID          string `toml:"id"`
+	Mode        string `toml:"mode"`
 	Expect      string `toml:"expect"`
 	Document    bool   `toml:"document"`
 	Diagnostics []struct {
@@ -313,7 +344,11 @@ func TestConformanceCorpus(t *testing.T) {
 	var failures []string
 	for _, c := range manifest.Case {
 		caseDir := filepath.Join(conformance, "cases", c.ID)
-		run := runCase(caseDir, c.Document)
+		mode := c.Mode
+		if mode == "" {
+			mode = "explicit"
+		}
+		run := runCase(caseDir, c.Document, mode)
 
 		if run.outcome != c.Expect {
 			failures = append(failures, fmt.Sprintf("  %s: expected outcome %s, got %s\n      detail: %s",
@@ -337,6 +372,9 @@ func TestConformanceCorpus(t *testing.T) {
 		}
 		if c.Expect == "validation-failure" && errorCount == 0 {
 			failures = append(failures, fmt.Sprintf("  %s: universal-check: validation-failure emitted no error diagnostic", c.ID))
+		}
+		if c.Expect == "discovery-error" && errorCount == 0 {
+			failures = append(failures, fmt.Sprintf("  %s: universal-check: discovery-error emitted no error diagnostic", c.ID))
 		}
 
 		for _, decl := range c.Diagnostics {

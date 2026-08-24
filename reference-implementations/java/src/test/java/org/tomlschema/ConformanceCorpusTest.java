@@ -46,7 +46,7 @@ class ConformanceCorpusTest {
     }
 
     private record ConformanceCase(
-            String id, String expect, boolean document, String summary,
+            String id, String mode, String expect, boolean document, String summary,
             List<ExpectedDiagnostic> diagnostics) {
     }
 
@@ -60,6 +60,11 @@ class ConformanceCorpusTest {
         Path schemaPath = caseDir.resolve("schema.tosd");
 
         List<ValidationDiagnostic> actual = new ArrayList<>();
+        if (testCase.mode().equals("discovery")) {
+            conformDiscovery(testCase, caseDir.resolve("document.toml"), actual);
+            return;
+        }
+
         TomlSchema schema;
         try {
             schema = TomlSchema.load(schemaPath);
@@ -118,6 +123,51 @@ class ConformanceCorpusTest {
                             + ": expected validation-failure but the document validated with no errors");
         }
 
+        checkUniversal(testCase, actual);
+        assertExpectedPresent(testCase, actual);
+    }
+
+    private void conformDiscovery(
+            ConformanceCase testCase, Path documentPath, List<ValidationDiagnostic> actual) {
+        ValidationResult result;
+        try {
+            result = TomlSchema.validateDocument(documentPath);
+        } catch (SchemaException error) {
+            actual.add(error.toDiagnostic());
+            String outcome = error.phase() == DiagnosticPhase.DISCOVERY
+                    ? "discovery-error" : "schema-load-error";
+            if (!testCase.expect().equals(outcome)) {
+                fail("case " + testCase.id() + ": expected " + testCase.expect()
+                        + " but discovery produced " + outcome + ": " + describe(error));
+            }
+            checkUniversal(testCase, actual);
+            assertExpectedPresent(testCase, actual);
+            return;
+        } catch (DocumentParseException error) {
+            if (!testCase.expect().equals("document-parse-error")) {
+                fail("case " + testCase.id() + ": expected " + testCase.expect()
+                        + " but the document failed to parse as TOML: " + error.getMessage());
+            }
+            return;
+        } catch (Exception error) {
+            fail("case " + testCase.id() + ": discovery threw an unstructured exception: "
+                    + describe(error));
+            return;
+        }
+
+        actual.addAll(result.diagnostics());
+        if (testCase.expect().equals("valid")) {
+            assertTrue(result.isValid(),
+                    () -> "case " + testCase.id() + ": expected valid but validation reported errors: "
+                            + result.errors());
+        } else if (testCase.expect().equals("validation-failure")) {
+            assertTrue(!result.isValid(),
+                    () -> "case " + testCase.id()
+                            + ": expected validation-failure but the document validated with no errors");
+        } else {
+            fail("case " + testCase.id() + ": expected " + testCase.expect()
+                    + " but discovery and validation succeeded");
+        }
         checkUniversal(testCase, actual);
         assertExpectedPresent(testCase, actual);
     }
@@ -204,9 +254,11 @@ class ConformanceCorpusTest {
         if (testCase.expect().equals("valid")) {
             assertTrue(!finalSawError,
                     () -> "case " + testCase.id() + ": valid case must not produce an error diagnostic");
-        } else if (testCase.expect().equals("validation-failure")) {
+        } else if (testCase.expect().equals("validation-failure")
+                || testCase.expect().equals("discovery-error")) {
             assertTrue(finalSawError,
-                    () -> "case " + testCase.id() + ": validation-failure must produce at least one error");
+                    () -> "case " + testCase.id() + ": " + testCase.expect()
+                            + " must produce at least one error");
         }
     }
 
@@ -317,6 +369,7 @@ class ConformanceCorpusTest {
         for (int i = 0; i < caseArray.size(); i++) {
             TomlTable table = caseArray.getTable(i);
             String id = table.getString("id");
+            String mode = table.getString("mode", () -> "explicit");
             String expect = table.getString("expect");
             boolean document = table.getBoolean("document", () -> false);
             String summary = table.getString("summary");
@@ -333,7 +386,7 @@ class ConformanceCorpusTest {
                             diag.getString("schema_path")));
                 }
             }
-            ConformanceCase testCase = new ConformanceCase(id, expect, document, summary, diagnostics);
+            ConformanceCase testCase = new ConformanceCase(id, mode, expect, document, summary, diagnostics);
             arguments.add(Arguments.of(Named.of(id, testCase)));
         }
         return arguments.stream();

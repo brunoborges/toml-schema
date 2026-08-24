@@ -12,6 +12,9 @@ using System.Text.RegularExpressions;
 /// </summary>
 internal static class SchemaDiscovery
 {
+    private const string LocationPath = "$.toml-schema.location";
+    private const string VersionPath = "$.toml-schema.version";
+
     private static readonly Regex SemVerPattern = new(
         @"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)"
         + @"(?:-((?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
@@ -22,35 +25,67 @@ internal static class SchemaDiscovery
 
     public static DiscoveredSchema Discover(string documentPath)
     {
-        var content = File.ReadAllText(documentPath);
-        var document = TomlSerializer.Deserialize<TomlTable>(content)
-            ?? throw new InvalidOperationException($"Failed to parse document: {documentPath}");
+        TomlTable document;
+        try
+        {
+            var content = File.ReadAllText(documentPath);
+            document = TomlSerializer.Deserialize<TomlTable>(content)
+                ?? throw new InvalidOperationException($"Failed to parse document: {documentPath}");
+        }
+        catch (Exception error)
+        {
+            throw new DocumentParseException($"TOML parse error: {error.Message}", error);
+        }
 
-        if (!document.TryGetValue("toml-schema", out var metadataObj) || metadataObj is not TomlTable metadata)
-            throw new InvalidOperationException("document does not contain [toml-schema].location");
+        if (!document.TryGetValue("toml-schema", out var metadataObj))
+            throw DiscoveryError(DiagnosticCodes.DiscoveryMissingLocation, null,
+                "document does not contain [toml-schema].location");
+        if (metadataObj is not TomlTable metadata)
+            throw DiscoveryError(DiagnosticCodes.DiscoveryInvalidMetadata, "$.toml-schema",
+                "document [toml-schema] metadata must be a table");
 
         foreach (var (key, value) in metadata)
         {
             if (!IsScalar(value))
-                throw new InvalidOperationException($"document [toml-schema].{key} must be a scalar value");
+                throw DiscoveryError(DiagnosticCodes.DiscoveryInvalidMetadata,
+                    $"$.toml-schema.{key}",
+                    $"document [toml-schema].{key} must be a scalar value");
         }
 
-        if (!metadata.TryGetValue("location", out var locationObj) || locationObj is not string location
-            || string.IsNullOrWhiteSpace(location))
-            throw new InvalidOperationException("document does not contain [toml-schema].location");
+        if (!metadata.TryGetValue("location", out var locationObj) || locationObj == null
+            || locationObj is string { Length: 0 })
+            throw DiscoveryError(DiagnosticCodes.DiscoveryMissingLocation, null,
+                "document does not contain [toml-schema].location");
+        if (locationObj is not string location)
+            throw DiscoveryError(DiagnosticCodes.DiscoveryInvalidMetadata, LocationPath,
+                "document [toml-schema].location must be a string");
+        if (string.IsNullOrWhiteSpace(location))
+            throw DiscoveryError(DiagnosticCodes.DiscoveryMissingLocation, null,
+                "document does not contain [toml-schema].location");
 
         var schemaPath = ResolveSchemaLocation(documentPath, location.Trim());
-        var schema = TomlSchema.Load(schemaPath);
+        string schemaContent;
+        try
+        {
+            schemaContent = File.ReadAllText(schemaPath);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            throw DiscoveryError(DiagnosticCodes.SchemaRetrievalFailed, LocationPath,
+                $"unable to retrieve schema {schemaPath}: {error.Message}");
+        }
+        var schema = SchemaLoader.LoadContent(schemaPath, schemaContent);
 
         var warnings = new List<ValidationDiagnostic>();
         if (metadata.TryGetValue("version", out var versionObj))
         {
             if (versionObj is not string expectedVersion)
-                throw new InvalidOperationException("document [toml-schema].version must be a SemVer string");
+                throw DiscoveryError(DiagnosticCodes.DiscoveryInvalidMetadata, VersionPath,
+                    "document [toml-schema].version must be a SemVer string");
 
             var expectedMatch = SemVerPattern.Match(expectedVersion);
             if (!expectedMatch.Success)
-                throw new InvalidOperationException(
+                throw DiscoveryError(DiagnosticCodes.DiscoveryInvalidMetadata, VersionPath,
                     "document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax");
 
             var actualMatch = SemVerPattern.Match(schema.Version);
@@ -59,7 +94,7 @@ internal static class SchemaDiscovery
 
             if (expectedMajor != actualMajor)
             {
-                throw new InvalidOperationException(
+                throw DiscoveryError(DiagnosticCodes.UnsupportedVersion, VersionPath,
                     $"document expects TOML Schema major version {expectedVersion}, "
                     + $"but resolved schema uses {schema.Version}");
             }
@@ -71,7 +106,7 @@ internal static class SchemaDiscovery
                     DiagnosticSeverity.Warning,
                     DiagnosticCodes.VersionMismatch,
                     null,
-                    null,
+                    VersionPath,
                     $"document expects TOML Schema version {expectedVersion}, but resolved schema uses {schema.Version}"));
             }
         }
@@ -88,7 +123,7 @@ internal static class SchemaDiscovery
             return Path.GetFullPath(location);
 
         if (HasInvalidUriReferenceCharacter(location))
-            throw new InvalidOperationException($"invalid [toml-schema].location URI: {location}");
+            throw UnresolvedLocation($"invalid [toml-schema].location URI: {location}");
 
         Uri reference;
         try
@@ -97,7 +132,7 @@ internal static class SchemaDiscovery
         }
         catch (UriFormatException ex)
         {
-            throw new InvalidOperationException($"invalid [toml-schema].location URI: {location}: {ex.Message}");
+            throw UnresolvedLocation($"invalid [toml-schema].location URI: {location}: {ex.Message}");
         }
 
         var absoluteDocumentPath = Path.GetFullPath(documentPath);
@@ -111,11 +146,12 @@ internal static class SchemaDiscovery
         {
             // A malformed absolute reference, such as an opaque "file:schema.tosd" URI that lacks
             // the authority component a hierarchical file URI requires, fails during resolution.
-            throw new InvalidOperationException($"invalid file schema location: {location}");
+            throw UnresolvedLocation($"invalid file schema location: {location}");
         }
 
         if (!string.Equals(resolved.Scheme, "file", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"unsupported schema location URI scheme: {resolved.Scheme}");
+            throw DiscoveryError(DiagnosticCodes.SchemaRetrievalRefused, LocationPath,
+                $"schema retrieval is not permitted for URI scheme: {resolved.Scheme}");
 
         return LocalPathFromFileUri(location, resolved);
     }
@@ -163,27 +199,33 @@ internal static class SchemaDiscovery
     {
         if (!string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query)
             || !string.IsNullOrEmpty(uri.Fragment))
-            throw new InvalidOperationException($"invalid file schema location: {location}");
+            throw UnresolvedLocation($"invalid file schema location: {location}");
 
         var host = uri.Host;
         if (!string.IsNullOrEmpty(host) && !string.Equals(host, "localhost", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException($"file URI has a non-local host: {location}");
+            throw UnresolvedLocation($"file URI has a non-local host: {location}");
 
         // System.Uri decodes %2F/%5C while parsing, so an encoded separator can only be detected
         // by inspecting the original, still-escaped [toml-schema].location text.
         var lowerLocation = location.ToLowerInvariant();
         if (lowerLocation.Contains("%2f") || lowerLocation.Contains("%5c"))
-            throw new InvalidOperationException($"file URI contains an encoded path separator: {location}");
+            throw UnresolvedLocation($"file URI contains an encoded path separator: {location}");
 
         // AbsolutePath (not LocalPath) is used because LocalPath renders a UNC-style
         // "\\host\path" form whenever a host component is present, even a benign "localhost".
         var path = uri.AbsolutePath;
         if (string.IsNullOrEmpty(path) || path.Contains('\0'))
-            throw new InvalidOperationException($"file URI does not contain a safe path: {location}");
+            throw UnresolvedLocation($"file URI does not contain a safe path: {location}");
 
         if (!Path.IsPathRooted(path))
-            throw new InvalidOperationException($"file URI path is not absolute: {location}");
+            throw UnresolvedLocation($"file URI path is not absolute: {location}");
 
         return Path.GetFullPath(path);
     }
+
+    private static SchemaException UnresolvedLocation(string message) =>
+        DiscoveryError(DiagnosticCodes.DiscoveryUnresolvedLocation, LocationPath, message);
+
+    private static SchemaException DiscoveryError(string code, string? schemaPath, string message) =>
+        new(DiagnosticPhase.Discovery, code, schemaPath, message);
 }

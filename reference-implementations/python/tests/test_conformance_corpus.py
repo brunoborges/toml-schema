@@ -34,7 +34,7 @@ import tomllib
 import unittest
 
 import helpers
-from toml_schema import Diagnostic, DocumentParseError, Phase, SchemaError, Severity, load_schema
+from toml_schema import Diagnostic, DocumentParseError, Phase, SchemaError, Severity, load_schema, validate_document
 from toml_schema._codes import ALL_EMITTABLE_CODES
 
 
@@ -257,11 +257,30 @@ class ConformanceCorpusTests(unittest.TestCase):
 
         for case in cases:
             case_id = case["id"]
+            mode = case.get("mode", "explicit")
             expect = case["expect"]
             expectations = case.get("diagnostics", [])
             with self.subTest(id=case_id, expect=expect):
                 case_dir = _CONFORMANCE / "cases" / case_id
                 schema_path = str(case_dir / "schema.tosd")
+                document_path = str(case_dir / "document.toml")
+
+                if mode == "discovery":
+                    result = validate_document(document_path)
+                    diagnostics = result.diagnostics
+                    self._check_universal(case_id, expect, diagnostics)
+                    self._assert_expected_present(case_id, expectations, diagnostics)
+                    if expect == "discovery-error":
+                        self.assertFalse(result.valid, msg=f"{case_id}: expected discovery error")
+                        self.assertTrue(
+                            any(d.phase == Phase.DISCOVERY and d.severity == Severity.ERROR for d in diagnostics),
+                            msg=f"{case_id}: discovery-error produced no discovery error",
+                        )
+                    elif expect == "valid":
+                        self.assertTrue(result.valid, msg=f"{case_id}: expected valid: {result.errors}")
+                    else:
+                        self.fail(f"{case_id}: unsupported discovery expectation {expect!r}")
+                    continue
 
                 # Step 1: load the schema. Only a SchemaError counts as a load
                 # failure; anything else propagates as a genuine test error.
@@ -291,8 +310,6 @@ class ConformanceCorpusTests(unittest.TestCase):
                         f"{load_error!r}"
                     ),
                 )
-
-                document_path = str(case_dir / "document.toml")
 
                 if expect == "document-parse-error":
                     # A document that is not well-formed TOML MUST NOT be reported

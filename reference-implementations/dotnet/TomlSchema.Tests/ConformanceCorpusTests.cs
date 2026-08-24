@@ -23,13 +23,19 @@ public class ConformanceCorpusTests
 
     [Theory]
     [MemberData(nameof(Cases))]
-    public void Conforms(string id, string expect, bool document)
+    public void Conforms(string id, string mode, string expect, bool document)
     {
         _ = document;
         var caseDir = Path.Combine(CorpusRoot(), "cases", id);
         var schemaPath = Path.Combine(caseDir, "schema.tosd");
         var expected = ExpectedDiagnostics(id);
         var emitted = new List<ValidationDiagnostic>();
+
+        if (mode == "discovery")
+        {
+            ConformDiscovery(id, expect, Path.Combine(caseDir, "document.toml"), expected, emitted);
+            return;
+        }
 
         TomlSchema schema;
         try
@@ -93,6 +99,52 @@ public class ConformanceCorpusTests
                 result.Errors.Count == 0,
                 $"case {id}: expected validation-failure but the document validated with no errors");
         }
+    }
+
+    private void ConformDiscovery(
+        string id, string expect, string documentPath,
+        IReadOnlyList<ExpectedDiagnostic> expected, List<ValidationDiagnostic> emitted)
+    {
+        ValidationResult result;
+        try
+        {
+            result = TomlSchema.ValidateDocument(documentPath);
+        }
+        catch (SchemaException error)
+        {
+            emitted.Add(error.ToDiagnostic());
+            var outcome = error.Phase == DiagnosticPhase.Discovery
+                ? "discovery-error" : "schema-load-error";
+            Assert.Equal(expect, outcome);
+            foreach (var diagnostic in emitted)
+                AssertUniversalChecks(id, diagnostic);
+            AssertExpectedPresent(id, expected, emitted);
+            Assert.Contains(emitted, d => d.Severity == DiagnosticSeverity.Error);
+            return;
+        }
+        catch (DocumentParseException)
+        {
+            Assert.Equal("document-parse-error", expect);
+            Assert.Empty(expected);
+            return;
+        }
+        catch (Exception error)
+        {
+            Assert.Fail($"case {id}: discovery threw a non-structured exception: {Describe(error)}");
+            return;
+        }
+
+        emitted.AddRange(result.Diagnostics);
+        foreach (var diagnostic in emitted)
+            AssertUniversalChecks(id, diagnostic);
+        AssertExpectedPresent(id, expected, emitted);
+
+        if (expect == "valid")
+            Assert.True(result.IsValid, $"case {id}: expected valid but validation reported errors");
+        else if (expect == "validation-failure")
+            Assert.False(result.IsValid, $"case {id}: expected validation-failure but validation succeeded");
+        else
+            Assert.Fail($"case {id}: expected {expect} but discovery and validation succeeded");
     }
 
     private void FinishLoadFailure(
@@ -271,9 +323,11 @@ public class ConformanceCorpusTests
         foreach (var entry in ManifestCases())
         {
             var id = (string)entry["id"];
+            var mode = entry.TryGetValue("mode", out var modeValue)
+                ? (string)modeValue : "explicit";
             var expect = (string)entry["expect"];
             var document = entry.TryGetValue("document", out var value) && value is bool flag && flag;
-            yield return new object[] { id, expect, document };
+            yield return new object[] { id, mode, expect, document };
         }
     }
 

@@ -56,6 +56,12 @@ public class SchemaLoader
         return loader.LoadSchema(schemaPath);
     }
 
+    internal static TomlSchema LoadContent(string schemaPath, string content)
+    {
+        var loader = new SchemaLoader();
+        return loader.LoadSchemaContent(schemaPath, content);
+    }
+
     /// <summary>
     /// Parses TOML content into a table.
     /// </summary>
@@ -63,8 +69,19 @@ public class SchemaLoader
     /// <returns>The parsed TOML table.</returns>
     public static TomlTable ParseToml(string content)
     {
-        return TomlSerializer.Deserialize<TomlTable>(content) 
-            ?? throw new SchemaException("Failed to parse TOML content");
+        try
+        {
+            return TomlSerializer.Deserialize<TomlTable>(content)
+                ?? throw new SchemaException("Failed to parse TOML content");
+        }
+        catch (SchemaException)
+        {
+            throw;
+        }
+        catch (Exception error)
+        {
+            throw new SchemaException($"Failed to parse TOML content: {error.Message}", error);
+        }
     }
 
     private TomlSchema LoadSchema(string schemaPath)
@@ -73,6 +90,11 @@ public class SchemaLoader
             throw new FileNotFoundException($"Schema file not found: {schemaPath}");
 
         var content = File.ReadAllText(schemaPath);
+        return LoadSchemaContent(schemaPath, content);
+    }
+
+    private TomlSchema LoadSchemaContent(string schemaPath, string content)
+    {
         var schemaDoc = ParseToml(content);
 
         // Validate top-level keys

@@ -1,6 +1,8 @@
 # TOML Schema conformance corpus manifest.
 # Generated fixtures; every expectation is derived from SPEC.md (see `spec`).
-# expect: one of "schema-load-error" (exit 2), "validation-failure" (exit 1), "valid" (exit 0).
+# mode: "explicit" (default) or "discovery".
+# expect: one of "schema-load-error" (exit 2), "discovery-error" (exit 2),
+# "document-parse-error" (exit 2), "validation-failure" (exit 1), or "valid" (exit 0).
 
 [[case]]
 id = "c01-allowedvalues-kind-over-equality"
@@ -1141,3 +1143,92 @@ document = true
   code = "unknown-key"
   instance_path = '$."a\tb\u001fc"'
   schema_path = "$.elements"
+
+[[case]]
+id = "discovery-missing-location"
+mode = "discovery"
+expect = "discovery-error"
+summary = "document-driven discovery requires a usable [toml-schema].location"
+spec = "#### Discovery Codes"
+origin = "issue 175"
+document = true
+
+  [[case.diagnostics]]
+  phase = "discovery"
+  severity = "error"
+  code = "discovery-missing-location"
+
+[[case]]
+id = "discovery-invalid-metadata"
+mode = "discovery"
+expect = "discovery-error"
+summary = "schema-reference metadata values must be scalar"
+spec = "### TOML Reference of a TOML Schema"
+origin = "issue 175"
+document = true
+
+  [[case.diagnostics]]
+  phase = "discovery"
+  severity = "error"
+  code = "discovery-invalid-metadata"
+  schema_path = "$.toml-schema.location"
+
+[[case]]
+id = "discovery-unresolved-location"
+mode = "discovery"
+expect = "discovery-error"
+summary = "an opaque file URI is not a usable schema location"
+spec = "#### Discovery Codes"
+origin = "issue 175"
+document = true
+
+  [[case.diagnostics]]
+  phase = "discovery"
+  severity = "error"
+  code = "discovery-unresolved-location"
+  schema_path = "$.toml-schema.location"
+
+[[case]]
+id = "schema-retrieval-failed"
+mode = "discovery"
+expect = "discovery-error"
+summary = "authorized local retrieval fails when the referenced schema is absent"
+spec = "### Schema Discovery and Retrieval"
+origin = "issue 175"
+document = true
+
+  [[case.diagnostics]]
+  phase = "discovery"
+  severity = "error"
+  code = "schema-retrieval-failed"
+  schema_path = "$.toml-schema.location"
+
+[[case]]
+id = "schema-retrieval-refused"
+mode = "discovery"
+expect = "discovery-error"
+summary = "HTTP retrieval is refused when the caller has not allowlisted the scheme"
+spec = "### Schema Discovery and Retrieval"
+origin = "issue 175"
+document = true
+
+  [[case.diagnostics]]
+  phase = "discovery"
+  severity = "error"
+  code = "schema-retrieval-refused"
+  schema_path = "$.toml-schema.location"
+
+[[case]]
+id = "version-mismatch"
+mode = "discovery"
+expect = "valid"
+summary = "a compatible document/schema version mismatch warns without failing validation"
+spec = "### TOML Reference of a TOML Schema"
+origin = "issue 175"
+document = true
+
+  [[case.diagnostics]]
+  phase = "discovery"
+  severity = "warning"
+  code = "version-mismatch"
+  schema_path = "$.toml-schema.version"

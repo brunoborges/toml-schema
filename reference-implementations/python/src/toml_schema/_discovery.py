@@ -17,7 +17,10 @@ from ._codes import (
     DISCOVERY_INVALID_METADATA,
     DISCOVERY_MISSING_LOCATION,
     DISCOVERY_UNRESOLVED_LOCATION,
+    SCHEMA_RETRIEVAL_FAILED,
+    SCHEMA_RETRIEVAL_REFUSED,
     UNSUPPORTED_VERSION,
+    VERSION_MISMATCH,
 )
 from ._errors import DiscoveryError, DocumentParseError, SchemaError
 from ._schema import Schema, load_document, load_schema, SEMVER_PATTERN
@@ -64,11 +67,15 @@ def _local_path_from_file_uri(parts) -> str:
     return path
 
 
+_LOCATION_SCHEMA_PATH = "$.toml-schema.location"
+_VERSION_SCHEMA_PATH = "$.toml-schema.version"
+
+
 def resolve_schema_location(document_path: str, location: str) -> str:
     if os.path.isabs(location):
         return os.path.normpath(location)
     if _has_invalid_uri_reference_character(location):
-        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}", code=DISCOVERY_UNRESOLVED_LOCATION)
+        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}", code=DISCOVERY_UNRESOLVED_LOCATION, schema_path=_LOCATION_SCHEMA_PATH)
     try:
         parts = urlsplit(location)
         if parts.scheme:
@@ -85,39 +92,52 @@ def resolve_schema_location(document_path: str, location: str) -> str:
             parts = urlsplit(urljoin(base, location))
             is_opaque = False
     except ValueError as exc:
-        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}: {exc}", code=DISCOVERY_UNRESOLVED_LOCATION) from exc
+        raise DiscoveryError(f"invalid [toml-schema].location URI: {location}: {exc}", code=DISCOVERY_UNRESOLVED_LOCATION, schema_path=_LOCATION_SCHEMA_PATH) from exc
     if parts.scheme.lower() != "file":
-        raise DiscoveryError(f"unsupported schema location URI scheme: {parts.scheme}", code=DISCOVERY_UNRESOLVED_LOCATION)
+        raise DiscoveryError(
+            f"schema retrieval is not permitted for URI scheme: {parts.scheme}",
+            code=SCHEMA_RETRIEVAL_REFUSED,
+            schema_path=_LOCATION_SCHEMA_PATH,
+        )
     if is_opaque:
         raise DiscoveryError(
             f"invalid file schema location: {location}: file URI contains unsupported components",
             code=DISCOVERY_UNRESOLVED_LOCATION,
+            schema_path=_LOCATION_SCHEMA_PATH,
         )
     try:
         path = _local_path_from_file_uri(parts)
     except DiscoveryError as exc:
-        raise DiscoveryError(f"invalid file schema location: {location}: {exc}", code=DISCOVERY_UNRESOLVED_LOCATION) from exc
+        raise DiscoveryError(f"invalid file schema location: {location}: {exc}", code=DISCOVERY_UNRESOLVED_LOCATION, schema_path=_LOCATION_SCHEMA_PATH) from exc
     return os.path.normpath(path)
 
 
-def compare_document_schema_version(value: Any, actual: str) -> str:
-    """Returns a warning string when versions differ but remain compatible
+def compare_document_schema_version(value: Any, actual: str) -> Diagnostic | None:
+    """Returns a warning diagnostic when versions differ but remain compatible
     (same major version); raises DiscoveryError on incompatible/invalid
     versions."""
     if not isinstance(value, str):
-        raise DiscoveryError("document [toml-schema].version must be a SemVer string", code=DISCOVERY_INVALID_METADATA)
+        raise DiscoveryError("document [toml-schema].version must be a SemVer string", code=DISCOVERY_INVALID_METADATA, schema_path=_VERSION_SCHEMA_PATH)
     expected_parts = SEMVER_PATTERN.match(value)
     if not expected_parts:
-        raise DiscoveryError("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax", code=DISCOVERY_INVALID_METADATA)
+        raise DiscoveryError("document [toml-schema].version must use SemVer MAJOR.MINOR.PATCH syntax", code=DISCOVERY_INVALID_METADATA, schema_path=_VERSION_SCHEMA_PATH)
     actual_parts = SEMVER_PATTERN.match(actual)
     if expected_parts.group(1) != actual_parts.group(1):
         raise DiscoveryError(
             f"document expects TOML Schema major version {value}, but resolved schema uses {actual}",
             code=UNSUPPORTED_VERSION,
+            schema_path=_VERSION_SCHEMA_PATH,
         )
     if value != actual:
-        return f"Warning: document expects TOML Schema version {value}, but resolved schema uses {actual}"
-    return ""
+        return Diagnostic(
+            severity=Severity.WARNING,
+            code=VERSION_MISMATCH,
+            instance_path=None,
+            message=f"document expects TOML Schema version {value}, but resolved schema uses {actual}",
+            phase=Phase.DISCOVERY,
+            schema_path=_VERSION_SCHEMA_PATH,
+        )
+    return None
 
 
 def schema_from_document(document_path: str) -> Tuple[Schema, dict]:
@@ -134,20 +154,47 @@ def schema_from_document(document_path: str) -> Tuple[Schema, dict]:
     except tomllib.TOMLDecodeError as exc:
         raise DocumentParseError(str(exc)) from exc
     metadata = document.get("toml-schema")
-    if not isinstance(metadata, dict):
+    if "toml-schema" not in document:
         raise DiscoveryError("document does not contain [toml-schema].location")
+    if not isinstance(metadata, dict):
+        raise DiscoveryError(
+            "document [toml-schema] metadata must be a table",
+            code=DISCOVERY_INVALID_METADATA,
+            schema_path="$.toml-schema",
+        )
     for key, value in metadata.items():
         if not _is_schema_reference_scalar(value):
-            raise DiscoveryError(f"document [toml-schema].{key} must be a scalar value", code=DISCOVERY_INVALID_METADATA)
-    location = metadata.get("location")
-    if not isinstance(location, str) or location.strip() == "":
+            raise DiscoveryError(
+                f"document [toml-schema].{key} must be a scalar value",
+                code=DISCOVERY_INVALID_METADATA,
+                schema_path=f"$.toml-schema.{key}",
+            )
+    if "location" not in metadata:
+        raise DiscoveryError("document does not contain [toml-schema].location")
+    location = metadata["location"]
+    if not isinstance(location, str):
+        raise DiscoveryError(
+            "document [toml-schema].location must be a string",
+            code=DISCOVERY_INVALID_METADATA,
+            schema_path=_LOCATION_SCHEMA_PATH,
+        )
+    if location.strip() == "":
         raise DiscoveryError("document does not contain [toml-schema].location")
 
     schema_path = resolve_schema_location(document_path, location)
+    try:
+        with open(schema_path, "rb"):
+            pass
+    except OSError as exc:
+        raise DiscoveryError(
+            f"unable to retrieve schema {schema_path}: {exc}",
+            code=SCHEMA_RETRIEVAL_FAILED,
+            schema_path=_LOCATION_SCHEMA_PATH,
+        ) from exc
     schema = load_schema(schema_path)
     if "version" in metadata:
         warning = compare_document_schema_version(metadata["version"], schema.version)
-        if warning:
+        if warning is not None:
             schema.warnings.append(warning)
     return schema, document
 
