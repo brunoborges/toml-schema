@@ -135,6 +135,12 @@ internal static class SchemaDiscovery
             throw UnresolvedLocation($"invalid [toml-schema].location URI: {location}: {ex.Message}");
         }
 
+        if (location.StartsWith("file:", StringComparison.OrdinalIgnoreCase)
+            && !location.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+        {
+            throw UnresolvedLocation($"invalid file schema location: {location}");
+        }
+
         var absoluteDocumentPath = Path.GetFullPath(documentPath);
         var baseUri = new Uri("file://" + ToUriPath(absoluteDocumentPath), UriKind.Absolute);
         Uri resolved;
@@ -219,6 +225,16 @@ internal static class SchemaDiscovery
 
         if (!Path.IsPathRooted(path))
             throw UnresolvedLocation($"file URI path is not absolute: {location}");
+
+        path = Uri.UnescapeDataString(path);
+        if (OperatingSystem.IsWindows()
+            && path.Length >= 3
+            && path[0] == '/'
+            && char.IsLetter(path[1])
+            && path[2] == ':')
+        {
+            path = path[1..];
+        }
 
         return Path.GetFullPath(path);
     }

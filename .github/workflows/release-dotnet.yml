@@ -1,0 +1,78 @@
+name: Release .NET package
+
+on:
+  push:
+    tags:
+      - 'dotnet-v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Build and pack only; do not push to NuGet.org
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: nuget
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Resolve package version from tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ver="${GITHUB_REF_NAME#dotnet-v}"
+          if [[ ! "$ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Tag must look like dotnet-v1.0.0-rc.2 (got: ${GITHUB_REF_NAME})" >&2
+            exit 1
+          fi
+          echo "PKG_VERSION=$ver" >> "$GITHUB_ENV"
+
+      - name: Test .NET reference implementation
+        run: dotnet test reference-implementations/dotnet/TomlSchema.sln -c Release
+
+      - name: Pack TomlSchema
+        run: |
+          dotnet pack reference-implementations/dotnet/TomlSchema/TomlSchema.csproj \
+            -c Release \
+            -o ./artifacts/dotnet \
+            ${{ github.ref_type == 'tag' && format('/p:PackageVersion={0} /p:Version={0}', env.PKG_VERSION) || '' }}
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tomlschema-nuget
+          path: |
+            artifacts/dotnet/*.nupkg
+            artifacts/dotnet/*.snupkg
+
+      - name: NuGet login (OIDC)
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        uses: NuGet/login@v1
+        id: nuget_login
+
+      - name: Push to NuGet.org
+        if: github.event_name == 'push' && github.ref_type == 'tag'
+        env:
+          NUGET_API_KEY: ${{ steps.nuget_login.outputs.NUGET_API_KEY }}
+        run: |
+          dotnet nuget push artifacts/dotnet/*.nupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
+          dotnet nuget push artifacts/dotnet/*.snupkg \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "$NUGET_API_KEY" \
+            --skip-duplicate
