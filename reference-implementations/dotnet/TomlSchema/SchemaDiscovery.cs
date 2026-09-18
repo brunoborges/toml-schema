@@ -227,6 +227,8 @@ internal static class SchemaDiscovery
             throw UnresolvedLocation($"file URI path is not absolute: {location}");
 
         path = Uri.UnescapeDataString(path);
+        if (path.Contains('\0'))
+            throw UnresolvedLocation($"file URI does not contain a safe path: {location}");
         if (OperatingSystem.IsWindows()
             && path.Length >= 3
             && path[0] == '/'

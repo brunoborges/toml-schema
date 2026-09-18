@@ -38,6 +38,11 @@ jobs:
             echo "Tag must look like dotnet-v1.0.0-rc.2 (got: ${GITHUB_REF_NAME})" >&2
             exit 1
           fi
+          declared_version="$(dotnet msbuild reference-implementations/dotnet/TomlSchema/TomlSchema.csproj -nologo -getProperty:PackageVersion)"
+          if [[ "$ver" != "$declared_version" ]]; then
+            echo "Tag version $ver must match PackageVersion $declared_version" >&2
+            exit 1
+          fi
           echo "PKG_VERSION=$ver" >> "$GITHUB_ENV"
 
       - name: Test .NET reference implementation
