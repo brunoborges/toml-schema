@@ -4,6 +4,7 @@
     <RootNamespace>TomlSchema.Tests</RootNamespace>
     <AssemblyName>TomlSchema.Tests</AssemblyName>
     <IsTestProject>true</IsTestProject>
+    <IsPackable>false</IsPackable>
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>

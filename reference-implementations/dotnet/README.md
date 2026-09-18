@@ -8,8 +8,21 @@ discovery through `[toml-schema].location`.
 
 - Assembly: `TomlSchema`
 - Namespace: `TomlSchema`
+- NuGet package: `TomlSchema` (published from tag `dotnet-v*`; first release `1.0.0-rc.2`)
 
 All commands below assume you run them from the repository root.
+
+## Install from NuGet.org
+
+After maintainers publish the first package:
+
+```shell
+dotnet add package TomlSchema --version 1.0.0-rc.2
+```
+
+Release tags use the `dotnet-v` prefix (for example `dotnet-v1.0.0-rc.2`). The package
+version is the artifact version; the TOML Schema language version declared in `.tosd`
+files remains `1.0.0` until the specification itself is released.
 
 ## Build and test
 

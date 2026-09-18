@@ -383,7 +383,10 @@ public class SchemaDiscoveryTests
             [elements.title]
             type = "string"
             """);
-        var hostQualifiedUri = "file://localhost" + schemaPath.Replace('\\', '/');
+        var normalizedPath = schemaPath.Replace('\\', '/');
+        if (normalizedPath.Length >= 2 && char.IsLetter(normalizedPath[0]) && normalizedPath[1] == ':')
+            normalizedPath = "/" + normalizedPath;
+        var hostQualifiedUri = "file://localhost" + normalizedPath;
         var documentPath = Write(dir, "document.toml", $$"""
             title = "Example"
 
