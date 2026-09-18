@@ -10,7 +10,7 @@
     <Description>.NET reference implementation for TOML Schema</Description>
     <PackageTags>toml;toml-schema;validation;schema</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageProjectUrl>https://toml-schema.org/</PackageProjectUrl>
+    <PackageProjectUrl>https://tomlschema.org/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/brunoborges/toml-schema</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>
